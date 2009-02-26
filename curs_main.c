@@ -299,13 +299,6 @@ int mutt_index_menu (void)
     menu->max = Context ? Context->vcount : 0;
     oldcount = Context ? Context->msgcount : 0;
 
-    /* check if we need to resort the index because just about
-     * any 'op' below could do mutt_enter_command(), either here or
-     * from any new menu launched, and change $sort/$sort_aux
-     */
-    if (option (OPTNEEDRESORT) && Context && Context->msgcount)
-      resort_index (menu);
-
     if (Context && !attach_msg)
     {
       int check;
@@ -509,13 +502,13 @@ int mutt_index_menu (void)
       mutt_curs_set (1);
       
 #if defined (USE_SLANG_CURSES) || defined (HAVE_RESIZETERM)
-      if (Signals & S_SIGWINCH)
+      if (SigWinch)
       {
 	mutt_flushinp ();
 	mutt_resize_screen ();
 	menu->redraw = REDRAW_FULL;
 	menu->menu = MENU_MAIN;
-	Signals &= ~S_SIGWINCH;
+	SigWinch = 0;
 	menu->top = 0; /* so we scroll the right amount */
 	continue;
       }
@@ -787,7 +780,7 @@ int mutt_index_menu (void)
 	  /* calculate the number of messages _above_ the cursor,
 	   * so we can keep the cursor on the current message
 	   */ 
-	  for (j = 0; j <= menu->current; j++)
+	  for (j = 0; j < menu->current; j++)
 	  {
 	    if (Context->hdrs[Context->v2r[j]]->deleted)
 	      dcount++;
@@ -956,8 +949,13 @@ int mutt_index_menu (void)
 	  break;
 	}
 
+	if (option (OPTNEEDRESORT) && Context && Context->msgcount)
+	{
+	  resort_index (menu);
+	}
+
 	menu->menu = MENU_PAGER;
- 	menu->oldcurrent = menu->current;
+	menu->oldcurrent = menu->current;
 	continue;
 
       case OP_EXIT:
@@ -1139,7 +1137,7 @@ int mutt_index_menu (void)
 	    }
 	  }
 
-	  if ((Sort & SORT_MASK) == SORT_THREADS && CUR->collapsed)
+	  if (CUR->collapsed)
 	  {
 	    if ((op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD) &&
 		UNREAD (CUR))
@@ -1183,20 +1181,34 @@ int mutt_index_menu (void)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
-	mutt_set_flag (Context, CURHDR, M_FLAG, !CURHDR->flagged);
 
-	if (option (OPTRESOLVE))
-	{
-	  if ((menu->current = ci_next_undeleted (menu->current)) == -1)
+        if (tag)
+        {
+	  for (j = 0; j < Context->vcount; j++)
 	  {
-	    menu->current = menu->oldcurrent;
-	    menu->redraw = REDRAW_CURRENT;
+	    if (Context->hdrs[Context->v2r[j]]->tagged)
+	      mutt_set_flag (Context, Context->hdrs[Context->v2r[j]],
+			     M_FLAG, !Context->hdrs[Context->v2r[j]]->flagged);
+	  }
+
+	  menu->redraw |= REDRAW_INDEX;
+	}
+        else
+        {
+	  mutt_set_flag (Context, CURHDR, M_FLAG, !CURHDR->flagged);
+	  if (option (OPTRESOLVE))
+	  {
+	    if ((menu->current = ci_next_undeleted (menu->current)) == -1)
+	    {
+	      menu->current = menu->oldcurrent;
+	      menu->redraw = REDRAW_CURRENT;
+	    }
+	    else
+	      menu->redraw = REDRAW_MOTION_RESYNCH;
 	  }
 	  else
-	    menu->redraw = REDRAW_MOTION_RESYNCH;
+	    menu->redraw = REDRAW_CURRENT;
 	}
-	else
-	  menu->redraw = REDRAW_CURRENT;
 	menu->redraw |= REDRAW_STATUS;
 	break;
 
@@ -1476,6 +1488,10 @@ int mutt_index_menu (void)
 	CurrentMenu = MENU_MAIN;
 	mutt_enter_command ();
 	mutt_check_rescore (Context);
+	if (option (OPTNEEDRESORT) && Context && Context->msgcount)
+	{
+	  resort_index (menu);
+	}
 	if (option (OPTFORCEREDRAWINDEX))
 	  menu->redraw = REDRAW_FULL;
 	unset_option (OPTFORCEREDRAWINDEX);
