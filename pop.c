@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2000-2002 Vsevolod Volkov <vvv@mutt.org.ua>
+ * Copyright (C) 2000-2001 Vsevolod Volkov <vvv@mutt.org.ua>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -22,6 +22,10 @@
 
 #ifdef HAVE_PGP
 #include "pgp.h"
+#endif
+
+#ifdef HAVE_SMIME
+#include "smime.h"
 #endif
 
 #include <string.h>
@@ -438,9 +442,9 @@ int pop_fetch_message (MESSAGE* msg, CONTEXT* ctx, int msgno)
   h->content->length = ftell (msg->fp) - h->content->offset;
 
   /* This needs to be done in case this is a multipart message */
-#ifdef HAVE_PGP
-  h->pgp = pgp_query (h->content);
-#endif /* HAVE_PGP */
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+  h->security = crypt_query (h->content);
+#endif
 
   mutt_clear_error();
   rewind (msg->fp);
@@ -572,7 +576,6 @@ void pop_fetch_mail (void)
 
   if (pop_open_connection (pop_data) < 0)
   {
-    mutt_socket_free (pop_data->conn);
     FREE (&pop_data);
     return;
   }
