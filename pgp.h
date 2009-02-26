@@ -19,7 +19,6 @@
 
 #ifdef HAVE_PGP
 
-#include "crypt.h"
 #include "pgplib.h"
 
 WHERE REGEXP PgpGoodSign;
@@ -58,15 +57,15 @@ char *pgp_keyid (pgp_key_t *);
 
 int mutt_check_pgp (HEADER * h);
 int mutt_is_application_pgp (BODY *);
-
-int pgp_is_multipart_encrypted (BODY *);
-
-
+int mutt_is_multipart_encrypted (BODY *);
+int mutt_is_multipart_signed (BODY *);
+int mutt_parse_pgp_hdr (char *, int);
 int pgp_decrypt_mime (FILE *, FILE **, BODY *, BODY **);
-
+int pgp_get_keys (HEADER *, char **);
+int pgp_protect (HEADER *, char *);
+int pgp_query (BODY *);
 /* int pgp_string_matches_hint (const char *s, LIST * hints); */
-
-#define pgp_valid_passphrase() crypt_valid_passphrase(APPLICATION_PGP)
+int pgp_valid_passphrase (void);
 
 /* pgp_key_t *gpg_get_candidates (struct pgp_vinfo *, pgp_ring_t, LIST *); */
 pgp_key_t *pgp_ask_for_key (char *, char *, short, pgp_ring_t);
@@ -74,12 +73,13 @@ pgp_key_t *pgp_get_candidates (pgp_ring_t, LIST *);
 pgp_key_t *pgp_getkeybyaddr (ADDRESS *, short, pgp_ring_t);
 pgp_key_t *pgp_getkeybystr (char *, short, pgp_ring_t);
 
-void pgp_forget_passphrase (void);
+void mutt_forget_passphrase (void);
 void pgp_application_pgp_handler (BODY *, STATE *);
 void pgp_encrypted_handler (BODY *, STATE *);
 void pgp_extract_keys_from_attachment_list (FILE * fp, int tag, BODY * top);
+void pgp_extract_keys_from_messages (HEADER * hdr);
+void pgp_signed_handler (BODY *, STATE *);
 void pgp_void_passphrase (void);
-
 
 
 
@@ -116,13 +116,5 @@ pid_t pgp_invoke_traditional (FILE **pgpin, FILE **pgpout, FILE **pgperr,
 
 void pgp_invoke_import (const char *fname);
 void pgp_invoke_getkeys (ADDRESS *);
-
-
-/* private ? */
-int pgp_verify_one (BODY *, STATE *, const char *);
-BODY *pgp_traditional_encryptsign (BODY *, int, char *);
-BODY *pgp_encrypt_message (BODY *, char *, int);
-BODY *pgp_sign_message (BODY *);
-
 
 #endif /* HAVE_PGP */
