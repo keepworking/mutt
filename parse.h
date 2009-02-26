@@ -1,3 +1,4 @@
+/* $Id$ */
 
 /* XXX this file duplicates content from protos.h */
 

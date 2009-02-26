@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -878,7 +879,7 @@ static void alternative_handler (BODY *a, STATE *s)
     while (b)
     {
       snprintf (buf, sizeof (buf), "%s/%s", TYPE (b), b->subtype);
-      if (mutt_is_autoview (b, buf))
+      if (mutt_is_autoview (buf))
       {
 	rfc1524_entry *entry = rfc1524_new_entry ();
 
@@ -997,7 +998,7 @@ int mutt_can_decode (BODY *a)
   char type[STRING];
 
   snprintf (type, sizeof (type), "%s/%s", TYPE (a), a->subtype);
-  if (mutt_is_autoview (a, type))
+  if (mutt_is_autoview (type))
     return (rfc1524_mailcap_lookup (a, type, NULL, M_AUTOVIEW));
   else if (a->type == TYPETEXT)
     return (1);
@@ -1322,7 +1323,7 @@ void mutt_body_handler (BODY *b, STATE *s)
   /* first determine which handler to use to process this part */
 
   snprintf (type, sizeof (type), "%s/%s", TYPE (b), b->subtype);
-  if (mutt_is_autoview (b, type))
+  if (mutt_is_autoview (type))
   {
     rfc1524_entry *entry = rfc1524_new_entry ();
 

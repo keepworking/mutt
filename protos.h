@@ -1,3 +1,4 @@
+/* $Id$ */
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -233,7 +234,7 @@ int mutt_get_postponed (CONTEXT *, HEADER *, HEADER **, char *, size_t);
 int mutt_get_tmp_attachment (BODY *);
 int mutt_index_menu (void);
 int mutt_invoke_sendmail (ADDRESS *, ADDRESS *, ADDRESS *, const char *, int);
-int mutt_is_autoview (BODY *, const char *);
+int mutt_is_autoview (char *);
 int mutt_is_mail_list (ADDRESS *);
 int mutt_is_message_type(int, const char *);
 int mutt_is_list_recipient (int, ADDRESS *, ADDRESS *);

@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 
 /*
  * WORK IN PROGRESS ALERT: Daniel Eisenbud <daniel@math.berkeley.edu>

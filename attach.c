@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -276,78 +277,19 @@ int mutt_edit_attachment (BODY *a)
   return rc;
 }
 
-
-/* for compatibility with metamail */
-static int is_mmnoask (const char *buf)
-{
-  char tmp[LONG_STRING], *p, *q;
-  int lng;
-
-  if ((p = getenv ("MM_NOASK")) != NULL && *p)
-  {
-    if (mutt_strcmp (p, "1") == 0)
-      return (1);
-
-    strfcpy (tmp, p, sizeof (tmp));
-    p = tmp;
-
-    while ((p = strtok (p, ",")) != NULL)
-    {
-      if ((q = strrchr (p, '/')) != NULL)
-      {
-	if (*(q+1) == '*')
-	{
-	  if (mutt_strncasecmp (buf, p, q-p) == 0)
-	    return (1);
-	}
-	else
-	{
-	  if (mutt_strcasecmp (buf, p) == 0)
-	    return (1);
-	}
-      }
-      else
-      {
-	lng = mutt_strlen (p);
-	if (buf[lng] == '/' && mutt_strncasecmp (buf, p, lng) == 0)
-	  return (1);
-      }
-
-      p = NULL;
-    }
-  }
-
-  return (0);
-}
-
-int mutt_is_autoview (BODY *b, const char *type)
+int mutt_is_autoview (char *type)
 {
   LIST *t = AutoViewList;
-  char _type[SHORT_STRING];
   int i;
 
-  if (!type)
-  {
-    snprintf (_type, sizeof (_type), "%s/%s", TYPE (b), b->subtype);
-    type = _type;
-  }
-
-  if (mutt_needs_mailcap (b))
-  {
-    if (option (OPTIMPLICITAUTOVIEW))
-      return 1;
-    
-    if (is_mmnoask (type))
-      return 1;
-  }
-
-  for (; t; t = t->next)
+  while (t)
   {
     i = mutt_strlen (t->data) - 1;
     if ((i > 0 && t->data[i-1] == '/' && t->data[i] == '*' && 
 	  mutt_strncasecmp (type, t->data, i) == 0) ||
 	  mutt_strcasecmp (type, t->data) == 0)
       return 1;
+    t = t->next;
   }
 
   return 0;

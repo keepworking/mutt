@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -1306,8 +1307,13 @@ void mx_update_context (CONTEXT *ctx)
 #ifdef _PGPPATH
   /* NOTE: this _must_ be done before the check for mailcap! */
   h->pgp = pgp_query (h->content);
+  if (!h->pgp)
 #endif /* _PGPPATH */
 
+
+
+    if (mutt_needs_mailcap (h->content))
+      h->mailcap = 1;
   if (h->flagged)
     ctx->flagged++;
   if (h->deleted)
