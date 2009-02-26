@@ -13,7 +13,12 @@ IMAP_SUBDIR = imap
 IMAP_INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/imap
 endif
 
-SUBDIRS = m4 po intl doc contrib $(CHARMAP_SUBDIR) $(IMAP_SUBDIR)
+if BUILD_ICONV
+ICONV_SUBDIR = iconv
+ICONV_INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/iconv
+endif
+
+SUBDIRS = m4 po intl doc contrib $(CHARMAP_SUBDIR) $(IMAP_SUBDIR) $(ICONV_SUBDIR)
 
 if NEEDS_PGPEWRAP
 bin_SCRIPTS = pgpewrap muttbug
@@ -34,12 +39,13 @@ mutt_SOURCES = $(BUILT_SOURCES) \
 	rfc822.c rfc1524.c rfc2047.c rfc2231.c \
 	score.c send.c sendlib.c signal.c sort.c \
 	status.c system.c thread.c charset.c history.c lib.c \
-	muttlib.c editmsg.c
+	muttlib.c editmsg.c utf8.c mbyte.c wcwidth.c gettext.c
 
 mutt_LDADD = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAP) $(MUTTLIBS) \
-	$(INTLLIBS) 
+	$(INTLLIBS) $(LIBICONV)
 
-mutt_DEPENDENCIES = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAPDEPS) $(INTLDEPS)
+mutt_DEPENDENCIES = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAPDEPS) \
+	$(INTLDEPS) $(LIBICONVDEPS)
 
 makedoc_SOURCES = makedoc.c
 
@@ -49,7 +55,8 @@ DEFS=-DSHAREDIR=\"$(sharedir)\" -DSYSCONFDIR=\"$(sysconfdir)\" \
 	-DBINDIR=\"$(bindir)\" -DHAVE_CONFIG_H=1
 
 # top_srcdir is for building outside of the source tree
-INCLUDES=-I$(top_srcdir) -I. $(IMAP_INCLUDES) -Iintl -I$(includedir)
+INCLUDES=-I$(top_srcdir) -I. $(IMAP_INCLUDES) $(ICONV_INCLUDES) \
+	 -Iintl -I$(includedir)
 
 non_us_sources = pgp.c pgpinvoke.c pgpkey.c pgplib.c sha1dgst.c \
 	gnupgparse.c sha.h sha_locl.h \
@@ -59,7 +66,8 @@ non_us_sources = pgp.c pgpinvoke.c pgpkey.c pgplib.c sha1dgst.c \
 	imap/imap_ssl.c imap/imap_ssl.h README.SSL
 
 EXTRA_mutt_SOURCES = pgp.c pgpinvoke.c pgpkey.c pgplib.c sha1dgst.c \
-	gnupgparse.c resize.c dotlock.c pop.c remailer.c remailer.h browser.h
+	gnupgparse.c resize.c dotlock.c pop.c remailer.c remailer.h browser.h \
+	mbyte.h
 
 EXTRA_DIST = COPYRIGHT GPL OPS OPS.PGP TODO configure acconfig.h attach.h \
 	buffy.h charset.h copy.h dotlock.h functions.h gen_defs \
@@ -69,7 +77,7 @@ EXTRA_DIST = COPYRIGHT GPL OPS OPS.PGP TODO configure acconfig.h attach.h \
 	reldate.h rfc1524.h rfc2047.h rfc2231.h rfc822.h sha.h sha_locl.h \
 	sort.h mime.types VERSION prepare _regex.h OPS.MIX	\
 	README.SECURITY remailer.c remailer.h browser.h \
-	lib.h extlib.c pgpewrap pgplib.h Muttrc.head Muttrc \
+	mbyte.h	lib.h extlib.c pgpewrap pgplib.h Muttrc.head Muttrc \
 	makedoc.c stamp-doc-rc README.SSL README.UPGRADE
 
 
