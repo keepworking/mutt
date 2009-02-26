@@ -29,6 +29,7 @@
 #include "keymap.h"
 #include "mime.h"
 #include "copy.h"
+#include "charset.h"
 
 
 
@@ -63,38 +64,54 @@ int Index_64[128] = {
     41,42,43,44, 45,46,47,48, 49,50,51,-1, -1,-1,-1,-1
 };
 
-void mutt_decode_xbit (STATE *s, long len, int istext)
+static void state_maybe_utf8_putc(STATE *s, char c, int is_utf8, CHARSET *chs, CHARSET_MAP *map)
 {
-  int c;
-  int lbreak = 1;
+  if(is_utf8)
+    state_fput_utf8(s, c, chs);
+  else
+    state_prefix_putc(mutt_display_char ((unsigned char) c, map), s);
+}
+
+void mutt_decode_xbit (STATE *s, BODY *b, int istext)
+{
+  long len = b->length;
+  int c, ch;
   
   if (istext)
   {
+    CHARSET_MAP *map = NULL;
+    CHARSET *chs = NULL;
+    char *charset = mutt_get_parameter("charset", b->parameter);
+    int is_utf8;
+
+    if((is_utf8 = mutt_is_utf8(charset)))
+      chs = mutt_get_charset(Charset);
+    else
+      map = mutt_get_translation(charset, Charset);
+
+    state_set_prefix(s);
+    
     while ((c = fgetc(s->fpin)) != EOF && len--)
     {
-      if(lbreak && s->prefix)
+      if(c == '\r' && len)
       {
-	state_puts(s->prefix, s);
-	lbreak = 0;
-      }
-	  
-      if (c == '\r' && len)
-      {
-	int ch;
-	
-	if((ch = fgetc(s->fpin)) != '\n')
-	  ungetc(ch, s->fpin);
-	else
+	if((ch = fgetc(s->fpin)) == '\n')
 	{
 	  c = ch;
 	  len--;
 	}
-	
+	else 
+	  ungetc(ch, s->fpin);
       }
-      fputc(c, s->fpout);
-      if(c == '\n')
-	lbreak = 1;
+	
+      state_maybe_utf8_putc(s, c, is_utf8, chs, map);
     }
+    
+    state_reset_prefix(s);
+
+    if(is_utf8)
+      state_fput_utf8(s, '\0', chs);
+    
   }
   else
     mutt_copy_bytes (s->fpin, s->fpout, len);
@@ -107,15 +124,30 @@ static int handler_state_fgetc(STATE *s)
   if((ch = fgetc(s->fpin)) == EOF)
   {
     dprint(1, (debugfile, "handler_state_fgetc: unexpected EOF.\n"));
-    state_puts ("[-- Error: unexpected end of file! --]\n", s);
+    state_puts (_("[-- Error: unexpected end of file! --]\n"), s);
   }
   return ch;
 }
 
-void mutt_decode_quoted (STATE *s, long len, int istext)
+void mutt_decode_quoted (STATE *s, BODY *b, int istext)
 {
-  int ch, lbreak = 1;
-
+  long len = b->length;
+  int ch;
+  char *charset = mutt_get_parameter("charset", b->parameter);
+  int is_utf8 = 0;
+  CHARSET *chs = NULL;
+  CHARSET_MAP *map = NULL;
+  
+  if(istext)
+  {
+    if((is_utf8 = mutt_is_utf8(charset)))
+      chs = mutt_get_charset(Charset);
+    else
+      map = mutt_get_translation(charset, Charset);
+  }
+  
+  state_set_prefix(s);
+  
   while (len > 0)
   {
     if ((ch = handler_state_fgetc(s)) == EOF)
@@ -123,10 +155,6 @@ void mutt_decode_quoted (STATE *s, long len, int istext)
 
     len--;
     
-    if (s->prefix && lbreak)
-      state_puts (s->prefix, s);
-    
-    lbreak = 0;
     if (ch == '=')
     {
       int ch1, ch2;
@@ -170,33 +198,39 @@ void mutt_decode_quoted (STATE *s, long len, int istext)
     } /* ch == '=' */
     else if (istext && ch == '\r')
     {
-      int ch1;
-
-      if((ch1 =fgetc(s->fpin)) == '\n')
-      {
-	ch = ch1;
-	len--;
-      }
-      else
-	ungetc(ch1, s->fpin);
+      continue;
     }
-
     if(ch != EOF)
-      state_putc (ch, s);
-
-    if(ch == '\n')
-      lbreak = 1;
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
   }
+  
+  state_reset_prefix(s);
+
+  if(is_utf8)
+    state_fput_utf8(s, '\0', chs);
 }
 
-void mutt_decode_base64 (STATE *s, long len, int istext)
+void mutt_decode_base64 (STATE *s, BODY *b, int istext)
 {
+  long len = b->length;
   char buf[5];
   int c1, c2, c3, c4, ch, cr = 0, i;
+  char *charset = mutt_get_parameter("charset", b->parameter);
+  CHARSET_MAP *map = NULL;
+  CHARSET *chs = NULL;
+  int is_utf8 = 0;
 
+  if(istext)
+  {
+    if((is_utf8 = mutt_is_utf8(charset)))
+      chs = mutt_get_charset(Charset);
+    else
+      map = mutt_get_translation(charset, Charset);
+  }
+  
   buf[4] = 0;
 
-  if (s->prefix) state_puts (s->prefix, s);
+  if (istext) state_set_prefix(s);
 
   while (len > 0)
   {
@@ -214,16 +248,14 @@ void mutt_decode_base64 (STATE *s, long len, int istext)
     c2 = base64val (buf[1]);
     ch = (c1 << 2) | (c2 >> 4);
 
-    if (cr && ch != '\n') state_putc ('\r', s);
+    if (cr && ch != '\n') 
+      state_maybe_utf8_putc(s, '\r', is_utf8, chs, map);
     cr = 0;
       
     if (istext && ch == '\r')
       cr = 1;
     else
-    {
-      state_putc (ch, s);
-      if (ch == '\n' && s->prefix) state_puts (s->prefix, s);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
 
     if (buf[2] == '=')
       break;
@@ -231,35 +263,29 @@ void mutt_decode_base64 (STATE *s, long len, int istext)
     ch = ((c2 & 0xf) << 4) | (c3 >> 2);
 
     if (cr && ch != '\n')
-      state_putc ('\r', s);
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
+
     cr = 0;
 
     if (istext && ch == '\r')
       cr = 1;
     else
-    {
-      state_putc (ch, s);
-      if (ch == '\n' && s->prefix)
-	state_puts (s->prefix, s);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
 
     if (buf[3] == '=') break;
     c4 = base64val (buf[3]);
     ch = ((c3 & 0x3) << 6) | c4;
 
     if (cr && ch != '\n')
-      state_putc ('\r', s);
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
     cr = 0;
 
     if (istext && ch == '\r')
       cr = 1;
     else
-    {
-      state_putc (ch, s);
-      if (ch == '\n' && s->prefix)
-	state_puts (s->prefix, s);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
   }
+  state_reset_prefix(s);
 }
 
 /* ----------------------------------------------------------------------------
@@ -719,10 +745,9 @@ void text_enriched_handler (BODY *a, STATE *s)
 
   state_putc ('\n', s); /* add a final newline */
 
-  if (stte.buffer)
-    free (stte.buffer);
-  free (stte.line);
-  free (stte.param);
+  FREE (&(stte.buffer));
+  FREE (&(stte.line));
+  FREE (&(stte.param));
 }                                                                              
 
 #define TXTPLAIN    1
@@ -754,14 +779,14 @@ void alternative_handler (BODY *a, STATE *s)
       if (!strchr(t->data, '/') || 
 	  (i > 0 && t->data[i-1] == '/' && t->data[i] == '*'))
       {
-	if (!strcasecmp(t->data, TYPE(b->type)))
+	if (!strcasecmp(t->data, TYPE(b)))
 	{
 	  choice = b;
 	}
       }
       else
       {
-	snprintf (buf, sizeof (buf), "%s/%s", TYPE (b->type), b->subtype);
+	snprintf (buf, sizeof (buf), "%s/%s", TYPE (b), b->subtype);
 	if (!strcasecmp(t->data, buf))
 	{
 	  choice = b;
@@ -778,7 +803,7 @@ void alternative_handler (BODY *a, STATE *s)
     b = a;
   while (b && !choice)
   {
-    snprintf (buf, sizeof (buf), "%s/%s", TYPE (b->type), b->subtype);
+    snprintf (buf, sizeof (buf), "%s/%s", TYPE (b), b->subtype);
     if (mutt_is_autoview (buf))
     {
       rfc1524_entry *entry = rfc1524_new_entry ();
@@ -854,7 +879,7 @@ void alternative_handler (BODY *a, STATE *s)
   else if (s->flags & M_DISPLAY)
   {
     /* didn't find anything that we could display! */
-    state_puts("[-- Error:  Could not display any parts of Multipart/Alternative! --]\n", s);
+    state_puts(_("[-- Error:  Could not display any parts of Multipart/Alternative! --]\n"), s);
   }
 }
 
@@ -898,7 +923,7 @@ int mutt_can_decode (BODY *a)
 {
   char type[STRING];
 
-  snprintf (type, sizeof (type), "%s/%s", TYPE (a->type), a->subtype);
+  snprintf (type, sizeof (type), "%s/%s", TYPE (a), a->subtype);
   if (mutt_is_autoview (type))
     return (rfc1524_mailcap_lookup (a, type, NULL, M_AUTOVIEW));
   else if (a->type == TYPETEXT)
@@ -935,10 +960,7 @@ int mutt_can_decode (BODY *a)
 #ifdef _PGPPATH
   else if (a->type == TYPEAPPLICATION)
   {
-    if (strcasecmp (a->subtype, "pgp") == 0 ||
-	strcasecmp (a->subtype, "x-pgp-message") == 0 ||
-	strcasecmp (a->subtype, "pgp-signed") == 0 ||
-	strcasecmp (a->subtype, "pgp-keys") == 0)
+    if (mutt_is_application_pgp(a))
       return (1);
   }
 #endif
@@ -972,7 +994,7 @@ void multipart_handler (BODY *a, STATE *s)
   {
     if (s->flags & M_DISPLAY)
     {
-      snprintf (buffer, sizeof (buffer), "[-- Attachment #%d", count);
+      snprintf (buffer, sizeof (buffer), _("[-- Attachment #%d"), count);
       state_puts (buffer, s);
       if (p->description || p->filename || p->form_name)
       {
@@ -985,8 +1007,8 @@ void multipart_handler (BODY *a, STATE *s)
       mutt_pretty_size (length, sizeof (length), p->length);
 
       snprintf (buffer, sizeof (buffer),
-		"[-- Type: %s/%s, Encoding: %s, Size: %s --]\n",
-	       TYPE (p->type), p->subtype, ENCODING (p->encoding), length);
+		_("[-- Type: %s/%s, Encoding: %s, Size: %s --]\n"),
+	       TYPE (p), p->subtype, ENCODING (p->encoding), length);
       state_puts (buffer, s);
       if (!option (OPTWEED))
       {
@@ -1025,16 +1047,20 @@ void autoview_handler (BODY *a, STATE *s)
   char type[STRING];
   char command[LONG_STRING];
   char tempfile[_POSIX_PATH_MAX] = "";
+  char *fname;
   FILE *fpin = NULL;
   FILE *fpout = NULL;
   FILE *fperr = NULL;
   int piped = FALSE;
   pid_t thepid;
 
-  snprintf (type, sizeof (type), "%s/%s", TYPE (a->type), a->subtype);
+  snprintf (type, sizeof (type), "%s/%s", TYPE (a), a->subtype);
   rfc1524_mailcap_lookup (a, type, entry, M_AUTOVIEW);
 
-  rfc1524_expand_filename (entry->nametemplate, a->filename, tempfile, sizeof (tempfile));
+  fname = safe_strdup (a->filename);
+  mutt_sanitize_filename (fname);
+  rfc1524_expand_filename (entry->nametemplate, fname, tempfile, sizeof (tempfile));
+  FREE (&fname);
 
   if (entry->command)
   {
@@ -1047,9 +1073,9 @@ void autoview_handler (BODY *a, STATE *s)
     {
       char mesg[STRING];
 
-      snprintf (mesg, sizeof (buffer), "[-- Autoview using %s --]\n", command);
+      snprintf (mesg, sizeof (buffer), _("[-- Autoview using %s --]\n"), command);
       state_puts (mesg, s);
-      mutt_message("Invoking autoview command: %s",command);
+      mutt_message(_("Invoking autoview command: %s"),command);
     }
 
     if (piped)
@@ -1086,7 +1112,7 @@ void autoview_handler (BODY *a, STATE *s)
 	{
 	  char mesg[STRING];
 
-	  snprintf (mesg, sizeof (buffer), "[-- Autoview stderr of %s --]\n", 
+	  snprintf (mesg, sizeof (buffer), _("[-- Autoview stderr of %s --]\n"), 
 	      command);
 	  state_puts (mesg, s);
 	}
@@ -1109,7 +1135,7 @@ void autoview_handler (BODY *a, STATE *s)
 	{
 	  char mesg[STRING];
 
-	  snprintf (mesg, sizeof (buffer), "[-- Autoview stderr of %s --]\n", 
+	  snprintf (mesg, sizeof (buffer), _("[-- Autoview stderr of %s --]\n"), 
 	      command);
 	  state_puts (mesg, s);
 	}
@@ -1134,13 +1160,13 @@ void mutt_decode_attachment (BODY *b, STATE *s)
   switch (b->encoding)
   {
     case ENCQUOTEDPRINTABLE:
-      mutt_decode_quoted (s, b->length, mutt_is_text_type (b->type, b->subtype));
+      mutt_decode_quoted (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
     case ENCBASE64:
-      mutt_decode_base64 (s, b->length, mutt_is_text_type (b->type, b->subtype));
+      mutt_decode_base64 (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
     default:
-      mutt_decode_xbit (s, b->length, mutt_is_text_type (b->type, b->subtype));
+      mutt_decode_xbit (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
   }
 }
@@ -1158,7 +1184,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 
   /* first determine which handler to use to process this part */
 
-  snprintf (type, sizeof (type), "%s/%s", TYPE (b->type), b->subtype);
+  snprintf (type, sizeof (type), "%s/%s", TYPE (b), b->subtype);
   if (mutt_is_autoview (type))
   {
     rfc1524_entry *entry = rfc1524_new_entry ();
@@ -1210,7 +1236,7 @@ void mutt_body_handler (BODY *b, STATE *s)
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
-        mutt_error ("Error: Multipart/Signed has no protocol.");
+        mutt_error _("Error: multipart/signed has no protocol.");
       else if (strcasecmp ("application/pgp-signature", p) == 0)
       {
 	if (s->flags & M_VERIFY)
@@ -1222,7 +1248,7 @@ void mutt_body_handler (BODY *b, STATE *s)
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
-        mutt_error ("Error: Multipart/Encrypted has no protocol parameter!");
+        mutt_error _("Error: multipart/encrypted has no protocol parameter!");
       else if (strcasecmp ("application/pgp-encrypted", p) == 0)
         handler = pgp_encrypted_handler;
     }
@@ -1239,11 +1265,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 #ifdef _PGPPATH
   else if (b->type == TYPEAPPLICATION)
   {
-    if (strcasecmp ("pgp", b->subtype) == 0 ||
-	strcasecmp ("x-pgp-message", b->subtype) == 0 ||
-	strcasecmp ("pgp-signed", b->subtype) == 0 ||
-	strcasecmp ("pgp-keys", b->subtype) == 0)
-      
+    if (mutt_is_application_pgp(b))
       handler = application_pgp_handler;
   }
 #endif /* _PGPPATH */
@@ -1256,7 +1278,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 
     /* see if we need to decode this part before processing it */
     if (b->encoding == ENCBASE64 || b->encoding == ENCQUOTEDPRINTABLE ||
-	(s->prefix && plaintext))
+	plaintext)
     {
       int origType = b->type;
       char *savePrefix = NULL;
@@ -1268,7 +1290,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 	mutt_mktemp (tempfile);
 	if ((s->fpout = safe_fopen (tempfile, "w")) == NULL)
 	{
-	  mutt_error ("Unable to open temporary file!");
+	  mutt_error _("Unable to open temporary file!");
 	  return;
 	}
 	/* decoding the attachment changes the size and offset, so save a copy
@@ -1308,8 +1330,6 @@ void mutt_body_handler (BODY *b, STATE *s)
 
       b->type = origType;
     }
-    else if (plaintext)
-      mutt_copy_bytes (s->fpin, s->fpout, b->length);
 
     /* process the (decoded) body part */
     if (handler)
@@ -1329,14 +1349,14 @@ void mutt_body_handler (BODY *b, STATE *s)
   }
   else if (s->flags & M_DISPLAY)
   {
-    fprintf (s->fpout, "[-- %s/%s is unsupported ", TYPE (b->type), b->subtype);
+    fprintf (s->fpout, _("[-- %s/%s is unsupported "), TYPE (b), b->subtype);
     if (!option (OPTVIEWATTACH))
     {
       if (km_expand_key (type, sizeof(type),
 			km_find_func (MENU_PAGER, OP_VIEW_ATTACHMENTS)))
-	fprintf (s->fpout, "(use '%s' to view this part)", type);
+	fprintf (s->fpout, _("(use '%s' to view this part)"), type);
       else
-	fputs ("(need 'view-attachments' bound to key!)", s->fpout);
+	fputs (_("(need 'view-attachments' bound to key!)"), s->fpout);
     }
     fputs (" --]\n", s->fpout);
   }
