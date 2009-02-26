@@ -236,7 +236,7 @@ parse_route_addr (const char *s,
 		  char *comment, size_t *commentlen, size_t commentmax,
 		  ADDRESS *addr)
 {
-  char token[STRING];
+  char token[128];
   size_t tokenlen = 0;
 
   SKIPWS (s);
@@ -281,7 +281,7 @@ parse_addr_spec (const char *s,
 		 char *comment, size_t *commentlen, size_t commentmax,
 		 ADDRESS *addr)
 {
-  char token[STRING];
+  char token[128];
   size_t tokenlen = 0;
 
   s = parse_address (s, token, &tokenlen, sizeof (token) - 1, comment, commentlen, commentmax, addr);
@@ -312,7 +312,7 @@ add_addrspec (ADDRESS **top, ADDRESS **last, const char *phrase,
 ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 {
   const char *begin, *ps;
-  char comment[STRING], phrase[STRING];
+  char comment[128], phrase[128];
   size_t phraselen = 0, commentlen = 0;
   ADDRESS *cur, *last = NULL;
   
@@ -340,7 +340,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
       }
 
 #ifdef EXACT_ADDRESS
-      if (last && !last->val)
+      if (last)
 	last->val = mutt_substrdup (begin, s);
 #endif
       commentlen = 0;
@@ -396,7 +396,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 	last->personal = safe_strdup (comment);
       }
 #ifdef EXACT_ADDRESS
-      if (last && !last->val)
+      if (last)
 	last->val = mutt_substrdup (begin, s);
 #endif
 
@@ -421,7 +421,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
       if (phraselen)
       {
 	if (cur->personal)
-	  FREE (&cur->personal);
+	  free (cur->personal);
 	/* if we get something like "Michael R. Elkins" remove the quotes */
 	rfc822_dequote_comment (phrase);
 	cur->personal = safe_strdup (phrase);
@@ -483,9 +483,10 @@ void rfc822_qualify (ADDRESS *addr, const char *host)
   for (; addr; addr = addr->next)
     if (!addr->group && addr->mailbox && strchr (addr->mailbox, '@') == NULL)
     {
-      p = safe_malloc (strlen (addr->mailbox) + strlen (host) + 2);
+      if (!(p = malloc (strlen (addr->mailbox) + strlen (host) + 2)))
+	return;
       sprintf (p, "%s@%s", addr->mailbox, host);
-      safe_free ((void **) &addr->mailbox);
+      free (addr->mailbox);
       addr->mailbox = p;
     }
 }
@@ -499,7 +500,7 @@ rfc822_cat (char *buf, size_t buflen, const char *value, const char *specials)
     size_t tmplen = sizeof (tmp) - 3;
 
     *pc++ = '"';
-    for (; *value && tmplen > 1; value++)
+    for (; *value && tmplen; value++)
     {
       if (*value == '\\' || *value == '"')
       {
