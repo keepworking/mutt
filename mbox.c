@@ -183,7 +183,7 @@ int mmdf_parse_mailbox (CONTEXT *ctx)
     else
     {
       dprint (1, (debugfile, "mmdf_parse_mailbox: corrupt mailbox!\n"));
-      mutt_error ("Mailbox is corrupt!");
+      mutt_error _("Mailbox is corrupt!");
       return (-1);
     }
   }
@@ -258,7 +258,7 @@ int mbox_parse_mailbox (CONTEXT *ctx)
       count++;
 
       if (!ctx->quiet && ReadInc && ((count % ReadInc == 0) || count == 1))
-	mutt_message ("Reading %s... %d (%d%%)", ctx->path, count,
+	mutt_message (_("Reading %s... %d (%d%%)"), ctx->path, count,
 		      ftell (ctx->fp) / (ctx->size / 100 + 1));
 
       if (ctx->msgcount == ctx->hdrmax)
@@ -623,7 +623,7 @@ int mbox_check_mailbox (CONTEXT *ctx, int *index_hint)
   mbox_unlock_mailbox (ctx);
   mx_fastclose_mailbox (ctx);
   mutt_unblock_signals ();
-  mutt_error ("Mailbox was corrupted!");
+  mutt_error _("Mailbox was corrupted!");
   return (-1);
 }
 
@@ -649,7 +649,9 @@ int mbox_sync_mailbox (CONTEXT *ctx)
   {
     save_sort = Sort;
     Sort = SORT_ORDER;
+    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, 0);
+    unset_option (OPTSORTCOLLAPSE);
   }
 
   /* need to open the file for writing in such a way that it does not truncate
@@ -658,7 +660,7 @@ int mbox_sync_mailbox (CONTEXT *ctx)
   if ((ctx->fp = freopen (ctx->path, "r+", ctx->fp)) == NULL)
   {
     mx_fastclose_mailbox (ctx);
-    mutt_error ("Fatal error!  Could not reopen mailbox.");
+    mutt_error _("Fatal error!  Could not reopen mailbox!");
     return (-1);
   }
 
@@ -667,7 +669,7 @@ int mbox_sync_mailbox (CONTEXT *ctx)
   if (mbox_lock_mailbox (ctx, 1, 1) == -1)
   {
     mutt_unblock_signals ();
-    mutt_error ("Unable to lock mailbox!");
+    mutt_error _("Unable to lock mailbox!");
     goto bail;
   }
 
@@ -690,7 +692,7 @@ int mbox_sync_mailbox (CONTEXT *ctx)
   if ((i = open (tempfile, O_WRONLY | O_EXCL | O_CREAT, 0600)) == -1 ||
       (fp = fdopen (i, "w")) == NULL)
   {
-    mutt_error ("Could not create temporary file!");
+    mutt_error _("Could not create temporary file!");
     goto bail;
   }
 
@@ -706,7 +708,7 @@ int mbox_sync_mailbox (CONTEXT *ctx)
      * messages were found to be changed or deleted.  This should
      * never happen, is we presume it is a bug in mutt.
      */
-    mutt_error ("sync: mbox modified, but no modified messages! (report this bug)");
+    mutt_error _("sync: mbox modified, but no modified messages! (report this bug)");
     sleep(5); /* the mutt_error /will/ get cleared! */
     dprint(1, (debugfile, "mbox_sync_mailbox(): no modified messages.\n"));
     goto bail;
@@ -729,8 +731,8 @@ int mbox_sync_mailbox (CONTEXT *ctx)
     if (! ctx->hdrs[i]->deleted)
     {
       j++;
-      if (!ctx->quiet && WriteInc && ((j % WriteInc) == 0 || j == 1))
-	mutt_message ("Writing messages... %d (%d%%)", j,
+      if (!ctx->quiet && WriteInc && ((i % WriteInc) == 0 || j == 1))
+	mutt_message (_("Writing messages... %d (%d%%)"), i,
 		      ftell (ctx->fp) / (ctx->size / 100 + 1));
 
       if (ctx->magic == M_MMDF)
@@ -832,7 +834,7 @@ int mbox_sync_mailbox (CONTEXT *ctx)
     mutt_unblock_signals ();
     mx_fastclose_mailbox (ctx);
     mutt_pretty_mailbox (savefile);
-    mutt_error ("Write failed!  Saved partial mailbox to %s", savefile);
+    mutt_error (_("Write failed!  Saved partial mailbox to %s"), savefile);
     return (-1);
   }
 
@@ -847,7 +849,7 @@ int mbox_sync_mailbox (CONTEXT *ctx)
     unlink (tempfile);
     mutt_unblock_signals ();
     mx_fastclose_mailbox (ctx);
-    mutt_error ("Fatal error!  Could not reopen mailbox!");
+    mutt_error _("Fatal error!  Could not reopen mailbox!");
     Sort = save_sort;
     return (-1);
   }
@@ -880,7 +882,7 @@ bail:  /* Come here in case of disaster */
 
   if ((ctx->fp = freopen (ctx->path, "r", ctx->fp)) == NULL)
   {
-    mutt_error ("Could not reopen mailbox!");
+    mutt_error _("Could not reopen mailbox!");
     mx_fastclose_mailbox (ctx);
     return (-1);
   }
@@ -890,7 +892,9 @@ bail:  /* Come here in case of disaster */
     Sort = save_sort;
     /* if the mailbox was reopened, the thread tree will be invalid so make
      * sure to start threading from scratch.  */
+    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, (need_sort == M_REOPENED));
+    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (-1);
@@ -904,3 +908,174 @@ int mbox_close_mailbox (CONTEXT *ctx)
   mx_fastclose_mailbox (ctx);
   return 0;
 }
+
+int mutt_reopen_mailbox (CONTEXT *ctx, int *index_hint)
+{
+  int (*cmp_headers) (const HEADER *, const HEADER *) = NULL;
+  HEADER **old_hdrs;
+  int old_msgcount;
+  int msg_mod = 0;
+  int index_hint_set;
+  int i, j;
+  int rc = -1;
+
+  /* silent operations */
+  ctx->quiet = 1;
+  
+  mutt_message _("Reopening mailbox...");
+  
+  /* our heuristics require the old mailbox to be unsorted */
+  if (Sort != SORT_ORDER)
+  {
+    short old_sort;
+
+    old_sort = Sort;
+    Sort = SORT_ORDER;
+    mutt_sort_headers (ctx, 1);
+    Sort = old_sort;
+  }
+
+  old_hdrs = NULL;
+  old_msgcount = 0;
+  
+  /* simulate a close */
+  hash_destroy (&ctx->id_hash, NULL);
+  hash_destroy (&ctx->subj_hash, NULL);
+  safe_free ((void **) &ctx->v2r);
+  if (ctx->readonly)
+  {
+    for (i = 0; i < ctx->msgcount; i++)
+      mutt_free_header (&(ctx->hdrs[i])); /* nothing to do! */
+    safe_free ((void **) &ctx->hdrs);
+  }
+  else
+  {
+      /* save the old headers */
+    old_msgcount = ctx->msgcount;
+    old_hdrs = ctx->hdrs;
+    ctx->hdrs = NULL;
+  }
+
+  ctx->hdrmax = 0;	/* force allocation of new headers */
+  ctx->msgcount = 0;
+  ctx->vcount = 0;
+  ctx->tagged = 0;
+  ctx->deleted = 0;
+  ctx->new = 0;
+  ctx->unread = 0;
+  ctx->flagged = 0;
+  ctx->changed = 0;
+  ctx->id_hash = hash_create (257);
+  ctx->subj_hash = hash_create (257);
+
+  switch (ctx->magic)
+  {
+    case M_MBOX:
+      fseek (ctx->fp, 0, 0);
+      cmp_headers = mbox_strict_cmp_headers;
+      rc = mbox_parse_mailbox (ctx);
+      break;
+
+    case M_MMDF:
+      fseek (ctx->fp, 0, 0);
+      cmp_headers = mbox_strict_cmp_headers;
+      rc = mmdf_parse_mailbox (ctx);
+      break;
+
+    default:
+      rc = -1;
+      break;
+  }
+  
+  if (rc == -1)
+  {
+    /* free the old headers */
+    for (j = 0; j < old_msgcount; j++)
+      mutt_free_header (&(old_hdrs[j]));
+    safe_free ((void **) &old_hdrs);
+
+    ctx->quiet = 0;
+    return (-1);
+  }
+
+  /* now try to recover the old flags */
+
+  index_hint_set = (index_hint == NULL);
+
+  if (!ctx->readonly)
+  {
+    for (i = 0; i < ctx->msgcount; i++)
+    {
+      int found = 0;
+
+      /* some messages have been deleted, and new  messages have been
+       * appended at the end; the heuristic is that old messages have then
+       * "advanced" towards the beginning of the folder, so we begin the
+       * search at index "i"
+       */
+      for (j = i; j < old_msgcount; j++)
+      {
+	if (old_hdrs[j] == NULL)
+	  continue;
+	if (cmp_headers (ctx->hdrs[i], old_hdrs[j]))
+	{
+	  found = 1;
+	  break;
+	}
+      }
+      if (!found)
+      {
+	for (j = 0; j < i; j++)
+	{
+	  if (old_hdrs[j] == NULL)
+	    continue;
+	  if (cmp_headers (ctx->hdrs[i], old_hdrs[j]))
+	  {
+	    found = 1;
+	    break;
+	  }
+	}
+      }
+
+      if (found)
+      {
+	/* this is best done here */
+	if (!index_hint_set && *index_hint == j)
+	  *index_hint = i;
+
+	if (old_hdrs[j]->changed)
+	{
+	  /* Only update the flags if the old header was changed;
+	   * otherwise, the header may have been modified externally,
+	   * and we don't want to lose _those_ changes
+	   */
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_FLAG, old_hdrs[j]->flagged);
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_REPLIED, old_hdrs[j]->replied);
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_OLD, old_hdrs[j]->old);
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_READ, old_hdrs[j]->read);
+	}
+	mutt_set_flag (ctx, ctx->hdrs[i], M_DELETE, old_hdrs[j]->deleted);
+	mutt_set_flag (ctx, ctx->hdrs[i], M_TAG, old_hdrs[j]->tagged);
+
+	/* we don't need this header any more */
+	mutt_free_header (&(old_hdrs[j]));
+      }
+    }
+
+    /* free the remaining old headers */
+    for (j = 0; j < old_msgcount; j++)
+    {
+      if (old_hdrs[j])
+      {
+	mutt_free_header (&(old_hdrs[j]));
+	msg_mod = 1;
+      }
+    }
+    safe_free ((void **) &old_hdrs);
+  }
+
+  ctx->quiet = 0;
+
+  return ((ctx->changed || msg_mod) ? M_REOPENED : M_NEW_MAIL);
+}
+

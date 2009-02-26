@@ -176,6 +176,7 @@ void mutt_sort_headers (CONTEXT *ctx, int init)
 {
   int i;
   sort_t *sortfunc;
+  int collapse = (option (OPTSORTCOLLAPSE)) ? 0 : 1;
   
   unset_option (OPTNEEDRESORT);
 
@@ -194,7 +195,7 @@ void mutt_sort_headers (CONTEXT *ctx, int init)
   }
 
   if (!ctx->quiet)
-    mutt_message ("Sorting mailbox...");
+    mutt_message _("Sorting mailbox...");
 
   /* threads may be bogus, so clear the links */
   if (init)
@@ -222,7 +223,7 @@ void mutt_sort_headers (CONTEXT *ctx, int init)
   else if ((sortfunc = mutt_get_sort_func (Sort)) == NULL ||
 	   (AuxSort = mutt_get_sort_func (SortAux)) == NULL)
   {
-    mutt_error ("Could not find sorting function! [report this bug]");
+    mutt_error _("Could not find sorting function! [report this bug]");
     sleep (1);
     return;
   }
@@ -236,15 +237,21 @@ void mutt_sort_headers (CONTEXT *ctx, int init)
 
   /* adjust the virtual message numbers */
   ctx->vcount = 0;
+  if (collapse)
+    ctx->collapsed = 0;
   for (i = 0; i < ctx->msgcount; i++)
   {
-    if (ctx->hdrs[i]->virtual != -1)
+    HEADER *cur = ctx->hdrs[i];
+    if (cur->virtual != -1 || (collapse && cur->collapsed && (!ctx->pattern || cur->limited)))
     {
-      ctx->hdrs[i]->virtual = ctx->vcount;
+      cur->virtual = ctx->vcount;
       ctx->v2r[ctx->vcount] = i;
       ctx->vcount++;
     }
-    ctx->hdrs[i]->msgno = i;
+    cur->msgno = i;
+    cur->num_hidden = mutt_get_hidden (ctx, cur);
+    if (collapse)
+      cur->collapsed = 0;
   }
 
   mutt_cache_index_colors(ctx);
