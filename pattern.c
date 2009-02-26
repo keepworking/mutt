@@ -60,6 +60,10 @@ Flags[] =
   { 'E', M_EXPIRED,		0,		NULL },
   { 'f', M_FROM,		0,		eat_regexp },
   { 'F', M_FLAG,		0,		NULL },
+#ifdef _PGPPATH
+  { 'g', M_PGP_SIGN, 0, NULL },
+  { 'G', M_PGP_ENCRYPT, 0, NULL },
+#endif
   { 'h', M_HEADER,		M_FULL_MSG,	eat_regexp },
   { 'i', M_ID,			0,		eat_regexp },
   { 'L', M_ADDRESS,		0,		eat_regexp },
@@ -819,11 +823,34 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
     case M_PERSONAL_FROM:
       return (pat->not ^ (match_user (h->env->from)));
       break;
+#ifdef _PGPPATH
+  case M_PGP_SIGN:
+     return (pat->not ^ (h->pgp & PGPSIGN));
+     break;
+  case M_PGP_ENCRYPT:
+     return (pat->not ^ (h->pgp & PGPENCRYPT));
+     break;
+#endif
   }
   mutt_error ("error: unknown op %d (report this error).", pat->op);
   return (-1);
 }
 
+static void quote_simple(char *tmp, size_t len, const char *p)
+{
+  int i = 0;
+  
+  tmp[i++] = '"';
+  while (*p && i < len - 2)
+  {
+    if (*p == '\\' || *p == '"')
+      tmp[i++] = '\\';
+    tmp[i++] = *p++;
+  }
+  tmp[i++] = '"';
+  tmp[i] = 0;
+}
+  
 /* convert a simple search into a real request */
 void mutt_check_simple (char *s, size_t len, const char *simple)
 {
@@ -853,31 +880,20 @@ void mutt_check_simple (char *s, size_t len, const char *simple)
       strfcpy (s, "~U", len);
     else
     {
-      const char *p = s;
-      int i = 0;
-
-      tmp[i++] = '"';
-      while (*p && i < sizeof (tmp) - 2)
-      {
-	if (*p == '\\' || *p == '"')
-	  tmp[i++] = '\\';
-	tmp[i++] = *p++;
-      }
-      tmp[i++] = '"';
-      tmp[i] = 0;
+      quote_simple (tmp, sizeof(tmp), s);
       mutt_expand_fmt (s, len, simple, tmp);
     }
   }
 }
 
-int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
+int mutt_pattern_func (int op, char *prompt)
 {
   pattern_t *pat;
   char buf[LONG_STRING] = "", *simple, error[STRING];
   BUFFER err;
   int i;
 
-  if (mutt_get_field (prompt, buf, sizeof (buf), 0) != 0 || !buf[0])
+  if (mutt_get_field (prompt, buf, sizeof (buf), M_PATTERN) != 0 || !buf[0])
     return (-1);
 
   mutt_message ("Compiling search pattern...");
@@ -899,12 +915,18 @@ int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
   if (op == M_LIMIT)
   {
     for (i = 0; i < Context->msgcount; i++)
+    {
       Context->hdrs[i]->virtual = -1;
+      Context->hdrs[i]->limited = 0;
+      Context->hdrs[i]->collapsed = 0;
+      Context->hdrs[i]->num_hidden = 0;
+    }
     Context->vcount = 0;
     Context->vsize = 0;
+    Context->collapsed = 0;
   }
 
-#define this_body Context->hdrs[i]->content
+#define THIS_BODY Context->hdrs[i]->content
 
   for (i = 0; i < Context->msgcount; i++)
     if (mutt_pattern_exec (pat, M_MATCH_FULL_ADDRESS, Context, Context->hdrs[i]))
@@ -925,19 +947,21 @@ int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
 	  break;
 	case M_LIMIT:
 	  Context->hdrs[i]->virtual = Context->vcount;
+	  Context->hdrs[i]->limited = 1;
 	  Context->v2r[Context->vcount] = i;
 	  Context->vcount++;
-	  Context->vsize+=this_body->length + this_body->offset -
-	                  this_body->hdr_offset;
+	  Context->vsize+=THIS_BODY->length + THIS_BODY->offset -
+	                  THIS_BODY->hdr_offset;
 	  break;
       }
     }
-#undef this_body
+#undef THIS_BODY
 
   mutt_clear_error ();
 
   if (op == M_LIMIT)
   {
+    Context->collapsed = 0;
     safe_free ((void **) &Context->pattern);
     if (Context->limit_pattern) 
       mutt_pattern_free (&Context->limit_pattern);
@@ -948,6 +972,9 @@ int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
       for (i = 0; i < Context->msgcount; i++)
       {
 	Context->hdrs[i]->virtual = i;
+	Context->hdrs[i]->limited = 0;
+	Context->hdrs[i]->num_hidden = 0;
+	Context->hdrs[i]->collapsed = 0;
 	Context->v2r[i] = i;
       }
 
@@ -979,7 +1006,7 @@ int mutt_search_command (int cur, int op)
   {
     strfcpy (buf, LastSearch, sizeof (buf));
     if (mutt_get_field ((op == OP_SEARCH) ? "Search for: " : "Reverse search for: ",
-		      buf, sizeof (buf), M_CLEAR) != 0 || !buf[0])
+		      buf, sizeof (buf), M_CLEAR | M_PATTERN) != 0 || !buf[0])
       return (-1);
 
     if (op == OP_SEARCH)
