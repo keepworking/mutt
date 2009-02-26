@@ -40,11 +40,8 @@
 /* struct used by mutt_sync_mailbox() to store new offsets */
 struct m_update_t
 {
-  short valid;
   long hdr;
   long body;
-  long lines;
-  long length;
 };
 
 /* parameters:
@@ -672,12 +669,11 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
   int i, j, save_sort = SORT_ORDER;
   int rc = -1;
   int need_sort = 0; /* flag to resort mailbox if new mail arrives */
-  int first = -1;	/* first message to be written */
+  int first;	/* first message to be written */
   long offset;	/* location in mailbox to write changed messages */
   struct stat statbuf;
   struct utimbuf utimebuf;
   struct m_update_t *newOffset = NULL;
-  struct m_update_t *oldOffset = NULL;
   FILE *fp = NULL;
 
   /* sort message by their position in the mailbox on disk */
@@ -733,7 +729,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
       unlink (tempfile);
     }
     mutt_error _("Could not create temporary file!");
-    sleep (5);
     goto bail;
   }
 
@@ -771,7 +766,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
   
   /* allocate space for the new offsets */
   newOffset = safe_calloc (ctx->msgcount - first, sizeof (struct m_update_t));
-  oldOffset = safe_calloc (ctx->msgcount - first, sizeof (struct m_update_t));
 
   for (i = first, j = 0; i < ctx->msgcount; i++)
   {
@@ -786,8 +780,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
       {
 	if (fputs (MMDF_SEP, fp) == EOF)
 	{
-	  mutt_perror (tempfile);
-	  sleep (5);
 	  unlink (tempfile);
 	  goto bail;
 	}
@@ -797,24 +789,11 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
       {
 	if (fputs (KENDRA_SEP, fp) == EOF)
 	{
-	  mutt_perror (tempfile);
-	  sleep (5);
 	  unlink (tempfile);
 	  goto bail;
 	}
       }
 
-      /*
-       * back up some information which is needed to restore offsets when
-       * something fails.
-       */
-
-      oldOffset[i-first].valid  = 1;
-      oldOffset[i-first].hdr    = ctx->hdrs[i]->offset;
-      oldOffset[i-first].body   = ctx->hdrs[i]->content->offset;
-      oldOffset[i-first].lines  = ctx->hdrs[i]->lines;
-      oldOffset[i-first].length = ctx->hdrs[i]->content->length;
-      
       /* save the new offset for this message.  we add `offset' because the
        * temporary file only contains saved message which are located after
        * `offset' in the real mailbox
@@ -823,8 +802,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
 
       if (mutt_copy_message (fp, ctx, ctx->hdrs[i], M_CM_UPDATE, CH_FROM | CH_UPDATE | CH_UPDATE_LEN) == -1)
       {
-	mutt_perror (tempfile);
-	sleep (5);
 	unlink (tempfile);
 	goto bail;
       }
@@ -843,8 +820,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
 	case M_MMDF: 
 	  if(fputs(MMDF_SEP, fp) == EOF) 
 	  {
-	    mutt_perror (tempfile);
-	    sleep (5);
 	    unlink (tempfile);
 	    goto bail; 
 	  }
@@ -852,8 +827,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
 	case M_KENDRA:
 	  if(fputs(KENDRA_SEP, fp) == EOF)
 	  {
-	    mutt_perror (tempfile);
-	    sleep (5);
 	    unlink (tempfile);
 	    goto bail;
 	  }
@@ -861,8 +834,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
 	default:
 	  if(fputs("\n", fp) == EOF) 
 	  {
-	    mutt_perror (tempfile);
-	    sleep (5);
 	    unlink (tempfile);
 	    goto bail;
 	  }
@@ -875,8 +846,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
     fp = NULL;
     dprint(1, (debugfile, "mbox_sync_mailbox: fclose() returned non-zero.\n"));
     unlink (tempfile);
-    mutt_perror (tempfile);
-    sleep (5);
     goto bail;
   }
   fp = NULL;
@@ -884,8 +853,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
   /* Save the state of this folder. */
   if (stat (ctx->path, &statbuf) == -1)
   {
-    mutt_perror (ctx->path);
-    sleep (5);
     unlink (tempfile);
     goto bail;
   }
@@ -896,7 +863,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
     mx_fastclose_mailbox (ctx);
     dprint (1, (debugfile, "mbox_sync_mailbox: unable to reopen temp copy of mailbox!\n"));
     mutt_perror (tempfile);
-    sleep (5);
     return (-1);
   }
 
@@ -954,7 +920,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
     mx_fastclose_mailbox (ctx);
     mutt_pretty_mailbox (savefile);
     mutt_error (_("Write failed!  Saved partial mailbox to %s"), savefile);
-    sleep (5);
     return (-1);
   }
 
@@ -986,7 +951,6 @@ int mbox_sync_mailbox (CONTEXT *ctx, int *index_hint)
     }
   }
   safe_free ((void **) &newOffset);
-  safe_free ((void **) &oldOffset);
   unlink (tempfile); /* remove partial copy of the mailbox */
   mutt_unblock_signals ();
   Sort = save_sort; /* Restore the default value. */
@@ -997,25 +961,11 @@ bail:  /* Come here in case of disaster */
 
   safe_fclose (&fp);
 
-  /* restore offsets, as far as they are valid */
-  if (first >= 0 && oldOffset)
-  {
-    for (i = first; i < ctx->msgcount && oldOffset[i-first].valid; i++)
-    {
-      ctx->hdrs[i]->offset = oldOffset[i-first].hdr;
-      ctx->hdrs[i]->content->hdr_offset = oldOffset[i-first].hdr;
-      ctx->hdrs[i]->content->offset = oldOffset[i-first].body;
-      ctx->hdrs[i]->lines = oldOffset[i-first].lines;
-      ctx->hdrs[i]->content->length = oldOffset[i-first].length;
-    }
-  }
-  
   /* this is ok to call even if we haven't locked anything */
   mbox_unlock_mailbox (ctx);
 
   mutt_unblock_signals ();
   safe_free ((void **) &newOffset);
-  safe_free ((void **) &oldOffset);
 
   if ((ctx->fp = freopen (ctx->path, "r", ctx->fp)) == NULL)
   {
