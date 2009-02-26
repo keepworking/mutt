@@ -563,8 +563,6 @@ dotlock_deference_symlink(char *d, size_t l, const char *path)
  * 
  */
 
-#define HARDMAXATTEMPTS 10
-
 static int
 dotlock_lock(const char *realpath)
 {
@@ -573,7 +571,6 @@ dotlock_lock(const char *realpath)
   size_t prev_size = 0;
   int fd;
   int count = 0;
-  int hard_count = 0;
   struct stat sb;
   time_t t;
   
@@ -606,25 +603,25 @@ dotlock_lock(const char *realpath)
   
   close(fd);
   
-  while (hard_count++ < HARDMAXATTEMPTS)
+  while(1)
   {
 
     BEGIN_PRIVILEGED();
-    link (nfslockfile, lockfile);
+    link(nfslockfile, lockfile);
     END_PRIVILEGED();
 
-    if (stat(nfslockfile, &sb) != 0)
+    if(stat(nfslockfile, &sb) != 0)
     {
       /* perror("stat"); */
       return DL_EX_ERROR;
     }
-
+    
     if(sb.st_nlink == 2)
       break;
-
+    
     if(count == 0)
       prev_size = sb.st_size;
-
+    
     if(prev_size == sb.st_size && ++count > Retry)
     {
       if(f_force)
@@ -656,7 +653,7 @@ dotlock_lock(const char *realpath)
       sleep(1);
     } while (time(NULL) == t);
   }
-
+  
   BEGIN_PRIVILEGED();
   unlink(nfslockfile);
   END_PRIVILEGED();
