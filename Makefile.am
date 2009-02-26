@@ -13,12 +13,7 @@ IMAP_SUBDIR = imap
 IMAP_INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/imap
 endif
 
-if BUILD_ICONV
-ICONV_SUBDIR = iconv
-ICONV_INCLUDES = -I$(top_srcdir) -I$(top_srcdir)/iconv
-endif
-
-SUBDIRS = m4 po intl doc contrib $(CHARMAP_SUBDIR) $(IMAP_SUBDIR) $(ICONV_SUBDIR)
+SUBDIRS = m4 po intl doc contrib $(CHARMAP_SUBDIR) $(IMAP_SUBDIR)
 
 if NEEDS_PGPEWRAP
 bin_SCRIPTS = pgpewrap muttbug
@@ -39,13 +34,12 @@ mutt_SOURCES = $(BUILT_SOURCES) \
 	rfc822.c rfc1524.c rfc2047.c rfc2231.c \
 	score.c send.c sendlib.c signal.c sort.c \
 	status.c system.c thread.c charset.c history.c lib.c \
-	muttlib.c editmsg.c utf8.c mbyte.c wcwidth.c gettext.c
+	muttlib.c editmsg.c
 
 mutt_LDADD = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAP) $(MUTTLIBS) \
-	$(INTLLIBS) $(LIBICONV)
+	$(INTLLIBS) 
 
-mutt_DEPENDENCIES = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAPDEPS) \
-	$(INTLDEPS) $(LIBICONVDEPS)
+mutt_DEPENDENCIES = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAPDEPS) $(INTLDEPS)
 
 makedoc_SOURCES = makedoc.c
 
@@ -55,8 +49,7 @@ DEFS=-DSHAREDIR=\"$(sharedir)\" -DSYSCONFDIR=\"$(sysconfdir)\" \
 	-DBINDIR=\"$(bindir)\" -DHAVE_CONFIG_H=1
 
 # top_srcdir is for building outside of the source tree
-INCLUDES=-I$(top_srcdir) -I. $(IMAP_INCLUDES) $(ICONV_INCLUDES) \
-	 -Iintl -I$(includedir)
+INCLUDES=-I$(top_srcdir) -I. $(IMAP_INCLUDES) -Iintl -I$(includedir)
 
 non_us_sources = pgp.c pgpinvoke.c pgpkey.c pgplib.c sha1dgst.c \
 	gnupgparse.c sha.h sha_locl.h \
