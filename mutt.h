@@ -139,8 +139,8 @@ typedef enum
 #define M_CHARSETHOOK	(1<<5)
 #define M_ICONVHOOK 	(1<<6)
 #define M_MESSAGEHOOK	(1<<7)
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-#define M_CRYPTHOOK	(1<<8)
+#ifdef HAVE_PGP
+#define M_PGPHOOK	(1<<8)
 #endif
 #define M_ACCOUNTHOOK	(1<<9)
 
@@ -216,12 +216,9 @@ enum
   M_PERSONAL_RECIP,
   M_PERSONAL_FROM,
   M_ADDRESS,
-#if defined (HAVE_PGP) || defined (HAVE_SMIME)
-  M_CRYPT_SIGN,
-  M_CRYPT_VERIFIED,
-  M_CRYPT_ENCRYPT,
-#endif
 #ifdef HAVE_PGP
+  M_PGP_SIGN,
+  M_PGP_ENCRYPT,
   M_PGP_KEY,
 #endif
   M_XLABEL,
@@ -256,11 +253,9 @@ enum
 enum
 {
 
-#if defined(HAVE_PGP)||  defined(HAVE_SMIME)
-  OPT_VERIFYSIG,      /* verify PGP signatures */
 #ifdef HAVE_PGP
+  OPT_VERIFYSIG,      /* verify PGP signatures */
   OPT_PGPTRADITIONAL, /* create old-style PGP messages */
-#endif
 #endif
 
 #ifdef USE_SSL
@@ -372,7 +367,6 @@ enum
   OPTMETOO,
   OPTMHPURGE,
   OPTMIMEFORWDECODE,
-  OPTNARROWTREE,
   OPTPAGERSTOP,
   OPTPIPEDECODE,
   OPTPIPESPLIT,
@@ -420,21 +414,14 @@ enum
 
   /* PGP options */
   
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-  OPTCRYPTAUTOSIGN,
-  OPTCRYPTAUTOENCRYPT,
-  OPTCRYPTREPLYENCRYPT,
-  OPTCRYPTREPLYSIGN,
-  OPTCRYPTREPLYSIGNENCRYPTED,
-  OPTCRYPTTIMESTAMP,
-#ifdef HAVE_SMIME
-  OPTSMIMEISDEFAULT,
-  OPTASKCERTLABEL,
-#endif
 #ifdef HAVE_PGP
+  OPTPGPAUTOSIGN,
+  OPTPGPAUTOENCRYPT,
   OPTPGPIGNORESUB,
   OPTPGPLONGIDS,
-#endif
+  OPTPGPREPLYENCRYPT,
+  OPTPGPREPLYSIGN,
+  OPTPGPREPLYSIGNENCRYPTED,
 #if 0
   OPTPGPENCRYPTSELF,
 #endif
@@ -469,7 +456,6 @@ enum
 			 * 	    external program.
 			 */
   OPTMENUCALLER,	/* (pseudo) tell menu to give caller a take */
-  OPTREDRAWTREE,	/* (pseudo) redraw the thread tree */
 #ifdef HAVE_PGP
   OPTPGPCHECKTRUST,	/* (pseudo) used by pgp_select_key () */
   OPTDONTHANDLEPGPKEYS,	/* (pseudo) used to extract PGP keys */
@@ -617,9 +603,8 @@ typedef struct body
 				 * set when in send-mode.
 				 */
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-  unsigned int goodsig : 1;	/* good cryptographic signature */
-  unsigned int badsig : 1;	/* bad cryptographic signature (needed to check encrypted s/mime-signatures */
+#ifdef HAVE_PGP
+  unsigned int goodsig : 1;	/* good PGP signature */
 #endif
 
   unsigned int collapsed : 1;	/* used by recvattach */
@@ -628,9 +613,8 @@ typedef struct body
 
 typedef struct header
 {
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-  unsigned int security : 7;  /* bit 0-4: flags, bit 5,6: application.
-				 see: crypt.h pgplib.h, smime.h */
+#ifdef HAVE_PGP
+  unsigned int pgp : 4;
 #endif
 
   unsigned int mime : 1;    		/* has a Mime-Version header? */
@@ -814,7 +798,7 @@ typedef struct
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
 #define M_VERIFY	(1<<1) /* perform signature verification */
 #endif
 
