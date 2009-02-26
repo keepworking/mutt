@@ -38,14 +38,12 @@ struct mapping_t Menus[] = {
  { "pager",	MENU_PAGER },
  { "postpone",	MENU_POST },
 
+  
 
 #ifdef _PGPPATH
  { "pgp",	MENU_PGP },
 #endif  
   
-#ifdef MIXMASTER
-  { "mix", 	MENU_MIX },
-#endif
   
 
  { "query",	MENU_QUERY },
@@ -269,6 +267,13 @@ static void push_string (char *s)
 	;
       if (pp >= s)
       {
+	if ((i = parse_fkey (pp)) > 0)
+	{
+	  mutt_ungetch (KEY_F (i), 0);
+	  p = pp - 1;
+	  continue;
+	}
+
 	l = p - pp + 1;
 	for (i = 0; KeyNames[i].name; i++)
 	{
@@ -535,13 +540,7 @@ void km_init (void)
   create_bindings (OpPgp, MENU_PGP);
 #endif
 
-#ifdef MIXMASTER
-  create_bindings (OpMix, MENU_MIX);
-  
-  km_bindkey ("<space>", MENU_MIX, OP_GENERIC_SELECT_ENTRY);
-  km_bindkey ("h", MENU_MIX, OP_MIX_CHAIN_PREV);
-  km_bindkey ("l", MENU_MIX, OP_MIX_CHAIN_NEXT);
-#endif
+
   
   /* bindings for the line editor */
   create_bindings (OpEditor, MENU_EDITOR);
@@ -736,10 +735,6 @@ struct binding_t *km_get_table (int menu)
 #endif
 
 
-#ifdef MIXMASTER
-    case MENU_MIX:
-      return OpMix;
-#endif
 
   }
   return NULL;
