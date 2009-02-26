@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-9 Michael R. Elkins <me@cs.hmc.edu>, and others
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -84,7 +84,7 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     memset (&pattern, 0, sizeof (pattern));
     pattern.data = safe_strdup (path);
   }
-  else if (DefaultHook && !(data & M_CHARSETHOOK)
+  else if (DefaultHook
 #ifdef _PGPPATH
       && !(data & M_PGPHOOK)
 #endif /* _PGPPATH */
@@ -146,16 +146,16 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 
   if (data & (M_SENDHOOK | M_SAVEHOOK | M_FCCHOOK))
   {
-    if ((pat = mutt_pattern_comp (pattern.data, (data & M_SAVEHOOK) ? M_FULL_MSG : 0, err)) == NULL)
+    if ((pat = mutt_pattern_comp (pattern.data, (data & (M_SENDHOOK | M_FCCHOOK)) ? 0 : M_FULL_MSG, err)) == NULL)
       goto error;
   }
   else
   {
     rx = safe_malloc (sizeof (regex_t));
 #ifdef M_PGPHOOK
-    if ((rc = REGCOMP (rx, pattern.data, ((data & (M_PGPHOOK|M_CHARSETHOOK)) ? REG_ICASE : 0))) != 0)
+    if ((rc = REGCOMP (rx, pattern.data, ((data & M_PGPHOOK) ? REG_ICASE : 0))) != 0)
 #else
-      if ((rc = REGCOMP (rx, pattern.data, (data & M_CHARSETHOOK) ? REG_ICASE : 0)) != 0)
+    if ((rc = REGCOMP (rx, pattern.data, 0)) != 0)
 #endif /* _PGPPATH */
     {
       regerror (rc, rx, err->data, err->dsize);
@@ -330,27 +330,18 @@ void mutt_select_fcc (char *path, size_t pathlen, HEADER *hdr)
   mutt_pretty_mailbox (path);
 }
 
-static char *_mutt_string_hook (const char *match, int hook)
+#ifdef _PGPPATH
+char *mutt_pgp_hook (ADDRESS *adr)
 {
   HOOK *tmp = Hooks;
 
   for (; tmp; tmp = tmp->next)
   {
-    if ((tmp->type & hook) && ((match &&
-	 regexec (tmp->rx.rx, match, 0, NULL, 0) == 0) ^ tmp->rx.not))
+    if ((tmp->type & M_PGPHOOK) && ((adr->mailbox && 
+	 regexec (tmp->rx.rx, adr->mailbox, 0, NULL, 0) == 0) ^ tmp->rx.not))
       return (tmp->command);
   }
   return (NULL);
 }
-
-char *mutt_charset_hook (const char *chs)
-{
-  return _mutt_string_hook (chs, M_CHARSETHOOK);
-}
-
-#ifdef _PGPPATH
-char *mutt_pgp_hook (ADDRESS *adr)
-{
-  return _mutt_string_hook (adr->mailbox, M_PGPHOOK);
-}
 #endif /* _PGPPATH */
+
