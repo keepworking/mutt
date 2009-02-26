@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2000 Vsevolod Volkov <vvv@mutt.org.ua>
+ * Copyright (C) 2000-2002 Vsevolod Volkov <vvv@mutt.org.ua>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -83,20 +83,20 @@ static int fetch_capa (char *line, void *data)
   POP_DATA *pop_data = (POP_DATA *)data;
   char *c;
 
-  if (!mutt_strncmp (line, "SASL", 4))
+  if (!ascii_strncasecmp (line, "SASL", 4))
   {
     c = line + 4;
     SKIPWS (c);
     pop_data->auth_list = safe_strdup (c);
   }
 
-  else if (!mutt_strncmp (line, "USER", 4))
+  else if (!ascii_strncasecmp (line, "USER", 4))
     pop_data->cmd_user = 1;
 
-  else if (!mutt_strncmp (line, "UIDL", 4))
+  else if (!ascii_strncasecmp (line, "UIDL", 4))
     pop_data->cmd_uidl = 1;
 
-  else if (!mutt_strncmp (line, "TOP", 3))
+  else if (!ascii_strncasecmp (line, "TOP", 3))
     pop_data->cmd_top = 1;
 
   return 0;
@@ -230,6 +230,7 @@ int pop_connect (POP_DATA *pop_data)
 int pop_open_connection (POP_DATA *pop_data)
 {
   int ret;
+  unsigned int n, size;
   char buf[LONG_STRING];
 
   ret = pop_connect (pop_data);
@@ -251,6 +252,8 @@ int pop_open_connection (POP_DATA *pop_data)
   ret = pop_authenticate (pop_data);
   if (ret == -1)
     goto err_conn;
+  if (ret == -3)
+    mutt_clear_error ();
   if (ret != 0)
     return ret;
 
@@ -266,7 +269,8 @@ int pop_open_connection (POP_DATA *pop_data)
     return ret;
   }
 
-  sscanf (buf, "+OK %d %d", &ret, &pop_data->size);
+  sscanf (buf, "+OK %u %u", &n, &size);
+  pop_data->size = size;
   return 0;
 
 err_conn:
@@ -416,10 +420,11 @@ int pop_fetch_data (POP_DATA *pop_data, char *query, char *msg,
 /* find message with this UIDL and set refno */
 static int check_uidl (char *line, void *data)
 {
-  int i, index;
+  int i;
+  unsigned int index;
   CONTEXT *ctx = (CONTEXT *)data;
 
-  sscanf (line, "%d %s", &index, line);
+  sscanf (line, "%u %s", &index, line);
   for (i = 0; i < ctx->msgcount; i++)
   {
     if (!mutt_strcmp (ctx->hdrs[i]->data, line))

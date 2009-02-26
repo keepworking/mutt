@@ -86,7 +86,6 @@ static void mutt_usage (void)
 
   puts _(
 "usage: mutt [ -nRyzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
-       mutt [ -nR ] [ -e <cmd> ] [ -F <file> ] -Q <query> [ -Q <query> ] [...]\n\
        mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] <addr> [ ... ]\n\
        mutt [ -n ] [ -e <cmd> ] [ -F <file> ] -p\n\
        mutt -v[v]\n\
@@ -103,7 +102,6 @@ options:\n\
   -m <type>\tspecify a default mailbox type\n\
   -n\t\tcauses Mutt not to read the system Muttrc\n\
   -p\t\trecall a postponed message\n\
-  -Q <variable>\tquery a configuration variable\n\
   -R\t\topen mailbox in read-only mode\n\
   -s <subj>\tspecify a subject (must be in quotes if it has spaces)\n\
   -v\t\tshow version and compile-time definitions\n\
@@ -141,11 +139,6 @@ static void show_version (void)
   printf (" [using slang %d]", SLANG_VERSION);
 #endif
 
-#ifdef _LIBICONV_VERSION
-  printf (" [using libiconv %d.%d]", _LIBICONV_VERSION >> 8,
-	  _LIBICONV_VERSION & 0xff);
-#endif
-  
   puts (_("\nCompile options:"));
 
 #ifdef DOMAIN
@@ -305,12 +298,6 @@ static void show_version (void)
 	"-HAVE_PGP  "
 #endif
 
-#ifdef HAVE_SMIME
-	"+HAVE_SMIME  "
-#else
-	"-HAVE_SMIME  "
-#endif
-
 #ifdef BUFFY_SIZE
 	"+BUFFY_SIZE "
 #else
@@ -462,7 +449,6 @@ int main (int argc, char **argv)
   HEADER *msg = NULL;
   LIST *attach = NULL;
   LIST *commands = NULL;
-  LIST *queries = NULL;
   int sendflags = 0;
   int flags = 0;
   int version = 0;
@@ -497,7 +483,7 @@ int main (int argc, char **argv)
   memset (Options, 0, sizeof (Options));
   memset (QuadOptions, 0, sizeof (QuadOptions));
   
-  while ((i = getopt (argc, argv, "a:b:F:f:c:d:e:H:s:i:hm:npQ:RvxyzZ")) != EOF)
+  while ((i = getopt (argc, argv, "a:b:F:f:c:d:e:H:s:i:hm:npRvxyzZ")) != EOF)
     switch (i)
     {
       case 'a':
@@ -559,10 +545,6 @@ int main (int argc, char **argv)
 	sendflags |= SENDPOSTPONED;
 	break;
 
-      case 'Q':
-        queries = mutt_add_list (queries, optarg);
-        break;
-      
       case 'R':
 	flags |= M_RO; /* read-only mode */
 	break;
@@ -610,7 +592,7 @@ int main (int argc, char **argv)
   }
 
   /* Check for a batch send. */
-  if (!isatty (0) || queries)
+  if (!isatty (0))
   {
     set_option (OPTNOCURSES);
     sendflags = SENDBATCH;
@@ -625,9 +607,6 @@ int main (int argc, char **argv)
   mutt_init (flags & M_NOSYSRC, commands);
   mutt_free_list (&commands);
 
-  if (queries)
-    return mutt_query_variables (queries);
-  
   if (newMagic)
     mx_set_magic (newMagic);
 
