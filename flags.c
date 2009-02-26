@@ -21,7 +21,7 @@
 #include "sort.h"
 #include "mx.h"
 
-void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
+void mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf)
 {
   int changed = h->changed;
   int deleted = ctx->deleted;
@@ -38,19 +38,19 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	if (!h->deleted)
 	{
 	  h->deleted = 1;
-	  if (upd_ctx) ctx->deleted++;
+	  ctx->deleted++;
 	}
       }
       else if (h->deleted)
       {
 	h->deleted = 0;
-	if (upd_ctx) ctx->deleted--;
+	ctx->deleted--;
 #ifdef USE_IMAP
 /* if you undelete a message, the imap server will probably need to know. */
-	if (ctx->magic == M_IMAP) 
+	if(ctx->magic==M_IMAP) 
 	{
 	  h->changed = 1;
-	  if (upd_ctx) ctx->changed = 1;
+	  ctx->changed = 1;
 	}
 #endif
       }
@@ -62,24 +62,24 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	if (h->read || h->old)
 	{
 	  h->old = 0;
-	  if (upd_ctx) ctx->new++;
+	  ctx->new++;
 	  if (h->read)
 	  {
 	    h->read = 0;
-	    if (upd_ctx) ctx->unread++;
+	    ctx->unread++;
 	  }
 	  h->changed = 1;
-	  if (upd_ctx) ctx->changed = 1;
+	  ctx->changed = 1;
 	}
       }
       else if (!h->read)
       {
 	if (!h->old)
-	  if (upd_ctx) ctx->new--;
+	  ctx->new--;
 	h->read = 1;
-	if (upd_ctx) ctx->unread--;
+	ctx->unread--;
 	h->changed = 1;
-	if (upd_ctx) ctx->changed = 1;
+	ctx->changed = 1;
       }
       break;
 
@@ -90,18 +90,18 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	{
 	  h->old = 1;
 	  if (!h->read)
-	    if (upd_ctx) ctx->new--;
+	    ctx->new--;
 	  h->changed = 1;
-	  if (upd_ctx) ctx->changed = 1;
+	  ctx->changed = 1;
 	}
       }
       else if (h->old)
       {
 	h->old = 0;
 	if (!h->read)
-	  if (upd_ctx) ctx->new++;
+	  ctx->new++;
 	h->changed = 1;
-	if (upd_ctx) ctx->changed = 1;
+	ctx->changed = 1;
       }
       break;
 
@@ -111,21 +111,21 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	if (!h->read)
 	{
 	  h->read = 1;
-	  if (upd_ctx) ctx->unread--;
+	  ctx->unread--;
 	  if (!h->old)
-	    if (upd_ctx) ctx->new--;
+	    ctx->new--;
 	  h->changed = 1;
-	  if (upd_ctx) ctx->changed = 1;
+	  ctx->changed = 1;
 	}
       }
       else if (h->read)
       {
 	h->read = 0;
-	if (upd_ctx) ctx->unread++;
+	ctx->unread++;
 	if (!h->old)
-	  if (upd_ctx) ctx->new++;
+	  ctx->new++;
 	h->changed = 1;
-	if (upd_ctx) ctx->changed = 1;
+	ctx->changed = 1;
       }
       break;
 
@@ -138,19 +138,19 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	  if (!h->read)
 	  {
 	    h->read = 1;
-	    if (upd_ctx) ctx->unread--;
+	    ctx->unread--;
 	    if (!h->old)
-	      if (upd_ctx) ctx->new--;
+	      ctx->new--;
 	  }
 	  h->changed = 1;
-	  if (upd_ctx) ctx->changed = 1;
+	  ctx->changed = 1;
 	}
       }
       else if (h->replied)
       {
 	h->replied = 0;
 	h->changed = 1;
-	if (upd_ctx) ctx->changed = 1;
+	ctx->changed = 1;
       }
       break;
 
@@ -160,17 +160,17 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	if (!h->flagged)
 	{
 	  h->flagged = bf;
-	  if (upd_ctx) ctx->flagged++;
+	  ctx->flagged++;
 	  h->changed = 1;
-	  if (upd_ctx) ctx->changed = 1;
+	  ctx->changed = 1;
 	}
       }
       else if (h->flagged)
       {
 	h->flagged = 0;
-	if (upd_ctx) ctx->flagged--;
+	ctx->flagged--;
 	h->changed = 1;
-	if (upd_ctx) ctx->changed = 1;
+	ctx->changed = 1;
       }
       break;
 
@@ -180,13 +180,13 @@ void _mutt_set_flag (CONTEXT *ctx, HEADER *h, int flag, int bf, int upd_ctx)
 	if (!h->tagged)
 	{
 	  h->tagged = 1;
-	  if (upd_ctx) ctx->tagged++;
+	  ctx->tagged++;
 	}
       }
       else if (h->tagged)
       {
 	h->tagged = 0;
-	if (upd_ctx) ctx->tagged--;
+	ctx->tagged--;
       }
       break;
   }
