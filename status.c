@@ -20,7 +20,6 @@
 #include "mutt_menu.h"
 #include "mutt_curses.h"
 #include "sort.h"
-#include "mapping.h"
 
 #include <string.h>
 #include <ctype.h>

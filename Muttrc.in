@@ -8,11 +8,11 @@ ignore "from " received content- mime-version status x-status message-id
 ignore sender references return-path lines
 
 # imitate the old search-body function
-macro index \eb '/~b ' 'search in message bodies'
+macro index \eb '/~b '
 
 # simluate the old url menu
-macro index \cb |urlview\n 'call urlview to extract URLs out of a message'
-macro pager \cb |urlview\n 'call urlview to extract URLs out of a message'
+macro index \cb |urlview\n
+macro pager \cb |urlview\n
 
 # If Mutt is unable to determine your sites domain name correctly, you can
 # set the default here.
@@ -126,7 +126,7 @@ macro pager \cb |urlview\n 'call urlview to extract URLs out of a message'
 # set shell=""
 # set sig_dashes
 # set signature="~/.signature"
-# set simple_search="~f %s | ~s %s"
+# set simpple_search="~f %s | ~s %s"
 # set smart_wrap
 # set sort=date-sent
 # set sort_alias=alias
