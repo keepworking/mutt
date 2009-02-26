@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -595,11 +596,13 @@ hdr_format_str (char *dest,
       break;
 
     case 'Z':
-    
-      ch = ' ';
+      if (hdr->mailcap)
+	ch = 'M';
+
+
 
 #ifdef _PGPPATH
-      if (hdr->pgp & PGPENCRYPT)
+      else if (hdr->pgp & PGPENCRYPT)
       	ch = 'P';
       else if (hdr->pgp & PGPSIGN)
         ch = 'S';
@@ -607,6 +610,10 @@ hdr_format_str (char *dest,
         ch = 'K';
 #endif
 
+
+
+      else
+	ch = ' ';
       snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
       snprintf (buf2, sizeof (buf2),
 		"%c%c%c", (THREAD_NEW ? 'n' : (THREAD_OLD ? 'o' : 
