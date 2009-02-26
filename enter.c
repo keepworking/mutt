@@ -50,8 +50,8 @@ enum
  * 	-1 if abort.
  *
  */
-int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
-		       int flags)
+int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
+		       int flags, int multiple, char ***files, int *numfiles)
 {
   event_t event;
   int curpos = 0;		/* the location of the cursor */
@@ -336,14 +336,19 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	  {
 	    /* invoke the alias-menu to get more addresses */
 	    buf[curpos] = 0;
-	    for (j = curpos - 1 ; j >= 0 && buf[j] != ',' ; j--);
-	    for (++j; buf[j] == ' '; j++)
-	      ;
-	    if (mutt_alias_complete ((char *) buf + j, buflen - j))
+	    if (curpos)
 	    {
-	      redraw = M_REDRAW_INIT;
-	      continue;
+	      for (j = curpos - 1 ; j >= 0 && buf[j] != ',' ; j--);
+	      for (++j; buf[j] == ' '; j++)
+		;
+	      if (mutt_alias_complete ((char *) buf + j, buflen - j))
+	      {
+		redraw = M_REDRAW_INIT;
+		continue;
+	      }
 	    }
+	    else
+	      mutt_alias_menu ((char *) buf, buflen, Aliases);
 	    return (1);
 	  }
 	  else if (flags & M_COMMAND)
@@ -369,7 +374,7 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	    /* see if the path has changed from the last time */
 	    if (mutt_strcmp (tempbuf, (char *) buf) == 0)
 	    {
-	      mutt_select_file ((char *) buf, buflen, 0);
+	      _mutt_select_file ((char *) buf, buflen, 0, multiple, files, numfiles);
 	      set_option (OPTNEEDREDRAW);
 	      if (buf[0])
 	      {
@@ -448,6 +453,15 @@ self_insert:
 	buf[lastchar] = 0;
 	if (!pass)
 	  mutt_history_add (hclass, (char *) buf);
+	if (multiple)
+	{
+	  char **tfiles;
+	  *numfiles = 1;
+	  tfiles = safe_malloc (*numfiles * sizeof (char *));
+	  mutt_expand_path ((char *) buf, buflen);
+	  tfiles[0] = safe_strdup ((char *) buf);
+	  *files = tfiles;
+	}
 	return (0);
       }
       else if ((ch < ' ' || IsPrint (ch)) && (lastchar + 1 < buflen))
