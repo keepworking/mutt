@@ -18,7 +18,7 @@
 
 #include "mutt.h"
 #include "mutt_curses.h"
-#include "sort.h"
+
 
 
 #ifdef _PGPPATH
@@ -45,10 +45,6 @@ int mutt_is_mail_list (ADDRESS *addr)
   return 0;
 }
 
-/* Search for a mailing list in the list of addresses pointed to by adr.
- * If one is found, print pfx and the name of the list into buf, then
- * return 1.  Otherwise, simply return 0.
- */
 static int
 check_for_mailing_list (ADDRESS *adr, char *pfx, char *buf, int buflen)
 {
@@ -63,26 +59,6 @@ check_for_mailing_list (ADDRESS *adr, char *pfx, char *buf, int buflen)
   }
   return 0;
 }
-
-/* Search for a mailing list in the list of addresses pointed to by adr.
- * If one is found, print the address of the list into buf, then return 1.
- * Otherwise, simply return 0.
- */
-static int
-check_for_mailing_list_addr (ADDRESS *adr, char *buf, int buflen)
-{
-  for (; adr; adr = adr->next)
-  {
-    if (mutt_is_mail_list (adr))
-    {
-      if (buf && buflen)
-	snprintf (buf, buflen, "%s", adr->mailbox);
-      return 1;
-    }
-  }
-  return 0;
-}
-
 
 static int first_mailing_list (char *buf, size_t buflen, ADDRESS *a)
 {
@@ -117,30 +93,6 @@ static void make_from (ENVELOPE *hdr, char *buf, size_t len, int do_lists)
     snprintf (buf, len, "Cc %s", mutt_get_name (hdr->cc));
   else if (hdr->from)
     strfcpy (buf, mutt_get_name (hdr->from), len);
-  else
-    *buf = 0;
-}
-
-static void make_from_addr (ENVELOPE *hdr, char *buf, size_t len, int do_lists)
-{
-  int me;
-
-  me = mutt_addr_is_user (hdr->from);
-
-  if (do_lists || me)
-  {
-    if (check_for_mailing_list_addr (hdr->to, buf, len))
-      return;
-    if (check_for_mailing_list_addr (hdr->cc, buf, len))
-      return;
-  }
-
-  if (me && hdr->to)
-    snprintf (buf, len, "%s", hdr->to->mailbox);
-  else if (me && hdr->cc)
-    snprintf (buf, len, "%s", hdr->cc->mailbox);
-  else if (hdr->from)
-    strfcpy (buf, hdr->from->mailbox, len);
   else
     *buf = 0;
 }
@@ -193,7 +145,6 @@ static int user_is_recipient (ENVELOPE *hdr)
  * %m = number of messages in the mailbox
  * %n = name of author
  * %N = score
- * %O = like %L, except using address instead of name
  * %s = subject
  * %S = short message status (e.g., N/O/D/!/r/-)
  * %t = `to:' field (recipients)
@@ -224,9 +175,6 @@ hdr_format_str (char *dest,
   char fmt[SHORT_STRING], buf2[SHORT_STRING], ch, *p;
   int do_locales, i;
   int optional = (flags & M_FORMAT_OPTIONAL);
-  int threads = ((Sort & SORT_MASK) == SORT_THREADS);
-  int is_index = (flags & M_FORMAT_INDEX);
-#define NEW (threads && hdr->collapsed && hdr->num_hidden > 1 && mutt_thread_contains_unread (ctx, hdr))
   size_t len;
 
   hdr = hfi->hdr;
@@ -311,7 +259,7 @@ hdr_format_str (char *dest,
 	    {
 	      if (len >= 5)
 	      {
-		sprintf (p, "%c%02u%02u", hdr->zoccident ? '-' : '+',
+		sprintf (p, "%c%02d%02d", hdr->zoccident ? '-' : '+',
 			 hdr->zhours, hdr->zminutes);
 		p += 5;
 		len -= 5;
@@ -432,39 +380,23 @@ hdr_format_str (char *dest,
       snprintf (dest, destlen, fmt, hdr->score);
       break;
 
-    case 'O':
-      if (!optional)
-      {
-	make_from_addr (hdr->env, buf2, sizeof (buf2), 1);
-	if (!option (OPTSAVEADDRESS) && (p = strpbrk (buf2, "%@")))
-	  *p = 0;
-	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
-	snprintf (dest, destlen, fmt, buf2);
-      }
-      else if (!check_for_mailing_list_addr (hdr->env->to, NULL, 0) &&
-	       !check_for_mailing_list_addr (hdr->env->cc, NULL, 0))
-      {
-	optional = 0;
-      }
-      break;
-
     case 's':
-      
-      snprintf (fmt, sizeof (fmt), "%s%%%ss", threads && is_index ? "   " : "", prefix);
-      if (threads && is_index && hdr->collapsed && hdr->num_hidden > 1)
-	snprintf (dest, destlen, "%2d %s", hdr->num_hidden, NONULL(hdr->env->subject));
-      else if (flags & M_FORMAT_TREE)
+      snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+      if (flags & M_FORMAT_TREE)
       {
 	if (flags & M_FORMAT_FORCESUBJ)
 	{
-	  snprintf (buf2, sizeof (buf2), "%s%s", hdr->tree, NONULL (hdr->env->subject));
+	  snprintf (buf2, sizeof (buf2), "%s%s", hdr->tree,
+		    hdr->env->subject ? hdr->env->subject : "");
 	  snprintf (dest, destlen, fmt, buf2);
 	}
 	else
 	  snprintf (dest, destlen, fmt, hdr->tree);
       }
       else
-	snprintf (dest, destlen, fmt, NONULL (hdr->env->subject));
+      {
+	snprintf (dest, destlen, fmt, hdr->env->subject ? hdr->env->subject : "");
+      }
       break;
 
     case 'S':
@@ -547,7 +479,7 @@ hdr_format_str (char *dest,
       snprintf (buf2, sizeof (buf2),
 		"%c%c%c",
 		(hdr->read && (ctx && ctx->msgnotreadyet != hdr->msgno))
-		? (NEW ? 'n' : (hdr->replied ? 'r' : ' ')) : (hdr->old ? 'O' : (NEW ? 'n' : 'N')),
+		? (hdr->replied ? 'r' : ' ') : (hdr->old ? 'O' : 'N'),
 		hdr->deleted ? 'D' : (hdr->attach_del ? 'd' : ch),
 		hdr->tagged ? '*' :
 		(hdr->flagged ? '!' :
@@ -566,7 +498,6 @@ hdr_format_str (char *dest,
     mutt_FormatString (dest, destlen, elsestring, hdr_format_str, (unsigned long) hfi, flags);
 
   return (src);
-#undef NEW
 }
 
 void

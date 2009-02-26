@@ -44,8 +44,7 @@
 
 #if !defined(HAVE_SNPRINTF) || !defined(HAVE_VSNPRINTF)
 
-#include <string.h>
-# include <ctype.h>
+#include <ctype.h>
 #include <sys/types.h>
 
 /* Define this as a fall through, HAVE_STDARG_H is probably already set */
@@ -179,7 +178,7 @@ static void dopr (char *buffer, size_t maxlen, const char *format, va_list args)
       }
       break;
     case DP_S_MIN:
-      if (isdigit((unsigned char)ch)) 
+      if (isdigit(ch)) 
       {
 	min = 10*min + char_to_int (ch);
 	ch = *format++;
@@ -203,7 +202,7 @@ static void dopr (char *buffer, size_t maxlen, const char *format, va_list args)
 	state = DP_S_MOD;
       break;
     case DP_S_MAX:
-      if (isdigit((unsigned char)ch)) 
+      if (isdigit(ch)) 
       {
 	if (max < 0)
 	  max = 0;
