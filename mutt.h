@@ -36,6 +36,19 @@
 #include "rfc822.h"
 #include "hash.h"
 
+#ifdef ENABLE_NLS
+# include <libintl.h>
+# define _(a) (gettext (a))
+# ifdef gettext_noop
+#  define N_(a) gettext_noop (a)
+# else
+#  define N_(a) (a)
+# endif
+#else
+# define _(a) (a)
+# define N_(a) a
+#endif
+
 #ifdef SUBVERSION
 # define MUTT_VERSION (VERSION SUBVERSION)
 #else  
@@ -50,6 +63,14 @@
 #define WHERE extern
 #define INITVAL(x) 
 #endif
+
+#define TRUE 1
+#define FALSE 0
+
+#define HUGE_STRING	5120
+#define LONG_STRING     1024
+#define STRING          256
+#define SHORT_STRING    128
 
 /* flags for mutt_copy_header() */
 #define CH_UPDATE	1      /* update the status and x-status fields? */
@@ -121,9 +142,8 @@ typedef enum
 #define M_SENDHOOK	(1<<2)
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
-#define M_CHARSETHOOK	(1<<5)
 #ifdef _PGPPATH
-#define M_PGPHOOK	(1<<6)
+#define M_PGPHOOK	(1<<5)
 #endif
 
 /* tree characters for linearize_tree and print_enriched_string */
@@ -233,7 +253,6 @@ enum
   OPT_PRINT,
   OPT_INCLUDE,
   OPT_DELETE,
-  OPT_MFUPTO,
   OPT_MIMEFWD,
   OPT_MOVE,
   OPT_COPY,
@@ -275,12 +294,10 @@ enum
   OPTCONFIRMAPPEND,
   OPTCONFIRMCREATE,
   OPTEDITHDRS,
-  OPTENCODEFROM,
   OPTFASTREPLY,
   OPTFCCATTACH,
   OPTFOLLOWUPTO,
   OPTFORCENAME,
-  OPTFORWATTACH,
   OPTFORWDECODE,
   OPTFORWWEEDHEADER,
   OPTFORWQUOTE,
@@ -290,8 +307,7 @@ enum
   OPTHIDDENHOST,
   OPTIGNORELISTREPLYTO,
 #ifdef USE_IMAP
-  OPTIMAPLSUB,
-  OPTIMAPPASSIVE,
+    OPTIMAPPASSIVE,
 #endif
   OPTIMPLICITAUTOVIEW,
   OPTMAILCAPSANITIZE,
@@ -332,7 +348,6 @@ enum
   OPTWRAP,
   OPTWRAPSEARCH,
   OPTWRITEBCC,		/* write out a bcc header? */
-  OPTXMAILER,
 
   /* PGP options */
   
@@ -342,14 +357,9 @@ enum
   OPTPGPLONGIDS,
   OPTPGPREPLYENCRYPT,
   OPTPGPREPLYSIGN,
-  OPTPGPREPLYSIGNENCRYPTED,
-#if 0
   OPTPGPENCRYPTSELF,
-#endif
-  OPTPGPRETAINABLESIG,
   OPTPGPSTRICTENC,
   OPTFORWDECRYPT,
-  OPTPGPSHOWUNUSABLE,
 #endif
 
   /* pseudo options */
@@ -406,7 +416,6 @@ typedef struct list_t
 } LIST;
 
 #define mutt_new_list() safe_calloc (1, sizeof (LIST))
-void mutt_add_to_list (LIST **, BUFFER *);
 void mutt_free_list (LIST **);
 int mutt_matches_ignore (const char *, LIST *);
 
@@ -461,6 +470,7 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
+  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
@@ -498,7 +508,7 @@ typedef struct body
 				 * encoding update.
 				 */
   
-  unsigned int type : 3;        /* content-type primary type */
+  unsigned int type : 4;        /* content-type primary type */
   unsigned int encoding : 3;    /* content-transfer-encoding */
   unsigned int disposition : 2; /* content-disposition */
   unsigned int use_disp : 1;    /* Content-Disposition field printed? */
@@ -508,7 +518,7 @@ typedef struct body
 				 */
   unsigned int tagged : 1;
   unsigned int deleted : 1;	/* attachment marked for deletion */
-  unsigned int noconv : 1;	/* don't do character set conversion */
+
 } BODY;
 
 typedef struct header
@@ -573,10 +583,6 @@ typedef struct header
   struct header *last_sort; /* last message in subthread, for secondary SORT_LAST */
   char *tree;            /* character string to print thread tree */
 
-#ifdef MIXMASTER
-  LIST *chain;
-#endif
-  
 } HEADER;
 
 #include "mutt_regex.h"
@@ -659,16 +665,14 @@ typedef struct
   int flags;
 } STATE;
 
+
+
 /* flags for the STATE struct */
 #define M_DISPLAY	(1<<0) /* output is displayed to the user */
-
-
 
 #ifdef _PGPPATH
 #define M_VERIFY	(1<<1) /* perform signature verification */
 #endif
-
-
 
 #define M_PENDINGPREFIX (1<<2) /* prefix to write, but character must follow */
 #define M_WEED          (1<<3) /* weed headers even when not in display mode */
@@ -683,5 +687,4 @@ void state_prefix_putc(char, STATE *);
 int  state_printf(STATE *, const char *, ...);
 
 #include "protos.h"
-#include "lib.h"
 #include "globals.h"
