@@ -45,7 +45,8 @@
 
 # ifdef ENABLE_NLS
 #  include <libintl.h>
-#  define _(a) (gettext (a))
+char *mutt_gettext (const char *); /* gettext.c */
+# define _(a) (mutt_gettext (a))
 #  ifdef gettext_noop
 #   define N_(a) gettext_noop (a)
 #  else
@@ -102,7 +103,6 @@ const char *mutt_stristr (const char *, const char *);
 
 int mutt_copy_stream (FILE *, FILE *);
 int mutt_copy_bytes (FILE *, FILE *, size_t);
-int mutt_rx_sanitize_string (char *, size_t, const char *);
 int mutt_strcasecmp (const char *, const char *);
 int mutt_strcmp (const char *, const char *);
 int mutt_strncasecmp (const char *, const char *, size_t);
