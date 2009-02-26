@@ -19,18 +19,16 @@ mutt_SOURCES =	addrbook.c alias.c attach.c browser.c buffy.c color.c \
 mutt_LDADD = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(INTLLIBS) 
 mutt_DEPENDENCIES = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(INTLDEPS)
 
-DEFS=-DSHAREDIR=\"$(sharedir)\" -DSYSCONFDIR=\"$(sysconfdir)\" \
-	-DBINDIR=\"$(bindir)\" -DHAVE_CONFIG_H=1
+DEFS=-DSHAREDIR=\"$(sharedir)\" -DSYSCONFDIR=\"$(sysconfdir)\"	\
+	-DHAVE_CONFIG_H=1
 INCLUDES=-I. -I$(includedir)
 
 non_us_sources = pgp.c pgpinvoke.c pgpkey.c pgppubring.c sha1dgst.c \
 	gnupgparse.c sha.h sha_locl.h \
-	doc/language.txt doc/language50.txt OPS.PGP doc/PGP-Notes \
-	OPS.MIX remailer.c remailer.h
+	doc/language.txt doc/language50.txt OPS.PGP doc/PGP-Notes
 
 EXTRA_mutt_SOURCES = pgp.c pgpinvoke.c pgpkey.c pgppubring.c sha1dgst.c \
 	gnupgparse.c resize.c dotlock.c pop.c imap.c socket.c
-	remailer.c remailer.h browser.h
 
 EXTRA_DIST = COPYRIGHT GPL OPS OPS.PGP TODO configure acconfig.h attach.h \
 	buffy.h charset.h config.h copy.h dotlock.h functions.h gen_defs \
@@ -38,8 +36,7 @@ EXTRA_DIST = COPYRIGHT GPL OPS OPS.PGP TODO configure acconfig.h attach.h \
 	mailbox.h mapping.h mime.h mutt.h mutt_curses.h mutt_menu.h  \
 	mutt_regex.h mutt_socket.h mx.h pager.h parse.h pgp.h protos.h  \
 	reldate.h rfc1524.h rfc2047.h rfc822.h sha.h sha_locl.h	\
-	sort.h mime.types VERSION prepare _regex.h OPS.MIX	\
-	README.SECURITY remailer.c remailer.h browser.h Muttrc.in
+	sort.h mime.types VERSION prepare _regex.h README.SECURITY
 
 BUILT_SOURCES = mutt_dotlock.c keymap_defs.h
 
@@ -56,9 +53,9 @@ ACLOCAL_AMFLAGS = -I m4
 
 LDADD = @LIBOBJS@ @INTLLIBS@
 
-SUBDIRS = m4 po intl doc $(ADD_SUBDIRS)
+SUBDIRS = doc intl m4 po contrib charsets
 
-OPS=@OPS@
+OPS=$(srcdir)/OPS $(srcdir)/OPS.PGP
 
 keymap_defs.h: $(OPS) $(srcdir)/gen_defs
 	$(srcdir)/gen_defs $(OPS) > keymap_defs.h
@@ -98,15 +95,9 @@ changelog:
 	rcs2log | cat - ChangeLog > ChangeLog.$$$$ && mv ChangeLog.$$$$ ChangeLog
 	$(VISUAL) ChangeLog
 
-# kluge aroud automake problems. *grrr*
-
 dist-hook:
 	-for file in $(BUILT_SOURCES) ; do rm -f $(distdir)/$$file ; done
 	-rm -f $(distdir)/config.h
-	touch $(distdir)/'$$output.in'
-
-utput.in:
-	touch utput.in
 
 us-distdir: distdir dist-hook
 	mv $(distdir) $(distdir)-us
@@ -118,7 +109,7 @@ us-distdir: distdir dist-hook
 
 us-dist: us-distdir
 	for file in $(distdir)-us/*.c $(distdir)-us/*.h ; do \
-		$(srcdir)/reap.pl _PGPPATH < $$file | $(srcdir)/reap.pl MIXMASTER > $$file.n && rm $$file && mv $$file.n $$file ; \
+		$(srcdir)/reap.pl _PGPPATH < $$file > $$file.n && rm $$file && mv $$file.n $$file ; \
 	done
 	for file in $(non_us_sources) ; do \
 		echo "/* This file is only available in the international mutt version */" \

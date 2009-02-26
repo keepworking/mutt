@@ -147,17 +147,13 @@ int mutt_display_message (HEADER *cur)
   }
   else
   {
-    int r;
-
     endwin ();
     snprintf (buf, sizeof (buf), "%s %s", NONULL(Pager), tempfile);
-    if ((r = mutt_system (buf)) == -1)
-      mutt_error (_("Error running \"%s\"!"), buf);
+    mutt_system (buf);
     unlink (tempfile);
     keypad (stdscr, TRUE);
-    if (r != -1)
-      mutt_set_flag (Context, cur, M_READ, 1);
-    if (r != -1 && option (OPTPROMPTAFTER))
+    mutt_set_flag (Context, cur, M_READ, 1);
+    if (option (OPTPROMPTAFTER))
     {
       mutt_ungetch (mutt_any_key_to_continue _("Command: "), 0);
       rc = km_dokey (MENU_PAGER);
@@ -222,9 +218,8 @@ void mutt_pipe_message_to_state (HEADER *h, STATE *s)
 {
   if (option (OPTPIPEDECODE))
     mutt_parse_mime_message (Context, h);
-
   mutt_copy_message (s->fpout, Context, h,
-		     option (OPTPIPEDECODE) ? M_CM_DECODE | M_CM_CHARCONV : 0,
+		     option (OPTPIPEDECODE) ? M_CM_DECODE | M_CM_CHARCONV: 0,
 		     option (OPTPIPEDECODE) ? CH_FROM | CH_WEED | CH_DECODE | CH_REORDER : CH_FROM);
 }
 
@@ -453,14 +448,14 @@ static void set_copy_flags(HEADER *hdr, int decode, int decrypt, int *cmflags, i
   *chflags = CH_UPDATE_LEN;
   
 #ifdef _PGPPATH
-  if (!decode && decrypt && (hdr->pgp & PGPENCRYPT))
+  if(!decode && decrypt && (hdr->pgp & PGPENCRYPT))
   {
-    if (mutt_is_multipart_encrypted(hdr->content))
+    if(mutt_is_multipart_encrypted(hdr->content))
     {
       *chflags = CH_NONEWLINE | CH_XMIT | CH_MIME;
       *cmflags = M_CM_DECODE_PGP;
     }
-    else if (mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
+    else if(mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
       decode = 1;
   }
 #endif
