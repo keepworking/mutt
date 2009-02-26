@@ -73,9 +73,6 @@ behavior:
 --enable-pop
 	enable POP3 support
 
---enable-hidden-host
-	local hostname is not part of the FQDN.
-
 --with-rx
 	use GNU rx instead of local regexp routines.  Many systems don't
 	have the POSIX compliant regcomp/regexec/regfree routines, so this
@@ -169,6 +166,12 @@ Linux
 	setgid mail.  You'll need to use the configure switch
 	"--enable-locales-fix".  If you're using a non-iso-8859 font, you
 	lose.  This is not an issue on glibc (libc 6) based systems.
+
+Sparc Linux
+
+	Redhat 4.2 Sparc users reported problems with some system
+	include files when building mutt.  Configuring mutt with the
+	--disable-warnings switch is said to help against this problem.
 
 
 Digital Unix (OSF/1)
