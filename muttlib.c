@@ -335,11 +335,15 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
 	  struct passwd *pw;
 	  if ((t = strchr (s + 1, '/'))) 
 	    *t = 0;
+
 	  if ((pw = getpwnam (s + 1)))
 	  {
 	    strfcpy (p, pw->pw_dir, sizeof (p));
 	    if (t)
-	      tail = t + 1;
+	    {
+	      *t = '/';
+	      tail = t;
+	    }
 	    else
 	      tail = "";
 	  }
@@ -396,14 +400,14 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       
       case '>':
       {
-	strfcpy (p, Inbox, sizeof (p));
+	strfcpy (p, NONULL(Inbox), sizeof (p));
 	tail = s + 1;
       }
       break;
       
       case '<':
       {
-	strfcpy (p, Outbox, sizeof (p));
+	strfcpy (p, NONULL(Outbox), sizeof (p));
 	tail = s + 1;
       }
       break;
@@ -412,12 +416,12 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       {
 	if (*(s+1) == '!')
 	{
-	  strfcpy (p, LastFolder, sizeof (p));
+	  strfcpy (p, NONULL(LastFolder), sizeof (p));
 	  tail = s + 2;
 	}
 	else 
 	{
-	  strfcpy (p, Spoolfile, sizeof (p));
+	  strfcpy (p, NONULL(Spoolfile), sizeof (p));
 	  tail = s + 1;
 	}
       }
@@ -425,7 +429,7 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       
       case '-':
       {
-	strfcpy (p, LastFolder, sizeof (p));
+	strfcpy (p, NONULL(LastFolder), sizeof (p));
 	tail = s + 1;
       }
       break;
@@ -971,7 +975,6 @@ void mutt_FormatString (char *dest,		/* output buffer */
   }
   *wptr = 0;
 
-#if 0
   if (flags & M_FORMAT_MAKEPRINT)
   {
     /* Make sure that the string is printable by changing all non-printable
@@ -981,7 +984,6 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	  !((flags & M_FORMAT_TREE) && (*cp <= M_TREE_MAX)))
 	*cp = isspace ((unsigned char) *cp) ? ' ' : '.';
   }
-#endif
 }
 
 /* This function allows the user to specify a command to read stdout from in

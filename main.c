@@ -100,7 +100,7 @@ static void mutt_usage (void)
 {
   printf ("Mutt %s (%s)\n", MUTT_VERSION, ReleaseDate);
   puts _(
-"usage: mutt [ -nRyzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
+"usage: mutt [ -nRzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
        mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] <addr> [ ... ]\n\
        mutt [ -n ] [ -e <cmd> ] [ -F <file> ] -p\n\
        mutt -v[v]\n\
@@ -680,6 +680,8 @@ int main (int argc, char **argv)
     if (!folder[0])
       strfcpy (folder, NONULL(Spoolfile), sizeof (folder));
     mutt_expand_path (folder, sizeof (folder));
+
+    mutt_str_replace (&LastFolder, folder);
 
     if (flags & M_IGNORE)
     {
