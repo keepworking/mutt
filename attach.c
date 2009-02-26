@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -124,13 +125,9 @@ int mutt_compose_attachment (BODY *a)
       }
       else
       {
-	int r;
-
 	endwin ();
-	if ((r = mutt_system (command)) == -1)
-	  mutt_error (_("Error running \"%s\"!"), command);
-	
-	if (r != -1 && entry->composetypecommand)
+	mutt_system (command);
+	if (entry->composetypecommand)
 	{
 	  BODY *b;
 	  FILE *fp, *tfp;
@@ -252,8 +249,7 @@ int mutt_edit_attachment (BODY *a)
       else
       {
 	endwin ();
-	if (mutt_system (command) == -1)
-	  mutt_error (_("Error running \"%s\"!"), command);
+	mutt_system (command);
       }
     }
   }
@@ -699,9 +695,10 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
       chflags |= (ctx.magic == M_MAILDIR ? CH_NOSTATUS : CH_UPDATE);
       if ((r = _mutt_copy_message (msg->fp, fp, hn, hn->content, 0, chflags)) == 0)
 	mutt_message _("Attachment saved.");
-	
+
+      mx_commit_message (msg, &ctx);
       mx_close_message (&msg);
-      mx_close_mailbox(&ctx);
+      mx_close_mailbox (&ctx);
       return r;
     }
     else
@@ -712,9 +709,11 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
       
       memset (&s, 0, sizeof (s));
       if (flags == M_SAVE_APPEND)
-	s.fpout = safe_fopen (path, "a");
-      else
+	s.fpout = fopen (path, "a");
+      else if (flags == M_SAVE_OVERWRITE)
 	s.fpout = fopen (path, "w");
+      else
+	s.fpout = safe_fopen (path, "w");
       if (s.fpout == NULL)
       {
 	mutt_perror ("fopen");
@@ -765,7 +764,7 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
 
 /* returns 0 on success, -1 on error */
 int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
-				 int displaying, int flags)
+					      int displaying, int flags)
 {
   STATE s;
   unsigned int saved_encoding = 0;
@@ -773,12 +772,17 @@ int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
   HEADER *saved_hdr = NULL;
 
   memset (&s, 0, sizeof (s));
-  s.flags = (displaying ? M_DISPLAY : 0);
+  s.flags = displaying ? M_DISPLAY : 0;
 
+  s.flags |= M_CHARCONV;
+  
   if (flags == M_SAVE_APPEND)
-    s.fpout = safe_fopen (path, "a");
-  else
+    s.fpout = fopen (path, "a");
+  else if (flags == M_SAVE_OVERWRITE)
     s.fpout = fopen (path, "w");
+  else
+    s.fpout = safe_fopen (path, "w");
+
   if (s.fpout == NULL)
   {
     perror ("fopen");
@@ -811,16 +815,9 @@ int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
     saved_parts = m->parts;
     saved_hdr = m->hdr;
     mutt_parse_part (s.fpin, m);
-
-    /* display a readable version to the user */
-    if (m->noconv)
-      s.flags |= M_CHARCONV;
   }
   else
-  {
     s.fpin = fp;
-    s.flags |= M_CHARCONV;
-  }
 
   mutt_body_handler (m, &s);
 
