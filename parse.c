@@ -276,11 +276,6 @@ static void parse_content_type (char *s, BODY *ct)
   /* Finally, get the major type */
   ct->type = mutt_check_mime_type (s);
 
-  if (ct->type == TYPEOTHER)
-  {
-    ct->xtype = safe_strdup (s);
-  }
-
   if (ct->subtype == NULL)
   {
     /* Some older non-MIME mailers (i.e., mailtool, elm) have a content-type
@@ -303,7 +298,6 @@ static void parse_content_type (char *s, BODY *ct)
     else
       ct->subtype = safe_strdup ("x-unknown");
   }
-
 }
 
 static void parse_content_disposition (char *s, BODY *ct)
@@ -398,7 +392,7 @@ BODY *mutt_read_mime_header (FILE *fp, int digest)
   else if (p->type == TYPEMESSAGE && !p->subtype)
     p->subtype = safe_strdup ("rfc822");
 
-  FREE (&line);
+  free (line);
 
   return (p);
 }
@@ -969,8 +963,6 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
       case 'd':
 	if (!strcasecmp ("ate", line + 1))
 	{
-	  safe_free((void **)&e->date);
-	  e->date = safe_strdup(p);
 	  if (hdr)
 	    hdr->date_sent = parse_date (p, hdr);
 	  matched = 1;
@@ -1069,6 +1061,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
 	    if (d)
 	      hdr->received = parse_date (d + 1, NULL);
 	  }
+	  matched = 1;
 	}
 	break;
 
@@ -1152,8 +1145,11 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
 	break;
     }
 
-     /* Keep track of the user-defined headers */
-    if (!matched)
+    /* if hdr==NULL, then we are using this to parse either a postponed
+     * message, or a outgoing message (edit_hdrs), so we want to keep
+     * track of the user-defined headers
+     */
+    if (!matched && !hdr)
     {
       if (last)
       {
@@ -1169,7 +1165,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
     loc = ftell (f);
   }
 
-  FREE (&line);
+  free (line);
 
   if (hdr)
   {

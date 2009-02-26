@@ -20,7 +20,6 @@
 #include "mutt_curses.h"
 #include "mutt_menu.h"
 #include "mailbox.h"
-#include "mapping.h"
 #include "sort.h"
 #include "buffy.h"
 
@@ -67,22 +66,14 @@
 				break; \
 			}
 
-#define CHECK_ATTACH if(option(OPTATTACHMSG)) \
-		     {\
-			mutt_flushinp (); \
-			mutt_error ("Function not permitted in attach-message mode."); \
-			break; \
-		     }
-
 #define CURHDR Context->hdrs[Context->v2r[menu->current]]
 #define OLDHDR Context->hdrs[Context->v2r[menu->oldcurrent]]
-#define UNREAD(h) mutt_thread_contains_unread (Context, h)
 
 extern const char *ReleaseDate;
 
 void index_make_entry (char *s, size_t l, MUTTMENU *menu, int num)
 {
-  format_flag flag = M_FORMAT_MAKEPRINT | M_FORMAT_ARROWCURSOR;
+  format_flag flag = M_FORMAT_MAKEPRINT;
   int reverse = Sort & SORT_REVERSE, edgemsgno;
   HEADER *tmp, *h = Context->hdrs[Context->v2r[num]];
 
@@ -132,7 +123,7 @@ void index_make_entry (char *s, size_t l, MUTTMENU *menu, int num)
     }
   }
 
-  _mutt_make_string (s, l, NONULL (HdrFmt), Context, h, flag | M_FORMAT_INDEX);
+  _mutt_make_string (s, l, NONULL (HdrFmt), Context, h, flag);
 }
 
 int index_color (int index_no)
@@ -238,7 +229,7 @@ struct mapping_t IndexHelp[] = {
 /* This function handles the message index window as well as commands returned
  * from the pager (MENU_PAGER).
  */
-int mutt_index_menu (void)
+void mutt_index_menu (void)
 {
   char buf[LONG_STRING], helpstr[SHORT_STRING];
   int op = OP_NULL;                 /* function to execute */
@@ -252,8 +243,6 @@ int mutt_index_menu (void)
   char *cp;                    /* temporary variable. */
   int index_hint;   /* used to restore cursor position */
   int do_buffy_notify = 1;
-  int close = 0; /* did we OP_QUIT or OP_EXIT out of this menu? */
-  int attach_msg = option(OPTATTACHMSG);
 
   menu = mutt_new_menu ();
   menu->menu = MENU_MAIN;
@@ -264,8 +253,7 @@ int mutt_index_menu (void)
   menu->current = ci_first_message ();
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_MAIN, IndexHelp);
   
-  if (!attach_msg) 
-    mutt_buffy_check(1); /* force the buffy check after we enter the folder */
+  mutt_buffy_check(1); /* force the buffy check after we enter the folder */
 
   FOREVER
   {
@@ -274,16 +262,15 @@ int mutt_index_menu (void)
     menu->max = Context ? Context->vcount : 0;
     oldcount = Context ? Context->msgcount : 0;
 
-    if (Context && !attach_msg)
+    if (Context)
     {
-      int check;
       /* check for new mail in the mailbox.  If nonzero, then something has
        * changed about the file (either we got new mail or the file was
        * modified underneath us.)
        */
       index_hint = (Context->vcount) ? CURHDR->index : 0;
 
-      if ((check = mx_check_mailbox (Context, &index_hint)) < 0)
+      if ((i = mx_check_mailbox (Context, &index_hint)) < 0)
       {
 	if (!Context->path)
 	{
@@ -294,10 +281,8 @@ int mutt_index_menu (void)
 
 	set_option (OPTSEARCHINVALID);
       }
-      else if (check == M_NEW_MAIL || check == M_REOPENED)
+      else if (i == M_NEW_MAIL ||  i == M_REOPENED)
       {
-	int *save_new;
-
 	/* take note of the current message */
 	if (oldcount)
 	{
@@ -312,75 +297,32 @@ int mutt_index_menu (void)
 	 * they will be visible in the limited view */
         if (Context->pattern)
 	{
-#define THIS_BODY Context->hdrs[j]->content
-	  if (oldcount || check == M_REOPENED)
-	    for (j = (check == M_REOPENED) ? 0 : oldcount; j < Context->msgcount; j++)
+          #define this_body Context->hdrs[i]->content
+	  if (oldcount)
+          for (i = oldcount; i < Context->msgcount; i++)
 	  {
             if (mutt_pattern_exec (Context->limit_pattern,
 	                           M_MATCH_FULL_ADDRESS, 
-				    Context, Context->hdrs[j]))
+	                           Context, Context->hdrs[i]))
             {
-		Context->hdrs[j]->virtual = Context->vcount;
-		Context->v2r[Context->vcount] = j;
-		Context->hdrs[j]->limited = 1;
-		Context->vcount++;
-		Context->vsize += THIS_BODY->length + THIS_BODY->offset - THIS_BODY->hdr_offset;
+	     Context->hdrs[i]->virtual = Context->vcount;
+	     Context->v2r[Context->vcount] = i;
+	     Context->vcount++;
+	     Context->vsize+=this_body->length + this_body->offset -
+                             this_body->hdr_offset;
             }
 	  }
-#undef THIS_BODY
-        }
-
-	/* save the list of new messages */
-	if (oldcount && check != M_REOPENED)
-	{
-	  save_new = (int *) safe_malloc (sizeof (int) * (Context->msgcount - oldcount));
-	  for (j = oldcount; j < Context->msgcount; j++)
-	    save_new[j-oldcount] = Context->hdrs[j]->index;
+          #undef this_body
         }
 
 	/* if the mailbox was reopened, need to rethread from scratch */
-	set_option (OPTSORTCOLLAPSE);
-	mutt_sort_headers (Context, (check == M_REOPENED));
-	unset_option (OPTSORTCOLLAPSE);
-
-	/* uncollapse threads with new mail */
-	if ((Sort & SORT_MASK) == SORT_THREADS)
-	{
-	  if (check == M_REOPENED)
-	  {
-	    HEADER *h;
-
-	    h = Context->tree;
-	    Context->collapsed = 0;
-
-	    while (h)
-	    {
-	      mutt_uncollapse_thread (Context, h);
-	      h = h->next;
-	    }
-	    mutt_set_virtual (Context);
-	  }
-	  else if (oldcount)
-	  {
-	    for (j = 0; j < Context->msgcount - oldcount; j++)
-	    {
-	      int k;
-	      
-	      for (k = 0; k < Context->msgcount; k++)
-	      {
-		HEADER *h = Context->hdrs[k];
-		if (h->index == save_new[j] && (!Context->pattern || h->limited))
-		  mutt_uncollapse_thread (Context, h);
-	      }
-	    }
-	    FREE (&save_new);
-	    mutt_set_virtual (Context);
-	  }
-	}
+	mutt_sort_headers (Context, (i == M_REOPENED));
 
 	menu->current = -1;
 	if (oldcount)
 	{
+	  int j;
+
 	  /* restore the current message to the message it was pointing to */
 	  for (j = 0; j < Context->vcount; j++)
 	    if (Context->hdrs[Context->v2r[j]]->index == menu->oldcurrent)
@@ -394,7 +336,7 @@ int mutt_index_menu (void)
 	  menu->current = ci_first_message ();
 
 	/* notify the user of new mail */
-	if (check == M_REOPENED)
+	if (i == M_REOPENED)
 	  mutt_error ("Mailbox was externally modified.  Flags may be wrong.");
 	else
 	{
@@ -412,20 +354,17 @@ int mutt_index_menu (void)
       }
     }
 
-    if (!attach_msg)
+    /* check for new mail in the incoming folders */
+    oldcount = newcount;
+    if ((newcount = mutt_buffy_check (0)) != oldcount)
+      menu->redraw |= REDRAW_STATUS;
+    if (do_buffy_notify)
     {
-     /* check for new mail in the incoming folders */
-     oldcount = newcount;
-     if ((newcount = mutt_buffy_check (0)) != oldcount)
-       menu->redraw |= REDRAW_STATUS;
-     if (do_buffy_notify)
-     {
-       if (mutt_buffy_notify () && option (OPTBEEPNEW))
- 	beep ();
-     }
-     else
-       do_buffy_notify = 1;
+      if (mutt_buffy_notify () && option (OPTBEEPNEW))
+	beep ();
     }
+    else
+      do_buffy_notify = 1;
 
     mutt_curs_set (0);
 
@@ -647,15 +586,13 @@ int mutt_index_menu (void)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
-	CHECK_ATTACH;
-	mutt_pattern_func (M_DELETE, "Delete messages matching: ");
+	mutt_pattern_func (M_DELETE, "Delete messages matching: ", CURHDR);
 	menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
 #ifdef USE_POP
       case OP_MAIN_FETCH_MAIL:
 
-	CHECK_ATTACH;
 	mutt_fetchPopMail ();
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -683,7 +620,7 @@ int mutt_index_menu (void)
 
 	CHECK_MSGCOUNT;
 	menu->oldcurrent = Context->vcount ? CURHDR->index : -1;
-	if (mutt_pattern_func (M_LIMIT, "Limit to messages matching: ") == 0)
+	if (mutt_pattern_func (M_LIMIT, "Limit to messages matching: ", CURHDR) == 0)
 	{
 	  if (menu->oldcurrent >= 0)
 	  {
@@ -705,13 +642,6 @@ int mutt_index_menu (void)
 	break;	  
 
       case OP_QUIT:
-
-	close = op;
-	if (attach_msg)
-	{
-	 done = 1;
-	 break;
-	}
 
 	if (query_quadoption (OPT_QUIT, "Quit Mutt?") == M_YES)
 	{ 
@@ -781,15 +711,13 @@ int mutt_index_menu (void)
 	  if (mx_sync_mailbox (Context) == 0)
 	  {
 	    if (Context->vcount != oldvcount)
+	    {
 	      menu->current -= dcount;
+	      if (menu->current < 0 || menu->current >= Context->vcount)
+		menu->current = ci_first_message ();
+	    }
 	    set_option (OPTSEARCHINVALID);
 	  }
-	  
-	  /* do a sanity check even if mx_sync_mailbox failed.
-	   */
-
-	  if (menu->current < 0 || menu->current >= Context->vcount)
-	    menu->current = ci_first_message ();
 	}
 
 	/* check for a fatal error, or all messages deleted */
@@ -824,7 +752,7 @@ int mutt_index_menu (void)
       case OP_MAIN_TAG_PATTERN:
 
 	CHECK_MSGCOUNT;
-	mutt_pattern_func (M_TAG, "Tag messages matching: ");
+	mutt_pattern_func (M_TAG, "Tag messages matching: ", CURHDR);
 	menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
@@ -832,14 +760,14 @@ int mutt_index_menu (void)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
-	if (mutt_pattern_func (M_UNDELETE, "Undelete messages matching: ") == 0)
+	if (mutt_pattern_func (M_UNDELETE, "Undelete messages matching: ", CURHDR) == 0)
 	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
       case OP_MAIN_UNTAG_PATTERN:
 
 	CHECK_MSGCOUNT;
-	if (mutt_pattern_func (M_UNTAG, "Untag messages matching: ") == 0)
+	if (mutt_pattern_func (M_UNTAG, "Untag messages matching: ", CURHDR) == 0)
 	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
@@ -849,7 +777,7 @@ int mutt_index_menu (void)
 
       case OP_MAIN_CHANGE_FOLDER:
       
-	if (attach_msg || option (OPTREADONLY))
+	if (option (OPTREADONLY))
 	  op = OP_MAIN_CHANGE_FOLDER_READONLY;
 
 	/* fallback to the readonly case */
@@ -928,14 +856,6 @@ int mutt_index_menu (void)
 
 	unset_option (OPTNEEDRESORT);
 
-	if ((Sort & SORT_MASK) == SORT_THREADS && CURHDR->collapsed)
-	{
-	  mutt_uncollapse_thread (Context, CURHDR);
-	  mutt_set_virtual (Context);
-	  if (option (OPTUNCOLLAPSEJUMP))
-	    menu->current = mutt_thread_next_unread (Context, CURHDR);
-	}
- 
 	if ((op = mutt_display_message (CURHDR)) == -1)
 	{
 	  unset_option (OPTNEEDRESORT);
@@ -962,17 +882,17 @@ int mutt_index_menu (void)
 
       case OP_EXIT:
 
-	close = op;
-	if (menu->menu == MENU_MAIN && attach_msg)
-	{
-	 done = 1;
-	 break;
-	}
-
 	if ((menu->menu == MENU_MAIN)
 	    && (query_quadoption (OPT_QUIT, 
 				  "Exit Mutt without saving?") == M_YES))
+	{
+	  if (Context)
+	  {
+	    mx_fastclose_mailbox (Context);
+	    safe_free ((void **)&Context);
+	  }
 	  done = 1;
+	}
 	break;
 
       case OP_MAIN_NEXT_UNDELETED:
@@ -1063,28 +983,13 @@ int mutt_index_menu (void)
       case OP_SAVE:
       case OP_DECODE_COPY:
       case OP_DECODE_SAVE:
-#ifdef _PGPPATH
-      case OP_DECRYPT_COPY:
-      case OP_DECRYPT_SAVE:
-#endif
+
 	CHECK_MSGCOUNT;
-        if (mutt_save_message (tag ? NULL : CURHDR,
-#ifdef _PGPPATH
-			       (op == OP_DECRYPT_SAVE) ||
-#endif
-			       (op == OP_SAVE) || (op == OP_DECODE_SAVE),
-			       (op == OP_DECODE_SAVE) || (op == OP_DECODE_COPY),
-#ifdef _PGPPATH
-			       (op == OP_DECRYPT_SAVE) || (op == OP_DECRYPT_COPY),
-#else
-			       0,
-#endif
+	if (mutt_save_message (tag ? NULL : CURHDR,
+			       (op == OP_SAVE || op == OP_DECODE_SAVE),
+			       (op == OP_DECODE_SAVE || op == OP_DECODE_COPY),
 			       &menu->redraw) == 0 &&
-	    (op == OP_SAVE || op == OP_DECODE_SAVE
-#ifdef _PGPPATH
-	     || op == OP_DECRYPT_SAVE
-#endif
-	     ))
+	    (op == OP_SAVE || op == OP_DECODE_SAVE))
 	{
 	  if (tag)
 	    menu->redraw |= REDRAW_INDEX;
@@ -1113,7 +1018,6 @@ int mutt_index_menu (void)
 	menu->current = -1;
 	for (j = 0; j != Context->vcount; j++)
 	{
-#define CUR Context->hdrs[Context->v2r[i]]
 	  if (op == OP_MAIN_NEXT_NEW || op == OP_MAIN_NEXT_UNREAD)
 	  {
 	    i++;
@@ -1133,29 +1037,22 @@ int mutt_index_menu (void)
 	    }
 	  }
 
-	  if (CUR->collapsed)
+	  if (! Context->hdrs[Context->v2r[i]]->deleted &&
+	      ! Context->hdrs[Context->v2r[i]]->read)
 	  {
-	    if (op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD || UNREAD(CUR) == 1)
-	    {
-	      menu->current = i;
-	      break;
-	    }
-	  }
-	  else if ((!CUR->deleted && !CUR->read))
-	  {
-	    if (op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD || !CUR->old)
+	    if (op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD ||
+		! Context->hdrs[Context->v2r[i]]->old)
 	    {
 	      menu->current = i;
 	      break;
 	    }
 	  }
 	}
-#undef CUR
 	if (menu->current == -1)
 	{
 	  menu->current = menu->oldcurrent;
-	  mutt_error ("%s%s.", (op == OP_MAIN_NEXT_NEW || op == OP_MAIN_PREV_NEW) ? "No new messages" : "No unread messages",
-		      Context->pattern ? " in this limited view" : "");
+	  mutt_error ((op == OP_MAIN_NEXT_NEW || op == OP_MAIN_PREV_NEW) ? 
+		      "No new messages." : "No unread messages.");
 	}
 	else if (menu->menu == MENU_PAGER)
 	{
@@ -1242,6 +1139,12 @@ int mutt_index_menu (void)
       case OP_MAIN_PREV_SUBTHREAD:
 
 	CHECK_MSGCOUNT;
+	if (Context->msgcount != Context->vcount)
+	{
+	  mutt_error ("No threads in limit mode.");
+	  break;
+	}
+
 	switch (op)
 	{
 	  case OP_MAIN_NEXT_THREAD:
@@ -1303,88 +1206,12 @@ int mutt_index_menu (void)
 	}
 	break;
 
-      case OP_MAIN_COLLAPSE_THREAD:
-	CHECK_MSGCOUNT;
-	
-	if (CURHDR->collapsed)
-	{
-	  menu->current = mutt_uncollapse_thread (Context, CURHDR);
-	  mutt_set_virtual (Context);
-	  if (option (OPTUNCOLLAPSEJUMP))
-	    menu->current = mutt_thread_next_unread (Context, CURHDR);
-	}
-	else if (option (OPTCOLLAPSEUNREAD) || !UNREAD (CURHDR))
-	{
-	  menu->current = mutt_collapse_thread (Context, CURHDR);
-	  mutt_set_virtual (Context);
-	}
-	else
-	{
-	  mutt_error ("Thread contains unread messages.");
-	  break;
-	}
-
-	menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
-
-       break;
-
-      case OP_MAIN_COLLAPSE_ALL:
-        CHECK_MSGCOUNT;
-
-        if ((Sort & SORT_MASK) != SORT_THREADS)
-        {
-	  mutt_error ("Threading is not enabled.");
-	  break;
-	}
-
-        {
-	  HEADER *h, *base;
-	  int final;
-	  
-	  if (CURHDR->collapsed)
-	    final = mutt_uncollapse_thread (Context, CURHDR);
-	  else if (option (OPTCOLLAPSEUNREAD) || !UNREAD (CURHDR))
-	    final = mutt_collapse_thread (Context, CURHDR);
-	  else
-	    final = CURHDR->virtual;
-	  
-	  base = Context->hdrs[Context->v2r[final]];
-	  
-	  h = Context->tree;
-	  Context->collapsed = !Context->collapsed;
-	  while (h)
-	  {
-	    if (h->collapsed != Context->collapsed)
-	    {
-	      if (h->collapsed)
-		mutt_uncollapse_thread (Context, h);
-	      else if (option (OPTCOLLAPSEUNREAD) || !UNREAD (h))
-		mutt_collapse_thread (Context, h);
-	    }
-	    h = h->next;
-	  }
-	  
-	  mutt_set_virtual (Context);
-	  for (j = 0; j < Context->vcount; j++)
-	  {
-	    if (Context->hdrs[Context->v2r[j]]->index == base->index)
-	    {
-	      menu->current = j;
-	      break;
-	    }
-	  }
-	  
-	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
-	  break;
-	}
-      
-      /* --------------------------------------------------------------------
-       * These functions are invoked directly from the internal-pager
-       */
+	/* --------------------------------------------------------------------
+	 * These functions are invoked directly from the internal-pager
+	 */
 
       case OP_BOUNCE_MESSAGE:
 
-	CHECK_ATTACH;
 	CHECK_MSGCOUNT;
 	ci_bounce_message (tag ? NULL : CURHDR, &menu->redraw);
 	break;
@@ -1396,7 +1223,6 @@ int mutt_index_menu (void)
 	break;
 
       case OP_QUERY:
-	CHECK_ATTACH;
 	mutt_query_menu (NULL, 0);
 	MAYBE_REDRAW (menu->redraw);
 	break;
@@ -1481,22 +1307,9 @@ int mutt_index_menu (void)
 	unset_option (OPTFORCEREDRAWPAGER);
 	break;
 
-      case OP_EDIT_MESSAGE:
-
-	CHECK_MSGCOUNT;
-	CHECK_READONLY;
-	CHECK_ATTACH;
-        
-        set_option(OPTUSEHEADERDATE);
-	ci_send_message (SENDEDITMSG, NULL, NULL, Context, CURHDR);
-        unset_option(OPTUSEHEADERDATE);
-	menu->redraw = REDRAW_FULL;
-	break;
-
       case OP_FORWARD_MESSAGE:
 
 	CHECK_MSGCOUNT;
-	CHECK_ATTACH;
 	ci_send_message (SENDFORWARD, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -1515,14 +1328,12 @@ int mutt_index_menu (void)
       case OP_GROUP_REPLY:
 
 	CHECK_MSGCOUNT;
-	CHECK_ATTACH;
 	ci_send_message (SENDREPLY|SENDGROUPREPLY, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 	break;
 
       case OP_LIST_REPLY:
 
-	CHECK_ATTACH;
 	CHECK_MSGCOUNT;
 	ci_send_message (SENDREPLY|SENDLISTREPLY, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
@@ -1530,7 +1341,6 @@ int mutt_index_menu (void)
 
       case OP_MAIL:
 
-	CHECK_ATTACH;
 	ci_send_message (0, NULL, NULL, NULL, NULL);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -1544,7 +1354,6 @@ int mutt_index_menu (void)
 #ifdef _PGPPATH
       case OP_MAIL_KEY:
 	
-	CHECK_ATTACH;
 	ci_send_message (SENDKEY, NULL, NULL, NULL, NULL);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -1598,14 +1407,12 @@ int mutt_index_menu (void)
 
       case OP_RECALL_MESSAGE:
 
-	CHECK_ATTACH;
 	ci_send_message (SENDPOSTPONED, NULL, NULL, Context, NULL);
 	menu->redraw = REDRAW_FULL;
 	break;
 
       case OP_REPLY:
 
-	CHECK_ATTACH;
 	CHECK_MSGCOUNT;
 	ci_send_message (SENDREPLY, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
@@ -1713,7 +1520,6 @@ int mutt_index_menu (void)
   }
 
   mutt_menuDestroy (&menu);
-  return (close);
 }
 
 void mutt_set_header_color (CONTEXT *ctx, HEADER *curhdr)
