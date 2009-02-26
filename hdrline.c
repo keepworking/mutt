@@ -32,17 +32,25 @@
 #include <string.h>
 #include <locale.h>
 
-int mutt_is_mail_list (ADDRESS *addr)
+static int _mutt_is_mail_list (ADDRESS *addr, LIST *p)
 {
-  LIST *p;
-
   if (addr->mailbox)
   {
-    for (p = MailLists; p; p = p->next)
+    for (;p; p = p->next)
       if (mutt_strncasecmp (addr->mailbox, p->data, mutt_strlen (p->data)) == 0)
 	return 1;
   }
   return 0;
+}
+
+int mutt_is_mail_list (ADDRESS *addr)
+{
+  return _mutt_is_mail_list (addr, MailLists);
+}
+
+int mutt_is_subscribed_list (ADDRESS *addr)
+{
+  return _mutt_is_mail_list (addr, SubscribedLists);
 }
 
 /* Search for a mailing list in the list of addresses pointed to by adr.
@@ -54,7 +62,7 @@ check_for_mailing_list (ADDRESS *adr, char *pfx, char *buf, int buflen)
 {
   for (; adr; adr = adr->next)
   {
-    if (mutt_is_mail_list (adr))
+    if (mutt_is_subscribed_list (adr))
     {
       if (pfx && buf && buflen)
 	snprintf (buf, buflen, "%s%s", pfx, mutt_get_name (adr));
@@ -73,7 +81,7 @@ check_for_mailing_list_addr (ADDRESS *adr, char *buf, int buflen)
 {
   for (; adr; adr = adr->next)
   {
-    if (mutt_is_mail_list (adr))
+    if (mutt_is_subscribed_list (adr))
     {
       if (buf && buflen)
 	snprintf (buf, buflen, "%s", adr->mailbox);
@@ -88,7 +96,7 @@ static int first_mailing_list (char *buf, size_t buflen, ADDRESS *a)
 {
   for (; a; a = a->next)
   {
-    if (mutt_is_mail_list (a))
+    if (mutt_is_subscribed_list (a))
     {
       mutt_save_path (buf, buflen, a);
       return 1;
@@ -404,9 +412,14 @@ hdr_format_str (char *dest,
       break;
 
     case 'F':
-      snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
-      make_from (hdr->env, buf2, sizeof (buf2), 0);
-      snprintf (dest, destlen, fmt, buf2);
+      if (!optional)
+      {
+        snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+        make_from (hdr->env, buf2, sizeof (buf2), 0);
+        snprintf (dest, destlen, fmt, buf2);
+      }
+      else if (mutt_addr_is_user (hdr->env->from))
+        optional = 0;
       break;
 
     case 'i':
@@ -495,7 +508,7 @@ hdr_format_str (char *dest,
 	else if (is_index && threads)
 	  snprintf (dest, destlen, buf2, " ");
 	else
-	  *dest = '\0';
+	  snprintf (dest, destlen, "");
       }
       else
       {
@@ -601,10 +614,12 @@ hdr_format_str (char *dest,
       ch = ' ';
 
 #ifdef _PGPPATH
-      if (hdr->pgp & PGPENCRYPT)
+      if (hdr->pgp & PGPGOODSIGN)
+        ch = 'S';
+      else if (hdr->pgp & PGPENCRYPT)
       	ch = 'P';
       else if (hdr->pgp & PGPSIGN)
-        ch = 'S';
+        ch = 's';
       else if (hdr->pgp & PGPKEY)
         ch = 'K';
 #endif
