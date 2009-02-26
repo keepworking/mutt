@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 1996-1998 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -42,6 +43,15 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <errno.h>
+
+static const char Mailbox_is_read_only[] = N_("Mailbox is read-only.");
+
+#define CHECK_READONLY if (Context->readonly) \
+{\
+    mutt_flushinp (); \
+    mutt_error _(Mailbox_is_read_only); \
+    break; \
+}
 
 static struct mapping_t AttachHelp[] = {
   { N_("Exit"),  OP_EXIT },
@@ -141,9 +151,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
   return (idx);
 }
 
-/* %c = character set: convert?
- * %C = character set
- * %D = deleted flag
+/* %D = deleted flag
  * %d = description
  * %e = MIME content-transfer-encoding
  * %f = filename
@@ -166,38 +174,12 @@ const char *mutt_attach_fmt (char *dest,
 {
   char fmt[16];
   char tmp[SHORT_STRING];
-  char charset[SHORT_STRING];
   ATTACHPTR *aptr = (ATTACHPTR *) data;
   int optional = (flags & M_FORMAT_OPTIONAL);
   size_t l;
   
   switch (op)
   {
-    case 'C':
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
-	if (mutt_is_text_type (aptr->content->type, aptr->content->subtype) &&
-	    mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
-	  snprintf (dest, destlen, fmt, charset);
-	else
-	  snprintf (dest, destlen, fmt, "");
-      }
-      else if (!mutt_is_text_type (aptr->content->type, aptr->content->subtype) ||
-	       !mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
-        optional = 0;
-      break;
-    case 'c':
-      /* XXX */
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%sc", prefix);
-	snprintf (dest, destlen, fmt, aptr->content->type != TYPETEXT ||
-		  aptr->content->noconv ? 'n' : 'c');
-      }
-      else if (aptr->content->type != TYPETEXT || aptr->content->noconv)
-        optional = 0;
-      break;
     case 'd':
       if(!optional)
       {
@@ -343,7 +325,7 @@ void attach_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 
 int mutt_tag_attach (MUTTMENU *menu, int n)
 {
-  return ((((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged) ? 1 : -1);
+  return (((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged);
 }
 
 int mutt_is_message_type (int type, const char *subtype)
@@ -739,7 +721,7 @@ copy_tagged_attachments (FILE *fpout, FILE *fpin, const char *boundary, BODY *bd
   {
     if (bdy->tagged)
     {
-      fprintf (fpout, "--%s\n", boundary);
+      fprintf (fpout, "\n--%s\n", boundary);
       fseek (fpin, bdy->hdr_offset, 0);
       mutt_copy_bytes (fpin, fpout, bdy->length + bdy->offset - bdy->hdr_offset);
     }
@@ -784,6 +766,7 @@ create_tagged_message (const char *tempfile,
     mutt_copy_bytes (src->fp, msg->fp, body->length);
   }
 
+  mx_commit_message (msg, &tmpctx);
   mx_close_message (&msg);
   mx_close_message (&src);
   mx_close_mailbox (&tmpctx);
@@ -805,7 +788,11 @@ static void reply_attachment_list (int op, int tag, HEADER *hdr, BODY *body)
   if (!tag && body->hdr)
   {
     hn = body->hdr;
-    hn->msgno = hdr->msgno; /* required for MH/maildir */
+    hn->msgno   = hdr->msgno; /* required for MH/maildir */
+    hn->replied = hdr->replied;
+    hn->read    = hdr->read;
+    hn->old	= hdr->old;
+    hn->changed = hdr->changed;
     ctx = Context;
   }
   else
@@ -816,20 +803,16 @@ static void reply_attachment_list (int op, int tag, HEADER *hdr, BODY *body)
     ctx = mx_open_mailbox (tempfile, M_QUIET, NULL);
     hn = ctx->hdrs[0];
   }
-  
-  if (op == SENDFORWARD && option (OPTFORWATTACH))
-  {
-    HEADER *newhdr = mutt_new_header();
-    mutt_prepare_edit_message (ctx, newhdr, hn);
-    mutt_free_envelope (&newhdr->env);
-    newhdr->env = mutt_new_envelope();
-    ci_send_message (0, newhdr, NULL, ctx, NULL);
-  }
-  else
-    ci_send_message (op, NULL, NULL, ctx, hn);
 
-  if (hn->replied && !hdr->replied)
-    mutt_set_flag (Context, hdr, M_REPLIED, 1);
+  ci_send_message (op, NULL, NULL, ctx, hn);
+
+  if (hn->replied)
+  {
+    if (Context != ctx)
+      mutt_set_flag (Context, hdr, M_REPLIED, 1);
+    else
+      _mutt_set_flag (Context, hdr, M_REPLIED, 1, 0);
+  }
 
   if (ctx != Context)
   {
@@ -928,7 +911,7 @@ void mutt_view_attachments (HEADER *hdr)
 #ifdef _PGPPATH
   if((hdr->pgp & PGPENCRYPT) && !pgp_valid_passphrase())
   {
-    mx_close_message(&msg);
+    mx_close_message (&msg);
     return;
   }
   
@@ -1007,6 +990,7 @@ void mutt_view_attachments (HEADER *hdr)
 	break;
 
       case OP_DELETE:
+	CHECK_READONLY;
 
 #ifdef _PGPPATH
         if (hdr->pgp)
@@ -1057,31 +1041,32 @@ void mutt_view_attachments (HEADER *hdr)
         break;
 
       case OP_UNDELETE:
-       if (!menu->tagprefix)
-       {
-	 idx[menu->current]->content->deleted = 0;
-	 if (option (OPTRESOLVE) && menu->current < menu->max - 1)
-	 {
-	   menu->current++;
-	   menu->redraw = REDRAW_MOTION_RESYNCH;
-	 }
-	 else
-	   menu->redraw = REDRAW_CURRENT;
-       }
-       else
-       {
-	 int x;
+	CHECK_READONLY;
+	if (!menu->tagprefix)
+	{
+	  idx[menu->current]->content->deleted = 0;
+	  if (option (OPTRESOLVE) && menu->current < menu->max - 1)
+	  {
+	    menu->current++;
+	    menu->redraw = REDRAW_MOTION_RESYNCH;
+	  }
+	  else
+	    menu->redraw = REDRAW_CURRENT;
+	}
+	else
+	{
+	  int x;
 
-	 for (x = 0; x < menu->max; x++)
-	 {
-	   if (idx[x]->content->tagged)
-	   {
-	     idx[x]->content->deleted = 0;
-	     menu->redraw = REDRAW_INDEX;
-	   }
-	 }
-       }
-       break;
+ 	  for (x = 0; x < menu->max; x++)
+	  {
+	    if (idx[x]->content->tagged)
+	    {
+	      idx[x]->content->deleted = 0;
+	      menu->redraw = REDRAW_INDEX;
+	    }
+	  }
+        }
+        break;
 
       case OP_BOUNCE_MESSAGE:
         CHECK_ATTACH;
