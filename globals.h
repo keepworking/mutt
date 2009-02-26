@@ -34,7 +34,6 @@ WHERE char *AttachSep;
 WHERE char *Attribution;
 WHERE char *AttachFormat;
 WHERE char *Charset;
-WHERE char *ComposeFormat;
 WHERE char *DefaultHook;
 WHERE char *DateFmt;
 WHERE char *DsnNotify;
@@ -136,9 +135,9 @@ WHERE short ScoreThresholdRead;
 WHERE short ScoreThresholdFlag;
 
 /* flags for received signals */
-WHERE SIG_ATOMIC_VOLATILE_T SigAlrm INITVAL (0);
-WHERE SIG_ATOMIC_VOLATILE_T SigInt INITVAL (0);
-WHERE SIG_ATOMIC_VOLATILE_T SigWinch INITVAL (0);
+WHERE volatile sig_atomic_t SigAlrm INITVAL (0);
+WHERE volatile sig_atomic_t SigInt INITVAL (0);
+WHERE volatile sig_atomic_t SigWinch INITVAL (0);
 
 WHERE int CurrentMenu;
 
