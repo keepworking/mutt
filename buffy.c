@@ -41,8 +41,9 @@ static short BuffyNotify = 0;	/* # of unnotified new boxes */
 
 #ifdef BUFFY_SIZE
 
-/* Find the last message in the file. * upon success return 0. * If no
- * message found - return -1 */
+/* Find the last message in the file. 
+ * upon success return 0. If no message found - return -1 */
+
 int fseek_last_message (FILE * f)
 {
   long int pos;
@@ -245,7 +246,7 @@ int mutt_buffy_check (int force)
   if (!Incoming)
     return 0;
   t = time (NULL);
-  if (!force && t - BuffyTime < BuffyTimeout)
+  if (!force && (t - BuffyTime < BuffyTimeout))
     return BuffyCount;
  
   BuffyTime = t;
@@ -271,25 +272,27 @@ int mutt_buffy_check (int force)
 #endif
     {
       tmp->new = 0;
-
-      if (stat (tmp->path, &sb) != 0 ||
-        (!tmp->magic && (tmp->magic = mx_get_magic (tmp->path)) <= 0))
+      
+      if (stat (tmp->path, &sb) != 0 || sb.st_size == 0 ||
+	  (!tmp->magic && (tmp->magic = mx_get_magic (tmp->path)) <= 0))
       {
-        /* if the mailbox still doesn't exist, set the newly created flag to
-         * be ready for when it does.
-         */
-        tmp->newly_created = 1;
-        tmp->magic = 0;
+	/* if the mailbox still doesn't exist, set the newly created flag to
+	 * be ready for when it does.
+	 */
+	tmp->newly_created = 1;
+	tmp->magic = 0;
 #ifdef BUFFY_SIZE
-        tmp->size = 0;
+	tmp->size = 0;
 #endif
-        continue;
+	continue;
       }
     }
 
+    /* check to see if the folder is the currently selected folder
+     * before polling */
     if (!Context || !Context->path || 
 #ifdef USE_IMAP
-        /* Poll current IMAP folder like any other */
+        /* unless folder is an IMAP folder */
         tmp->magic == M_IMAP ||
 #endif
 	sb.st_dev != contex_sb.st_dev || sb.st_ino != contex_sb.st_ino)
@@ -346,7 +349,7 @@ int mutt_buffy_check (int force)
 #ifdef USE_IMAP
       case M_IMAP:
         /* poll on do_imap_check, else return cached value */
-        if (do_imap_check)
+	if (do_imap_check)
         {
           tmp->new = 0;
           if (imap_buffy_check (tmp->path) > 0)
@@ -356,8 +359,10 @@ int mutt_buffy_check (int force)
           }
         }
         else
+        {
           if (tmp->new)
             BuffyCount++;
+        }
 
 	break;
 #endif
@@ -373,6 +378,7 @@ int mutt_buffy_check (int force)
     else if (!tmp->notified)
       BuffyNotify++;
   }
+
   BuffyDoneTime = BuffyTime;
   return (BuffyCount);
 }
