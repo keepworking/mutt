@@ -527,7 +527,7 @@ b       edit-bcc                edit the Bcc field
 y       send-message            send the message
 s       edit-subject            edit the Subject
 f       edit-fcc                specify an ``Fcc'' mailbox
-p       pgp-menu                select PGP options
+p       pgp-menu                select PGP options (``i'' version only)
 P       postpone-message        postpone this message until later
 q       quit                    quit (abort) sending the message
 w	write-fcc		write the message to a folder
@@ -1722,12 +1722,7 @@ messages:
 </verb></tscreen>
 
 Where EXPR, USER, ID, and SUBJECT are 
-<ref id="regexp" name="regular expressions">.  Special attention has to be
-made when using regular expressions inside of patterns.  Specifically,
-Mutt's parser for these patterns will strip one level of backslash (\),
-which is normally used for quoting.  If it is your intention to use a
-backslash in the regular expression, you will need to use two backslashes
-instead (\\).
+<ref id="regexp" name="regular expressions">.
 
 *) The forms <tt/&lt;&lsqb;MAX&rsqb;/, <tt/&gt;&lsqb;MIN&rsqb;/,
 <tt/&lsqb;MIN&rsqb;-/ and <tt/-&lsqb;MAX&rsqb;/
@@ -1785,18 +1780,6 @@ or ``Ed +SomeoneElse'':
 <tscreen><verb>
  '~s "^Junk +From +Me$" ~f ("Jim +Somebody"|"Ed +SomeoneElse")'
 </verb></tscreen>
-
-Note that if a regular expression contains parenthesis, or a veritical bar
-("|"), you <bf/must/ enclose the expression in double or single quotes since
-those characters are also used to separate different parts of Mutt's
-pattern language.  For example,
-
-<tscreen><verb>
-~f "me@(mutt\.org|cs\.hmc\.edu)"
-</verb></tscreen>
-
-Without the quotes, the parenthesis would truncate the regular expression
-to simply <em/me@/, which is probably not what you want.
 
 <sect2>Searching by Date
 <p>
@@ -2809,6 +2792,10 @@ application/x-tar-gz; gunzip -c %s | tar -tf - ; copiousoutput
 application/postscript; ps2ascii %s; copiousoutput
 </verb></tscreen>
 
+``unauto_view'' can be used to remove previous entries from the autoview list.
+This can be used with message-hook to autoview messages based on size, etc.
+``unauto_view *'' will remove all previous entries.
+
 <sect1>MIME Multipart/Alternative<label id="alternative_order">
 <p>
 Mutt has some heuristics for determining which attachment of a
@@ -2826,6 +2813,24 @@ Next, mutt will check if any of the types have a defined
 that, Mutt will look for any text type.  As a last attempt, mutt will
 look for any type it knows how to handle.
 
+<sect1>MIME Lookup<label id="mime_lookup">
+<p>
+Mutt's mime&lowbar;lookup list specifies a list of mime-types that should not
+be treated according to their mailcap entry.  This option is designed to
+deal with binary types such as application/octet-stream.  When an attachment's
+mime-type is listed in mime&lowbar;lookup, then the extension of the filename will
+be compared to the list of extensions in the mime.types file.  The mime-type
+associated with this extension will then be used to process the attachment
+according to the rules in the mailcap file and according to any other configuration
+options (such as auto&lowbar;view) specified.  Common usage would be:
+<tscreen><verb>
+mime-lookup application/octet-stream application/X-Lotus-Manuscript
+</verb></tscreen>
+
+In addition, the unmime&lowbar;lookup command may be used to disable this feature
+for any particular mime-type if it had been set, for example, in a global
+muttrc.
+
 <sect>Reference
 <sect1>Command line options<label id="commandline">
 <p>
@@ -2835,16 +2840,15 @@ to send messages from the command line as well.
 
 <tscreen><verb>
 -a      attach a file to a message
--b      specify a blind carbon-copy (BCC) address
 -c      specify a carbon-copy (Cc) address
 -e      specify a config command to be run after initilization files are read
--f      specify a mailbox to load
 -F      specify an alternate file to read initialization commands
+-f      specify a mailbox to load
 -h      print help on command line options
 -H      specify a draft file from which to read a header and body
 -i      specify a file to include in a message composition
--m      specify a default mailbox type
 -n      do not read the system Muttrc
+-m      specify a default mailbox type
 -p      recall a postponed message
 -R      open mailbox in read-only mode
 -s      specify a subject (enclose in quotes if it contains spaces)
@@ -2889,6 +2893,8 @@ The following are the commands understood by mutt.
 <item>
 <tt><ref id="auto_view" name="auto&lowbar;view"></tt> <em/mimetype/ &lsqb; <em/mimetype/ ... &rsqb;
 <item>
+<tt><ref id="auto_view" name="unauto&lowbar;view"></tt> <em/mimetype/ &lsqb; <em/mimetype/ ... &rsqb;
+<item>
 <tt><ref id="bind" name="bind"></tt> <em/map/ <em/key/ <em/function/
 <item>
 <tt><ref id="charset-hook" name="charset-hook"></tt> <em/alias/ <em/charset/
@@ -2926,6 +2932,10 @@ The following are the commands understood by mutt.
 <tt><ref id="mbox-hook" name="mbox-hook"></tt> <em/pattern/ <em/mailbox/
 <item>
 <tt><ref id="message-hook" name="message-hook"></tt> <em/pattern/ <em/command/
+<item>
+<tt><ref id="mime_lookup" name="mime&lowbar;lookup"></tt> <em/mimetype/ &lsqb; <em/mimetype/ ... &rsqb;
+<item>
+<tt><ref id="mime_lookup" name="unmime&lowbar;lookup"></tt> <em/mimetype/ &lsqb; <em/mimetype/ ... &rsqb;
 <item>
 <tt><ref id="color" name="mono"></tt> <em/object attribute/ &lsqb; <em/regexp/ &rsqb;
 <item>
