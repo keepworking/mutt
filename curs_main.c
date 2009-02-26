@@ -47,10 +47,10 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-static const char No_mailbox_is_open[] = N_("No mailbox is open.");
-static const char There_are_no_messages[] = N_("There are no messages.");
-static const char Mailbox_is_read_only[] = N_("Mailbox is read-only.");
-static const char Function_not_permitted_in_attach_message_mode[] = N_("Function not permitted in attach-message mode.");
+static const char *No_mailbox_is_open = N_("No mailbox is open.");
+static const char *There_are_no_messages = N_("There are no messages.");
+static const char *Mailbox_is_read_only = N_("Mailbox is read-only.");
+static const char *Function_not_permitted_in_attach_message_mode = N_("Function not permitted in attach-message mode.");
 
 #define CHECK_MSGCOUNT if (!Context) \
 	{ \
@@ -868,17 +868,17 @@ int mutt_index_menu (void)
 
       case OP_MAIN_CHANGE_FOLDER:
       
-	if (attach_msg || option (OPTREADONLY))
+	if (attach_msg)
 	  op = OP_MAIN_CHANGE_FOLDER_READONLY;
 
 	/* fallback to the readonly case */
 
       case OP_MAIN_CHANGE_FOLDER_READONLY:
 
-        if (op == OP_MAIN_CHANGE_FOLDER)
-          cp = _("Open mailbox");
-        else
+        if ((op == OP_MAIN_CHANGE_FOLDER_READONLY) || option (OPTREADONLY))
           cp = _("Open mailbox in read-only mode");
+        else
+          cp = _("Open mailbox");
 
 	buf[0] = '\0';
 	mutt_buffy (buf);
@@ -1144,7 +1144,7 @@ int mutt_index_menu (void)
 	    }
 	  }
 
-	  if (CUR->collapsed && (Sort & SORT_MASK) == SORT_THREADS)
+	  if ((Sort & SORT_MASK) == SORT_THREADS && CUR->collapsed)
 	  {
 	    if ((op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD) &&
 		UNREAD (CUR))
@@ -1188,34 +1188,20 @@ int mutt_index_menu (void)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
+	mutt_set_flag (Context, CURHDR, M_FLAG, !CURHDR->flagged);
 
-        if (tag)
-        {
-	  for (j = 0; j < Context->vcount; j++)
+	if (option (OPTRESOLVE))
+	{
+	  if ((menu->current = ci_next_undeleted (menu->current)) == -1)
 	  {
-	    if (Context->hdrs[Context->v2r[j]]->tagged)
-	      mutt_set_flag (Context, Context->hdrs[Context->v2r[j]],
-			     M_FLAG, !Context->hdrs[Context->v2r[j]]->flagged);
-	  }
-
-	  menu->redraw |= REDRAW_INDEX;
-	}
-        else
-        {
-	  mutt_set_flag (Context, CURHDR, M_FLAG, !CURHDR->flagged);
-	  if (option (OPTRESOLVE))
-	  {
-	    if ((menu->current = ci_next_undeleted (menu->current)) == -1)
-	    {
-	      menu->current = menu->oldcurrent;
-	      menu->redraw = REDRAW_CURRENT;
-	    }
-	    else
-	      menu->redraw = REDRAW_MOTION_RESYNCH;
+	    menu->current = menu->oldcurrent;
+	    menu->redraw = REDRAW_CURRENT;
 	  }
 	  else
-	    menu->redraw = REDRAW_CURRENT;
+	    menu->redraw = REDRAW_MOTION_RESYNCH;
 	}
+	else
+	  menu->redraw = REDRAW_CURRENT;
 	menu->redraw |= REDRAW_STATUS;
 	break;
 
@@ -1487,7 +1473,7 @@ int mutt_index_menu (void)
       case OP_DISPLAY_ADDRESS:
 
 	CHECK_MSGCOUNT;
-	mutt_display_address (CURHDR->env);
+	mutt_display_address (CURHDR->env->from);
 	break;
 
       case OP_ENTER_COMMAND:
@@ -1727,9 +1713,7 @@ int mutt_index_menu (void)
     {
       menu->menu = MENU_MAIN;
       menu->redraw = REDRAW_FULL;
-#if 0
       set_option (OPTWEED); /* turn header weeding back on. */
-#endif
     }
 
     if (done) break;
