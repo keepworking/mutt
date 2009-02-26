@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-9 Michael R. Elkins <me@cs.hmc.edu>, and others
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -143,7 +143,7 @@ msg_search (CONTEXT *ctx, regex_t *rx, char *buf, size_t blen, int op, int msgno
       /* decode the header / body */
       memset (&s, 0, sizeof (s));
       s.fpin = msg->fp;
-      s.flags = M_CHARCONV;
+      s.flags |= M_CHARCONV;
       mutt_mktemp (tempfile);
       if ((s.fpout = safe_fopen (tempfile, "w+")) == NULL)
       {
