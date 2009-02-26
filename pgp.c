@@ -955,10 +955,9 @@ static void convert_to_7bit (BODY *a)
     if (a->type == TYPEMULTIPART)
     {
       if (a->encoding != ENC7BIT)
-      {
         a->encoding = ENC7BIT;
-        convert_to_7bit (a->parts);
-      }
+      if (option (OPTPGPSTRICTENC))
+	convert_to_7bit (a->parts);
     } 
     else if (a->type == TYPEMESSAGE
 	     && strcasecmp(a->subtype, "delivery-status"))
@@ -976,7 +975,7 @@ static void convert_to_7bit (BODY *a)
   }
 }
 
-BODY *pgp_sign_message (BODY *a)
+static BODY *pgp_sign_message (BODY *a)
 {
   PARAMETER *p;
   BODY *t;
@@ -1110,7 +1109,7 @@ BODY *pgp_sign_message (BODY *a)
  */
 char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
 {
-  char *key, *keylist = NULL;
+  char *key, *keyID, *keylist = NULL;
   size_t keylist_size = 0;
   size_t keylist_used = 0;
   ADDRESS *tmp = NULL;
@@ -1145,9 +1144,17 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
 
   for (p = tmp; p ; p = p->next)
   {
-    if ((k_info = ki_getkeybyaddr (pgp, p, db, KEYFLAG_CANENCRYPT)) == NULL)
+    char buf[LONG_STRING];
+
+    k_info = NULL;
+    if ((keyID = mutt_pgp_hook (p)) != NULL)
     {
-      char buf[LONG_STRING];
+      snprintf (buf, sizeof (buf), "Use keyID = \"%s\" for %s?", keyID, p->mailbox);
+      if (mutt_yesorno (buf, M_YES) == M_YES)
+	k_info = ki_getkeybystr (pgp, keyID, db, KEYFLAG_CANENCRYPT);
+    }
+    if (k_info == NULL && (k_info = ki_getkeybyaddr (pgp, p, db, KEYFLAG_CANENCRYPT)) == NULL)
+    {
       snprintf (buf, sizeof (buf), "Enter keyID for %s: ", p->mailbox);
       
       if ((key = pgp_ask_for_key (pgp, db, buf, p->mailbox,
@@ -1173,7 +1180,9 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
   return (keylist);
 }
 
-BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
+/* Warning: "a" is no longer free()d in this routine, you need
+ * to free() it later.  This is necessary for $fcc_attach. */
+static BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
 {
   char buf[LONG_STRING];
   char tempfile[_POSIX_PATH_MAX], pgperrfile[_POSIX_PATH_MAX];
@@ -1297,46 +1306,46 @@ BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
   t->parts->next->use_disp = 0;
   t->parts->next->unlink = 1; /* delete after sending the message */
 
-  mutt_free_body (&a); /* no longer needed! */
-
   return (t);
 }
 
-int pgp_protect (HEADER *msg)
+int pgp_get_keys (HEADER *msg, char **pgpkeylist)
 {
-  char *pgpkeylist = NULL;
-  BODY *pbody = NULL;
-
   /* Do a quick check to make sure that we can find all of the encryption
    * keys if the user has requested this service.
    */
 
   set_option (OPTPGPCHECKTRUST);
 
+  *pgpkeylist = NULL;
   if (msg->pgp & PGPENCRYPT)
   {
-    if ((pgpkeylist = pgp_findKeys (msg->env->to, msg->env->cc, msg->env->bcc)) == NULL)
+    if ((*pgpkeylist = pgp_findKeys (msg->env->to, msg->env->cc,
+				      msg->env->bcc)) == NULL)
       return (-1);
   }
+
+  return (0);
+}
+
+int pgp_protect (HEADER *msg, char *pgpkeylist)
+{
+  BODY *pbody = NULL;
 
   if ((msg->pgp & PGPSIGN) && !pgp_valid_passphrase ())
     return (-1);
 
-  endwin ();
+  if (!isendwin ())
+    endwin ();
   if (msg->pgp & PGPENCRYPT)
-  {
     pbody = pgp_encrypt_message (msg->content, pgpkeylist, msg->pgp & PGPSIGN);
-    safe_free ((void **) &pgpkeylist);
-    if (!pbody)
-      return (-1);
-  }
   else if (msg->pgp & PGPSIGN)
-  {
-    if ((pbody = pgp_sign_message (msg->content)) == NULL)
-      return (-1);
-  }
+    pbody = pgp_sign_message (msg->content);
+
+  if (!pbody)
+    return (-1);
   msg->content = pbody;
-  return 0;
+  return (0);
 }
 
 #endif /* _PGPPATH */
