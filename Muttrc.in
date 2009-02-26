@@ -14,7 +14,7 @@ ignore sender references return-path lines
 # imitate the old search-body function
 macro index \eb '/~b ' 'search in message bodies'
 
-# simluate the old url menu
+# simulate the old url menu
 macro index \cb |urlview\n 'call urlview to extract URLs out of a message'
 macro pager \cb |urlview\n 'call urlview to extract URLs out of a message'
 
@@ -23,7 +23,7 @@ macro generic <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 macro index   <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 macro pager   <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 
-# If Mutt is unable to determine your sites domain name correctly, you can
+# If Mutt is unable to determine your site's domain name correctly, you can
 # set the default here.
 #
 # set hostname=cs.hmc.edu
@@ -74,7 +74,6 @@ macro pager   <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 # set folder_format="%N %F %2l %-8.8u %-8.8g %8s %d %f"
 # set followup_to
 # unset force_name
-# unset forward_attachment
 # set forward_decode
 # unset forward_decrypt
 # set forward_format="[%a: %s]"
@@ -85,17 +84,14 @@ macro pager   <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 # unset hidden_host
 # set history=10
 # set hostname=""
-# unset ignore_list_rely_to
-# set implicit_autoview=no
-# set in_reply_to="%i; from %n on %{!%a, %b %d, %Y at %I:%M:%S%p %Z}"
 # set include=ask-yes
 # set indent_string="> "
 # set index_format="%4C %Z %{%b %d} %-15.15L (%4l) %s"
+# unset ignore_list_reply_to
 # set ispell="@ISPELL@"
 # set locale="C"
 # set mail_check=5
 # set mailcap_path=""
-# set mailcap_sanitize # Change only if you know what you are doing!
 # set mark_old
 # set markers
 # set mask="!^\\.[^.]"
@@ -163,18 +159,19 @@ macro pager   <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 # unset tilde
 # set timeout=600
 # set tmpdir=""
-# set to_chars="+TCF"
+# set to_chars=" +TCF"
 # unset uncollapse_jump
 # unset use_8bitmime
 # set use_domain
 # set use_from
+# set use_mailcap
 # set visual=""
 # set wait_key
 # set wrap_search
 # set write_bcc
 # set write_inc=10
 
-## The following options are only vaild if you have
+## The following options are only valid if you have
 ## compiled in IMAP support
 
 # set imap_user=""
@@ -187,13 +184,11 @@ macro pager   <f1> "!less @docdir@/manual.txt\n" "Show Mutt documentation"
 # unset pgp_autosign
 # unset pgp_autoencrypt
 # set pgp_encryptself
-# set pgp_entry_format="%4n %t%f %4l/0x%k %-4a %2c %u"
 # unset pgp_long_ids
 # unset pgp_replyencrypt
 # unset pgp_replysign
 # set pgp_sign_as=""
 # set pgp_sign_micalg="pgp-md5"
-# set pgp_sort_keys=address
 # set pgp_strict_enc
 # set pgp_timeout=300
 # set pgp_verify_sig=yes
