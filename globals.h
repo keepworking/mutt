@@ -24,7 +24,6 @@ WHERE char Errorbuf[SHORT_STRING];
 
 WHERE char *AliasFile;
 WHERE char *AliasFmt;
-WHERE char *AttachSep;
 WHERE char *Attribution;
 WHERE char *AttachFormat;
 WHERE char *Charset;

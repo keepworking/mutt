@@ -54,6 +54,10 @@
 #include <utime.h>
 #endif
 
+/* HP-UX and ConvexOS don't have this macro */
+#ifndef S_ISLNK
+#define S_ISLNK(x) (((x) & S_IFMT) == S_IFLNK ? 1 : 0)
+#endif
 
 #define mutt_is_spool(s)  (strcmp (NONULL(Spoolfile), s) == 0)
 
@@ -69,12 +73,9 @@ static int invoke_dotlock(const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
-  char *f;
   
   if(flags & DL_FL_RETRY)
     snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
-  
-  f = mutt_quote_filename(path);
   
   snprintf(cmd, sizeof(cmd),
 	   "%s %s%s%s%s%s%s",
@@ -84,9 +85,7 @@ static int invoke_dotlock(const char *path, int flags, int retry)
 	   flags & DL_FL_USEPRIV ? "-p " : "",
 	   flags & DL_FL_FORCE ? "-f " : "",
 	   flags & DL_FL_RETRY ? r : "",
-	   f);
-  
-  FREE(&f);
+	   path);
 
   return mutt_system(cmd);
 }
@@ -110,7 +109,7 @@ retry_lock:
   {
     char msg[LONG_STRING];
 
-    snprintf(msg, sizeof(msg), _("Lock count exceeded, remove lock for %s?"),
+    snprintf(msg, sizeof(msg), "Lock count exceeded, remove lock for %s?",
 	     path);
     if(retry && mutt_yesorno(msg, 1) == 1)
     {
@@ -174,13 +173,13 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
     if (prev_sb.st_size == sb.st_size && ++count >= (timeout?MAXLOCKATTEMPT:0))
     {
       if (timeout)
-	mutt_error _("Timeout exceeded while attempting fcntl lock!");
+	mutt_error ("Timeout exceeded while attempting fcntl lock!");
       return (-1);
     }
 
     prev_sb = sb;
 
-    mutt_message (_("Waiting for fcntl lock... %d"), ++attempt);
+    mutt_message ("Waiting for fcntl lock... %d", ++attempt);
     sleep (1);
   }
 #endif /* USE_FCNTL */
@@ -208,14 +207,14 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
     if (prev_sb.st_size == sb.st_size && ++count >= (timeout?MAXLOCKATTEMPT:0))
     {
       if (timeout)
-	mutt_error _("Timeout exceeded while attempting flock lock!");
+	mutt_error ("Timeout exceeded while attempting flock lock!");
       r = -1;
       break;
     }
 
     prev_sb = sb;
 
-    mutt_message (_("Waiting for flock attempt... %d"), ++attempt);
+    mutt_message ("Waiting for flock attempt... %d", ++attempt);
     sleep (1);
   }
 #endif /* USE_FLOCK */
@@ -293,7 +292,7 @@ FILE *mx_open_file_lock (const char *path, const char *mode)
 
 #ifdef USE_IMAP
 
-int mx_is_imap(const char *p)
+static int mx_is_imap(const char *p)
 {
   return p && (*p == '{');
 }
@@ -417,7 +416,7 @@ static int mx_open_mailbox_append (CONTEXT *ctx)
     switch (ctx->magic)
     {
       case 0:
-	mutt_error (_("%s is not a mailbox."), ctx->path);
+	mutt_error ("%s is not a mailbox.", ctx->path);
 	/* fall through */
       case -1:
 	return (-1);
@@ -536,7 +535,6 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
   ctx->path = safe_strdup (path);
 
   ctx->msgnotreadyet = -1;
-  ctx->collapsed = 0;
   
   if (flags & M_QUIET)
     ctx->quiet = 1;
@@ -558,7 +556,7 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
   ctx->magic = mx_get_magic (path);
   
   if(ctx->magic == 0)
-    mutt_error (_("%s is not a mailbox."), path);
+    mutt_error ("%s is not a mailbox.", path);
 
   if(ctx->magic == -1)
     mutt_perror(path);
@@ -583,7 +581,7 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
   ctx->subj_hash = hash_create (257);
 
   if (!ctx->quiet)
-    mutt_message (_("Reading %s..."), ctx->path);
+    mutt_message ("Reading %s...", ctx->path);
 
   switch (ctx->magic)
   {
@@ -670,7 +668,7 @@ static int sync_mailbox (CONTEXT *ctx)
   int rc = -1;
 
   if (!ctx->quiet)
-    mutt_message (_("Writing %s..."), ctx->path);
+    mutt_message ("Writing %s...", ctx->path);
   switch (ctx->magic)
   {
     case M_MBOX:
@@ -750,7 +748,7 @@ int mx_close_mailbox (CONTEXT *ctx)
 
     if (isSpool)
     {
-      snprintf (buf, sizeof (buf), _("Move read messages to %s?"), mbox);
+      snprintf (buf, sizeof (buf), "Move read messages to %s?", mbox);
       if ((move_messages = query_quadoption (OPT_MOVE, buf)) == -1)
 	return (-1);
     }
@@ -758,9 +756,8 @@ int mx_close_mailbox (CONTEXT *ctx)
 
   if (ctx->deleted)
   {
-    snprintf (buf, sizeof (buf), ctx->deleted == 1
-	     ? _("Purge %d deleted message?") : _("Purge %d deleted messages?"),
-	      ctx->deleted);
+    snprintf (buf, sizeof (buf), "Purge %d deleted message%s?",
+	      ctx->deleted, ctx->deleted == 1 ? "" : "s");
     if ((purge = query_quadoption (OPT_DELETE, buf)) < 0)
       return (-1);
   }
@@ -779,7 +776,7 @@ int mx_close_mailbox (CONTEXT *ctx)
     if (mx_open_mailbox (mbox, M_APPEND, &f) == NULL)
       return (-1);
 
-    mutt_message (_("Moving read messages to %s..."), mbox);
+    mutt_message ("Moving read messages to %s...", mbox);
 
     for (i = 0; i < ctx->msgcount; i++)
     {
@@ -795,7 +792,7 @@ int mx_close_mailbox (CONTEXT *ctx)
   }
   else if (!ctx->changed && ctx->deleted == 0)
   {
-    mutt_message _("Mailbox is unchanged.");
+    mutt_message ("Mailbox is unchanged.");
     mx_fastclose_mailbox (ctx);
     return 0;
   }
@@ -814,10 +811,10 @@ int mx_close_mailbox (CONTEXT *ctx)
   }
 
   if (move_messages)
-    mutt_message (_("%d kept, %d moved, %d deleted."),
+    mutt_message ("%d kept, %d moved, %d deleted.",
 		  ctx->msgcount - ctx->deleted, read_msgs, ctx->deleted);
   else
-    mutt_message (_("%d kept, %d deleted."),
+    mutt_message ("%d kept, %d deleted.",
 		  ctx->msgcount - ctx->deleted, ctx->deleted);
 
   if (ctx->msgcount == ctx->deleted &&
@@ -830,73 +827,6 @@ int mx_close_mailbox (CONTEXT *ctx)
   return 0;
 }
 
-
-/* update a Context structure's internal tables. */
-
-void mx_update_tables(CONTEXT *ctx, int do_delete)
-{
-  int i, j;
-  
-  /* update memory to reflect the new state of the mailbox */
-  ctx->vcount = 0;
-  ctx->vsize = 0;
-  ctx->tagged = 0;
-  ctx->deleted = 0;
-  ctx->new = 0;
-  ctx->unread = 0;
-  ctx->changed = 0;
-  ctx->flagged = 0;
-#define this_body ctx->hdrs[j]->content
-  for (i = 0, j = 0; i < ctx->msgcount; i++)
-  {
-    if ((do_delete && !ctx->hdrs[i]->deleted) || 
-	(!do_delete && ctx->hdrs[i]->active))
-    {
-      if (i != j)
-      {
-	ctx->hdrs[j] = ctx->hdrs[i];
-	ctx->hdrs[i] = NULL;
-      }
-      ctx->hdrs[j]->msgno = j;
-      if (ctx->hdrs[j]->virtual != -1)
-      {
-	ctx->v2r[ctx->vcount] = j;
-	ctx->hdrs[j]->virtual = ctx->vcount++;
-	ctx->vsize += this_body->length + this_body->offset -
-	  this_body->hdr_offset;
-      }
-      ctx->hdrs[j]->changed = 0;
-      if (ctx->hdrs[j]->tagged)
-	ctx->tagged++;
-      if (ctx->hdrs[j]->flagged)
-	ctx->flagged++;
-      if (!ctx->hdrs[j]->read)
-      { 
-	ctx->unread++;
-	if (!ctx->hdrs[j]->old)
-	  ctx->new++;
-      } 
-      j++;
-    }
-    else
-    {
-      if (ctx->magic == M_MH || ctx->magic == M_MAILDIR)
-	ctx->size -= (ctx->hdrs[i]->content->length +
-		      ctx->hdrs[i]->content->offset -
-		      ctx->hdrs[i]->content->hdr_offset);
-      /* remove message from the hash tables */
-      if (ctx->hdrs[i]->env->real_subj)
-	hash_delete (ctx->subj_hash, ctx->hdrs[i]->env->real_subj, ctx->hdrs[i], NULL);
-      if (ctx->hdrs[i]->env->message_id)
-	hash_delete (ctx->id_hash, ctx->hdrs[i]->env->message_id, ctx->hdrs[i], NULL);
-      mutt_free_header (&ctx->hdrs[i]);
-    }
-  }
-#undef this_body
-  ctx->msgcount = j;
-}
-
-
 /* save changes to mailbox
  *
  * return values:
@@ -905,29 +835,29 @@ void mx_update_tables(CONTEXT *ctx, int do_delete)
  */
 int mx_sync_mailbox (CONTEXT *ctx)
 {
-  int rc, i;
+  int rc, i, j;
 
   if (ctx->dontwrite)
   {
     char buf[STRING], tmp[STRING];
     if (km_expand_key (buf, sizeof(buf),
                        km_find_func (MENU_MAIN, OP_TOGGLE_WRITE)))
-      snprintf (tmp, sizeof(tmp), _(" Press '%s' to toggle write"), buf);
+      snprintf (tmp, sizeof(tmp), " Press '%s' to toggle write", buf);
     else
-      strfcpy (tmp, _("Use 'toggle-write' to re-enable write!"), sizeof(tmp));
+      strfcpy (tmp, "Use 'toggle-write' to re-enable write!", sizeof(tmp));
 
-    mutt_error (_("Mailbox is marked unwritable. %s"), tmp);
+    mutt_error ("Mailbox is marked unwritable. %s", tmp);
     return -1;
   }
   else if (ctx->readonly)
   {
-    mutt_error _("Mailbox is read-only.");
+    mutt_error ("Mailbox is read-only.");
     return -1;
   }
 
   if (!ctx->changed && !ctx->deleted)
   {
-    mutt_message _("Mailbox is unchanged.");
+    mutt_message ("Mailbox is unchanged.");
     return (0);
   }
 
@@ -935,9 +865,8 @@ int mx_sync_mailbox (CONTEXT *ctx)
   {
     char buf[SHORT_STRING];
 
-    snprintf (buf, sizeof (buf), ctx->deleted == 1
-	     ? _("Purge %d deleted message?") : _("Purge %d deleted messages?"),
-	      ctx->deleted);
+    snprintf (buf, sizeof (buf), "Purge %d deleted message%s?",
+	      ctx->deleted, ctx->deleted == 1 ? "" : "s");
     if ((rc = query_quadoption (OPT_DELETE, buf)) < 0)
       return (-1);
     else if (rc == M_NO)
@@ -952,7 +881,7 @@ int mx_sync_mailbox (CONTEXT *ctx)
 
   if ((rc = sync_mailbox (ctx)) == 0)
   {
-    mutt_message (_("%d kept, %d deleted."), ctx->msgcount - ctx->deleted,
+    mutt_message ("%d kept, %d deleted.", ctx->msgcount - ctx->deleted,
 		  ctx->deleted);
     sleep (1); /* allow the user time to read the message */
 
@@ -965,10 +894,64 @@ int mx_sync_mailbox (CONTEXT *ctx)
       return 0;
     }
 
-    mx_update_tables(ctx, 1);
-    set_option (OPTSORTCOLLAPSE);
+    /* update memory to reflect the new state of the mailbox */
+    ctx->vcount = 0;
+    ctx->vsize = 0;
+    ctx->tagged = 0;
+    ctx->deleted = 0;
+    ctx->new = 0;
+    ctx->unread = 0;
+    ctx->changed = 0;
+    ctx->flagged = 0;
+#define this_body ctx->hdrs[j]->content
+    for (i = 0, j = 0; i < ctx->msgcount; i++)
+    {
+      if (!ctx->hdrs[i]->deleted)
+      {
+	if (i != j)
+	{
+	  ctx->hdrs[j] = ctx->hdrs[i];
+	  ctx->hdrs[i] = NULL;
+	}
+	ctx->hdrs[j]->msgno = j;
+	if (ctx->hdrs[j]->virtual != -1)
+	{
+	  ctx->v2r[ctx->vcount] = j;
+	  ctx->hdrs[j]->virtual = ctx->vcount++;
+	  ctx->vsize += this_body->length + this_body->offset -
+	                this_body->hdr_offset;
+	}
+	ctx->hdrs[j]->changed = 0;
+	if (ctx->hdrs[j]->tagged)
+	  ctx->tagged++;
+	if (ctx->hdrs[j]->flagged)
+	  ctx->flagged++;
+	if (!ctx->hdrs[j]->read)
+	{ 
+	  ctx->unread++;
+	  if (!ctx->hdrs[j]->old)
+	    ctx->new++;
+	} 
+	j++;
+      }
+      else
+      {
+	if (ctx->magic == M_MH || ctx->magic == M_MAILDIR)
+	 ctx->size -= (ctx->hdrs[i]->content->length +
+	               ctx->hdrs[i]->content->offset -
+		       ctx->hdrs[i]->content->hdr_offset);
+	/* remove message from the hash tables */
+	if (ctx->hdrs[i]->env->real_subj)
+	  hash_delete (ctx->subj_hash, ctx->hdrs[i]->env->real_subj, ctx->hdrs[i], NULL);
+	if (ctx->hdrs[i]->env->message_id)
+	  hash_delete (ctx->id_hash, ctx->hdrs[i]->env->message_id, ctx->hdrs[i], NULL);
+	mutt_free_header (&ctx->hdrs[i]);
+      }
+    }
+#undef this_body
+    ctx->msgcount = j;
+
     mutt_sort_headers (ctx, 1); /* rethread from scratch */
-    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (rc);
@@ -976,7 +959,7 @@ int mx_sync_mailbox (CONTEXT *ctx)
 
 int mh_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
 {
-  int hi = 0;
+  int hi = 1;
   int fd, n;
   char *cp;
   char path[_POSIX_PATH_MAX];
@@ -1129,6 +1112,182 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
     safe_free ((void **) &msg);
 
   return msg;
+}
+
+int mutt_reopen_mailbox (CONTEXT *ctx, int *index_hint)
+{
+  int (*cmp_headers) (const HEADER *, const HEADER *) = NULL;
+  HEADER **old_hdrs;
+  int old_msgcount;
+  int msg_mod = 0;
+  int index_hint_set;
+  int i, j;
+  int rc = -1;
+
+  /* silent operations */
+  ctx->quiet = 1;
+  
+  mutt_message ("Reopening mailbox...");
+  
+  /* our heuristics require the old mailbox to be unsorted */
+  if (Sort != SORT_ORDER)
+  {
+    short old_sort;
+
+    old_sort = Sort;
+    Sort = SORT_ORDER;
+    mutt_sort_headers (ctx, 1);
+    Sort = old_sort;
+  }
+
+  /* save the old headers */
+  old_msgcount = ctx->msgcount;
+  old_hdrs = ctx->hdrs;
+
+  /* simulate a close */
+  hash_destroy (&ctx->id_hash, NULL);
+  hash_destroy (&ctx->subj_hash, NULL);
+  safe_free ((void **) &ctx->v2r);
+  if (ctx->readonly)
+  {
+    for (i = 0; i < ctx->msgcount; i++)
+      mutt_free_header (&(ctx->hdrs[i])); /* nothing to do! */
+      safe_free ((void **) &ctx->hdrs);
+  }
+  else
+    ctx->hdrs = NULL;
+
+  ctx->hdrmax = 0;	/* force allocation of new headers */
+  ctx->msgcount = 0;
+  ctx->vcount = 0;
+  ctx->tagged = 0;
+  ctx->deleted = 0;
+  ctx->new = 0;
+  ctx->unread = 0;
+  ctx->flagged = 0;
+  ctx->changed = 0;
+  ctx->id_hash = hash_create (257);
+  ctx->subj_hash = hash_create (257);
+
+  switch (ctx->magic)
+  {
+    case M_MBOX:
+      fseek (ctx->fp, 0, 0);
+      cmp_headers = mbox_strict_cmp_headers;
+      rc = mbox_parse_mailbox (ctx);
+      break;
+
+    case M_MMDF:
+      fseek (ctx->fp, 0, 0);
+      cmp_headers = mbox_strict_cmp_headers;
+      rc = mmdf_parse_mailbox (ctx);
+      break;
+
+    case M_MH:
+      /* cmp_headers = mh_strict_cmp_headers; */
+      rc = mh_read_dir (ctx, NULL);
+      break;
+
+    case M_MAILDIR:
+      /* cmp_headers = maildir_strict_cmp_headers; */
+      rc = maildir_read_dir (ctx);
+      break;
+
+    default:
+      rc = -1;
+      break;
+  }
+  
+  if (rc == -1)
+  {
+    /* free the old headers */
+    for (j = 0; j < old_msgcount; j++)
+      mutt_free_header (&(old_hdrs[j]));
+    safe_free ((void **) &old_hdrs);
+
+    ctx->quiet = 0;
+    return (-1);
+  }
+
+  /* now try to recover the old flags */
+
+  index_hint_set = (index_hint == NULL);
+
+  if (!ctx->readonly)
+  {
+    for (i = 0; i < ctx->msgcount; i++)
+    {
+      int found = 0;
+
+      /* some messages have been deleted, and new  messages have been
+       * appended at the end; the heuristic is that old messages have then
+       * "advanced" towards the beginning of the folder, so we begin the
+       * search at index "i"
+       */
+      for (j = i; j < old_msgcount; j++)
+      {
+	if (old_hdrs[j] == NULL)
+	  continue;
+	if (cmp_headers (ctx->hdrs[i], old_hdrs[j]))
+	{
+	  found = 1;
+	  break;
+	}
+      }
+      if (!found)
+      {
+	for (j = 0; j < i; j++)
+	{
+	  if (old_hdrs[j] == NULL)
+	    continue;
+	  if (cmp_headers (ctx->hdrs[i], old_hdrs[j]))
+	  {
+	    found = 1;
+	    break;
+	  }
+	}
+      }
+
+      if (found)
+      {
+	/* this is best done here */
+	if (!index_hint_set && *index_hint == j)
+	  *index_hint = i;
+
+	if (old_hdrs[j]->changed)
+	{
+	  /* Only update the flags if the old header was changed;
+	   * otherwise, the header may have been modified externally,
+	   * and we don't want to lose _those_ changes
+	   */
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_FLAG, old_hdrs[j]->flagged);
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_REPLIED, old_hdrs[j]->replied);
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_OLD, old_hdrs[j]->old);
+	  mutt_set_flag (ctx, ctx->hdrs[i], M_READ, old_hdrs[j]->read);
+	}
+	mutt_set_flag (ctx, ctx->hdrs[i], M_DELETE, old_hdrs[j]->deleted);
+	mutt_set_flag (ctx, ctx->hdrs[i], M_TAG, old_hdrs[j]->tagged);
+
+	/* we don't need this header any more */
+	mutt_free_header (&(old_hdrs[j]));
+      }
+    }
+
+    /* free the remaining old headers */
+    for (j = 0; j < old_msgcount; j++)
+    {
+      if (old_hdrs[j])
+      {
+	mutt_free_header (&(old_hdrs[j]));
+	msg_mod = 1;
+      }
+    }
+    safe_free ((void **) &old_hdrs);
+  }
+
+  ctx->quiet = 0;
+
+  return ((ctx->changed || msg_mod) ? M_REOPENED : M_NEW_MAIL);
 }
 
 /* check for new mail */
