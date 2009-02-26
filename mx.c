@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -66,29 +65,31 @@
 
 #ifdef DL_STANDALONE
 
-static int invoke_dotlock (const char *path, int flags, int retry)
+static int invoke_dotlock(const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
-  char f[SHORT_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
+  char *f;
   
-  if (flags & DL_FL_RETRY)
-    snprintf (r, sizeof (r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
+  if(flags & DL_FL_RETRY)
+    snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
   
-  mutt_quote_filename (f, sizeof (f), path);
+  f = mutt_quote_filename(path);
   
-  snprintf (cmd, sizeof (cmd),
-	    "%s %s%s%s%s%s%s%s",
-	    NONULL (MuttDotlock),
-	    flags & DL_FL_TRY ? "-t " : "",
-	    flags & DL_FL_UNLOCK ? "-u " : "",
-	    flags & DL_FL_USEPRIV ? "-p " : "",
-	    flags & DL_FL_FORCE ? "-f " : "",
-	    flags & DL_FL_UNLINK ? "-d " : "",
-	    flags & DL_FL_RETRY ? r : "",
-	    f);
+  snprintf(cmd, sizeof(cmd),
+	   "%s %s%s%s%s%s%s%s",
+	   DOTLOCK,
+	   flags & DL_FL_TRY ? "-t " : "",
+	   flags & DL_FL_UNLOCK ? "-u " : "",
+	   flags & DL_FL_USEPRIV ? "-p " : "",
+	   flags & DL_FL_FORCE ? "-f " : "",
+	   flags & DL_FL_UNLINK ? "-d " : "",
+	   flags & DL_FL_RETRY ? r : "",
+	   f);
   
-  return mutt_system (cmd);
+  FREE(&f);
+
+  return mutt_system(cmd);
 }
 
 #else 
@@ -728,14 +729,13 @@ static int sync_mailbox (CONTEXT *ctx)
       
 #ifdef USE_IMAP
     case M_IMAP:
-      /* extra argument means EXPUNGE */
-      rc = imap_sync_mailbox (ctx, M_YES);
+      rc = imap_sync_mailbox (ctx);
       break;
 #endif /* USE_IMAP */
   }
 
 #if 0
-  if (!ctx->quiet && !ctx->shutup && rc == -1)
+  if (!ctx->quiet && rc == -1)
     mutt_error ( _("Could not synchronize mailbox %s!"), ctx->path);
 #endif
   
@@ -816,7 +816,7 @@ int mx_close_mailbox (CONTEXT *ctx)
   }
 
 #ifdef USE_IMAP
-  /* IMAP servers manage the OLD flag themselves */
+  /* IMAP servers managed the OLD flag themselves */
   if (ctx->magic != M_IMAP)
 #endif
   if (option (OPTMARKOLD))
