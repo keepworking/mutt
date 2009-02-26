@@ -20,9 +20,6 @@
 #include "buffy.h"
 #include "mx.h"
 #include "mailbox.h"
-#ifdef USE_IMAP
-#include "imap.h"
-#endif
 
 #include <string.h>
 #include <sys/stat.h>
@@ -220,6 +217,7 @@ int mutt_buffy_check (int force)
   DIR *dirp;
   char path[_POSIX_PATH_MAX];
   struct stat contex_sb;
+  int res;
   time_t t;
 
   /* fastest return if there are no mailboxes */
@@ -244,13 +242,6 @@ int mutt_buffy_check (int force)
   {
     tmp->new = 0;
 
-#ifdef USE_IMAP
-    if ((tmp->magic == M_IMAP) || mx_is_imap (tmp->path))
-    {
-      tmp->magic = M_IMAP;
-    }
-    else
-#endif
     if (stat (tmp->path, &sb) != 0 ||
 	(!tmp->magic && (tmp->magic = mx_get_magic (tmp->path)) <= 0))
     {
@@ -292,12 +283,8 @@ int mutt_buffy_check (int force)
 	break;
 
       case M_MAILDIR:
-      case M_MH:
 
-	if(tmp->magic == M_MAILDIR)
-	  snprintf (path, sizeof (path), "%s/new", tmp->path);
-	else
-	  strfcpy (path, tmp->path, sizeof(path));
+	snprintf (path, sizeof (path), "%s/new", tmp->path);
 	if ((dirp = opendir (path)) == NULL)
 	{
 	  tmp->magic = 0;
@@ -316,15 +303,19 @@ int mutt_buffy_check (int force)
 	closedir (dirp);
 	break;
 
-#ifdef USE_IMAP
-      case M_IMAP:
-	if (imap_buffy_check (tmp->path) > 0)
+      case M_MH:
+
+	res = mh_parse_sequences (NULL, tmp->path);
+	if (res >= 0)
 	{
-	  BuffyCount++;
-	  tmp->new = 1;
+	  BuffyCount += res;
+	  tmp->new = res;
+	}
+	else
+	{
+	  tmp->magic = 0;
 	}
 	break;
-#endif
       }
     }
 #ifdef BUFFY_SIZE
