@@ -38,8 +38,7 @@ static ADDRESS *mutt_expand_aliases_r (ADDRESS *a, LIST **expn)
   ADDRESS *head = NULL, *last = NULL, *t, *w;
   LIST *u;
   char i;
-  const char *fqdn;
-  
+
   while (a)
   {
     if (!a->group && !a->personal && a->mailbox && strchr (a->mailbox, '@') == NULL)
@@ -109,10 +108,10 @@ static ADDRESS *mutt_expand_aliases_r (ADDRESS *a, LIST **expn)
     last->next = NULL;
   }
 
-  if (option (OPTUSEDOMAIN) && (fqdn = mutt_fqdn(1)))
+  if (option (OPTUSEDOMAIN) && Fqdn && Fqdn[0] != '@')
   {
     /* now qualify all local addresses */
-    rfc822_qualify (head, fqdn);
+    rfc822_qualify (head, Fqdn);
   }
 
   return (head);
@@ -188,14 +187,13 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
   else
     buf[0] = '\0';
   
-  /* add a new alias */
-  if (mutt_get_field (_("Alias as: "), buf, sizeof (buf), 0) != 0 || !buf[0])
+  if (mutt_get_field ("Alias as: ", buf, sizeof (buf), 0) != 0 || !buf[0])
     return;
 
   /* check to see if the user already has an alias defined */
   if (mutt_lookup_alias (buf))
   {
-    mutt_error _("You already have an alias defined with that name!");
+    mutt_error ("You already have an alias defined with that name!");
     return;
   }
 
@@ -209,7 +207,7 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
 
   do
   {
-    if (mutt_get_field (_("Address: "), buf, sizeof (buf), 0) != 0 || !buf[0])
+    if (mutt_get_field ("Address: ", buf, sizeof (buf), 0) != 0 || !buf[0])
     {
       mutt_free_alias (&new);
       return;
@@ -225,7 +223,7 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
   else
     buf[0] = 0;
 
-  if (mutt_get_field (_("Personal name: "), buf, sizeof (buf), 0) != 0)
+  if (mutt_get_field ("Personal name: ", buf, sizeof (buf), 0) != 0)
   {
     mutt_free_alias (&new);
     return;
@@ -234,7 +232,7 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
 
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), new->addr);
-  snprintf (prompt, sizeof (prompt), _("[%s = %s] Accept?"), new->name, buf);
+  snprintf (prompt, sizeof (prompt), "[%s = %s] Accept?", new->name, buf);
   if (mutt_yesorno (prompt, 1) != 1)
   {
     mutt_free_alias (&new);
@@ -251,7 +249,7 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
     Aliases = new;
 
   strfcpy (buf, NONULL (AliasFile), sizeof (buf));
-  if (mutt_get_field (_("Save to file: "), buf, sizeof (buf), M_FILE) != 0)
+  if (mutt_get_field ("Save to file: ", buf, sizeof (buf), M_FILE) != 0)
     return;
   mutt_expand_path (buf, sizeof (buf));
   if ((rc = fopen (buf, "a")))
@@ -262,7 +260,7 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
     write_safe_address (rc, buf);
     fputc ('\n', rc);
     fclose (rc);
-    mutt_message _("Alias added.");
+    mutt_message ("Alias added.");
   }
   else
     mutt_perror (buf);
@@ -374,39 +372,28 @@ int mutt_alias_complete (char *s, size_t buflen)
   return 1;
 }
 
-static int string_is_address(const char *str, const char *u, const char *d)
-{
-  char buf[LONG_STRING];
-  
-  snprintf(buf, sizeof(buf), "%s@%s", NONULL(u), NONULL(d));
-  if (strcasecmp(str, buf) == 0)
-    return 1;
-  
-  return 0;
-}
-
 /* returns TRUE if the given address belongs to the user. */
 int mutt_addr_is_user (ADDRESS *addr)
 {
+  char buf[LONG_STRING];
+
   /* NULL address is assumed to be the user. */
   if (!addr)
     return 1;
   if (!addr->mailbox)
     return 0;
-
   if (strcasecmp (addr->mailbox, NONULL(Username)) == 0)
     return 1;
-  if(string_is_address(addr->mailbox, Username, Hostname))
+  snprintf (buf, sizeof (buf), "%s@%s", NONULL(Username), NONULL(Hostname));
+  if (strcasecmp (addr->mailbox, buf) == 0)
     return 1;
-  if(string_is_address(addr->mailbox, Username, mutt_fqdn(0)))
-    return 1;
-  if(string_is_address(addr->mailbox, Username, mutt_fqdn(1)))
+  snprintf (buf, sizeof (buf), "%s@%s", NONULL(Username), NONULL(Fqdn));
+  if (strcasecmp (addr->mailbox, buf) == 0)
     return 1;
 
   if (Alternates.pattern &&
       regexec (Alternates.rx, addr->mailbox, 0, NULL, 0) == 0)
     return 1;
-  
   return 0;
 }
 
