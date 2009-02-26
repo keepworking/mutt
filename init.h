@@ -138,6 +138,7 @@ struct option_t MuttVars[] = {
   { "locale",		DT_STR,  R_BOTH, UL &Locale, UL "C" },
   { "mail_check",	DT_NUM,  R_NONE, UL &BuffyTimeout, 5 },
   { "mailcap_path",	DT_STR,	 R_NONE, UL &MailcapPath, 0 },
+  { "mailcap_sanitize", DT_BOOL, R_NONE, OPTMAILCAPSANITIZE, 1 },
   { "mark_old",		DT_BOOL, R_BOTH, OPTMARKOLD, 1 },
   { "markers",		DT_BOOL, R_PAGER, OPTMARKERS, 1 },
   { "mask",		DT_RX,	 R_NONE, UL &Mask, UL "!^\\.[^.]" },
@@ -150,13 +151,6 @@ struct option_t MuttVars[] = {
   { "mime_forward",	DT_QUAD, R_NONE, OPT_MIMEFWD, M_NO },
   { "mime_forward_decode", DT_BOOL, R_NONE, OPTMIMEFORWDECODE, 0 },
   { "mime_fwd",		DT_SYN,  R_NONE, UL "mime_forward", 0 },
-
-
-#ifdef MIXMASTER
-  { "mixmaster",	DT_PATH, R_NONE, UL &Mixmaster, UL MIXMASTER },
-#endif
-
-
   { "move",		DT_QUAD, R_NONE, OPT_MOVE, M_ASKNO },
   { "message_format",	DT_STR,	 R_NONE, UL &MsgFmt, UL "%s" },
   { "msg_format",	DT_SYN,  R_NONE, UL "message_format", 0 },
@@ -338,7 +332,6 @@ struct command_t Commands[] = {
   { "auto_view",	parse_list,		UL &AutoViewList },
   { "alternative_order",	parse_list,	UL &AlternativeOrderList},
   { "bind",		mutt_parse_bind,	0 },
-  { "charset-hook",	mutt_parse_hook,	M_CHARSETHOOK },
 #ifdef HAVE_COLOR
   { "color",		mutt_parse_color,	0 },
   { "uncolor",		mutt_parse_uncolor,	0 },
