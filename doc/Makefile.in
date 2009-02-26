@@ -18,8 +18,11 @@ XCPPFLAGS=-I. @CPPFLAGS@
 CFLAGS=@CFLAGS@ -DSHAREDIR=\"$(sharedir)\" $(XCPPFLAGS)
 LDFLAGS=@LDFLAGS@
 
+complete: all html
 
-all: mutt.man dotlock.man manual.txt manual.html
+all: mutt.man dotlock.man manual.txt 
+
+html: manual.html
 
 install: dotlock.man mutt.man manual.txt
 	../mkinstalldirs $(mandir)/man1
@@ -40,7 +43,7 @@ uninstall:
 		$(docdir)/PGP-Notes.txt
 
 manual.txt: manual.sgml
-	sgml2txt manual
+	sgml2txt -c latin manual
 
 manual.html: manual.sgml
 	sgml2html manual
@@ -50,6 +53,8 @@ clean:
 
 clean-real:
 	rm -f manual.txt
+
+maintainer-clean: clean clean-real
 
 distclean: clean
 	rm -f Makefile
