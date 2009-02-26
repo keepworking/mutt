@@ -1,19 +1,9 @@
 dnl $Id$
 
 dnl Process this file with autoconf to produce a configure script.
-
 AC_INIT(mutt.h)
 AM_CONFIG_HEADER(config.h)
-
-srcdir=`(cd $srcdir && pwd)`
-mutt_cv_version=`cat $srcdir/VERSION`
-case `basename $srcdir` in
-*-unstable*)
-	mutt_cv_version=${mutt_cv_version}-unstable-`date +%Y-%m-%d`
-	;;
-esac
-
-AM_INIT_AUTOMAKE(mutt, $mutt_cv_version)
+AM_INIT_AUTOMAKE(mutt, `cat $srcdir/VERSION`)
 
 ALL_LINGUAS="de ru it es uk fr pl nl"
 
@@ -80,18 +70,6 @@ else
 		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS pgp.o pgpinvoke.o pgpkey.o pgppubring.o sha1dgst.o gnupgparse.o"
 		OPS="$OPS \$(srcdir)/OPS.PGP"
 	fi
-	
-	AC_ARG_WITH(mixmaster, [  --with-mixmaster[=PATH]	include Mixmaster support],
-		[if test -x "$withval" ; then
-			MIXMASTER="$withval"
-		 else
-		 	MIXMASTER="mixmaster"
-		 fi
-		 OPS="$OPS \$(srcdir)/OPS.MIX"
-		 MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS remailer.o"
-		 AC_DEFINE_UNQUOTED(MIXMASTER, "$MIXMASTER")
-                ])
-		
 fi
 AC_SUBST(OPS)
 
