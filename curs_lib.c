@@ -34,9 +34,9 @@
  * is impossible to unget function keys in SLang, so roll our own input
  * buffering routines.
  */
-static size_t UngetCount = 0;
-static size_t UngetBufLen = 0;
-static event_t *KeyEvent;
+static short UngetCount = 0;
+#define UngetBufLen 128
+static event_t KeyEvent[UngetBufLen] = { {0,0} };
 
 void mutt_refresh (void)
 {
@@ -83,7 +83,7 @@ event_t mutt_getch (void)
   return (ch == ctrl ('G') ? err : ret);
 }
 
-int mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int complete)
+int _mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int complete, int multiple, char ***files, int *numfiles)
 {
   int ret;
   int len = mutt_strlen (field); /* in case field==buffer */
@@ -93,7 +93,7 @@ int mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int compl
     CLEARLINE (LINES-1);
     addstr (field);
     mutt_refresh ();
-    ret = mutt_enter_string ((unsigned char *) buf, buflen, LINES-1, len, complete);
+    ret = _mutt_enter_string ((unsigned char *) buf, buflen, LINES-1, len, complete, multiple, files, numfiles);
   }
   while (ret == 1);
   CLEARLINE (LINES-1);
@@ -133,8 +133,8 @@ void mutt_edit_file (const char *editor, const char *data)
 int mutt_yesorno (const char *msg, int def)
 {
   event_t ch;
-  unsigned char *yes = _("yes");
-  unsigned char *no = _("no");
+  char *yes = _("yes");
+  char *no = _("no");
   
   CLEARLINE(LINES-1);
   printw("%s ([%c]/%c): ", msg, def ? *yes : *no,
@@ -331,7 +331,7 @@ int mutt_do_pager (const char *banner,
   return rc;
 }
 
-int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, int buffy)
+int _mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, int buffy, int multiple, char ***files, int *numfiles)
 {
   event_t ch;
 
@@ -352,7 +352,7 @@ int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, i
   {
     mutt_refresh ();
     buf[0] = 0;
-    mutt_select_file (buf, blen, 0);
+    _mutt_select_file (buf, blen, 0, multiple, files, numfiles);
     *redraw = REDRAW_FULL;
   }
   else
@@ -361,7 +361,7 @@ int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, i
 
     sprintf (pc, "%s: ", prompt);
     mutt_ungetch (ch.op ? 0 : ch.ch, ch.op ? ch.op : 0);
-    if (mutt_get_field (pc, buf, blen, (buffy ? M_EFILE : M_FILE) | M_CLEAR)
+    if (_mutt_get_field (pc, buf, blen, (buffy ? M_EFILE : M_FILE) | M_CLEAR, multiple, files, numfiles)
 	!= 0)
       buf[0] = 0;
     MAYBE_REDRAW (*redraw);
@@ -371,6 +371,9 @@ int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, i
   return 0;
 }
 
+/* FOO - this could be made more efficient by allocating/deallocating memory
+ * instead of using a fixed array
+ */
 void mutt_ungetch (int ch, int op)
 {
   event_t tmp;
@@ -378,10 +381,8 @@ void mutt_ungetch (int ch, int op)
   tmp.ch = ch;
   tmp.op = op;
 
-  if (UngetCount >= UngetBufLen)
-    safe_realloc ((void **) &KeyEvent, (UngetBufLen += 128) * sizeof(event_t));
-
-  KeyEvent[UngetCount++] = tmp;
+  if (UngetCount < UngetBufLen) /* make sure not to overflow */
+    KeyEvent[UngetCount++] = tmp;
 }
 
 void mutt_flushinp (void)
