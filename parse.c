@@ -473,7 +473,7 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int di
 
   if (!boundary)
   {
-    mutt_error _("multipart message has no boundary parameter!");
+    mutt_error ("multipart message has no boundary parameter!");
     return (NULL);
   }
 
@@ -969,8 +969,6 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
       case 'd':
 	if (!strcasecmp ("ate", line + 1))
 	{
-	  safe_free((void **)&e->date);
-	  e->date = safe_strdup(p);
 	  if (hdr)
 	    hdr->date_sent = parse_date (p, hdr);
 	  matched = 1;
@@ -1069,6 +1067,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
 	    if (d)
 	      hdr->received = parse_date (d + 1, NULL);
 	  }
+	  matched = 1;
 	}
 	break;
 
@@ -1152,8 +1151,11 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr)
 	break;
     }
 
-     /* Keep track of the user-defined headers */
-    if (!matched)
+    /* if hdr==NULL, then we are using this to parse either a postponed
+     * message, or a outgoing message (edit_hdrs), so we want to keep
+     * track of the user-defined headers
+     */
+    if (!matched && !hdr)
     {
       if (last)
       {

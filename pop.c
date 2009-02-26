@@ -63,7 +63,7 @@ static int getPass (void)
   {
     char tmp[SHORT_STRING];
     tmp[0] = '\0';
-    if (mutt_get_password (_("POP Password: "), tmp, sizeof (tmp)) != 0
+    if (mutt_get_password ("POP Password: ", tmp, sizeof (tmp)) != 0
 	|| *tmp == '\0')
       return 0;
     PopPass = safe_strdup (tmp);
@@ -88,13 +88,13 @@ void mutt_fetchPopMail (void)
 
   if (!PopHost)
   {
-    mutt_error _("POP host is not defined.");
+    mutt_error ("POP host is not defined.");
     return;
   }
 
   if (!PopUser)
   {
-    mutt_error _("No POP username is defined.");
+    mutt_error ("No POP username is defined.");
     return;
   }
     
@@ -111,7 +111,7 @@ void mutt_fetchPopMail (void)
     /* Must be a DNS name */
     if ((he = gethostbyname (NONULL(PopHost))) == NULL)
     {
-      mutt_error (_("Could not find address for host %s."), PopHost);
+      mutt_error ("Could not find address for host %s.", PopHost);
       return;
     }
     memcpy ((void *)&sin.sin_addr, *(he->h_addr_list), he->h_length);
@@ -119,7 +119,7 @@ void mutt_fetchPopMail (void)
   else
     memcpy ((void *)&sin.sin_addr, (void *)&n, sizeof(n));
   
-  mutt_message (_("Connecting to %s"), inet_ntoa (sin.sin_addr));
+  mutt_message ("Connecting to %s", inet_ntoa (sin.sin_addr));
 
   if (connect (s, (struct sockaddr *) &sin, sizeof (struct sockaddr_in)) == -1)
   {
@@ -163,7 +163,7 @@ void mutt_fetchPopMail (void)
     
     safe_free((void **) &PopPass); /* void the given password */
     mutt_remove_trailing_ws (buffer);
-    mutt_error (buffer[0] ? buffer : _("Server closed connection!"));
+    mutt_error (buffer[0] ? buffer : "Server closed connection!");
     goto finish;
   }
   
@@ -184,7 +184,7 @@ void mutt_fetchPopMail (void)
 
   if (msgs == 0)
   {
-    mutt_message _("No new mail in POP mailbox.");
+    mutt_message ("No new mail in POP mailbox.");
     goto finish;
   }
 
@@ -192,8 +192,7 @@ void mutt_fetchPopMail (void)
     goto finish;
 
   snprintf (msgbuf, sizeof (msgbuf),
-	    msgs > 1 ? _("Reading %d new message (%d bytes)...") :
-		    ("Reading %d new messages (%d bytes)..."), msgs, bytes);
+	    "Reading %d new message%s (%d bytes)...", msgs, msgs > 1 ? "s" : "", bytes);
   mutt_message (msgbuf);
 
   for (i = 1 ; i <= msgs ; i++)
@@ -228,7 +227,7 @@ void mutt_fetchPopMail (void)
 
       if ((chunk = getLine (s, buffer, sizeof (buffer))) == -1)
       {
-	mutt_error _("Error reading message!");
+	mutt_error ("Error reading message!");
 	err = 1;
 	break;
       }
@@ -264,7 +263,7 @@ void mutt_fetchPopMail (void)
 
     if (mx_close_message (&msg) != 0)
     {
-      mutt_error _("Error while writing mailbox!");
+      mutt_error ("Error while writing mailbox!");
       err = 1;
     }
 
@@ -288,7 +287,7 @@ void mutt_fetchPopMail (void)
       }
     }
 
-    mutt_message (_("%s [%d messages read]"), msgbuf, i);
+    mutt_message ("%s [%d messages read]", msgbuf, i);
   }
 
   if (msg)
@@ -314,6 +313,6 @@ finish:
 
 fail:
 
-  mutt_error _("Server closed connection!");
+  mutt_error ("Server closed connection!");
   close (s);
 }

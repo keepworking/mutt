@@ -135,7 +135,7 @@ You can remap the <em/editor/ functions using the <ref id="bind" name="bind">
 command.  For example, to make the <em/Delete/ key delete the character in
 front of the cursor rather than under, you could use
 
-<tt/bind editor &lt;delete&gt; backspace/
+<tt/bind editor delete backspace/
 
 <sect1>Reading Mail - The Index and Pager
 <p>
@@ -302,17 +302,7 @@ ESC n   next-subthread          jump to the start of the next subthread
 ESC p   previous-subthread      jump to the start of the previous subthread
 ESC r   read-subthread          mark the current subthread as read
 ESC t   tag-thread              toggle the tag on the current thread
-ESC v	collapse-thread		toggle collapse for the current thread
-ESC V	collapse-all		toggle collapse for all threads
 </verb></tscreen>
-
-<bf/Note:/ Collapsing a thread displays only the first message
-in the thread and hides the others. This is useful when threads
-contain so many messages that you can only see a handful of threads on
-the screen. See %M in <ref id="index_format"name="&dollar;index&lowbar;format">.
-For example, you could use "&percnt;?M?(#&percnt;03M)&amp;(&percnt;4l)?" in <ref
-id="index_format"name="&dollar;index&lowbar;format"> to optionally
-display the number of hidden messages if the thread is collapsed.
 
 See also: <ref id="strict_threads" name="&dollar;strict&lowbar;threads">.
 
@@ -331,13 +321,6 @@ id="source" name="source"> the file.
 
 Toggles the weeding of message header fields specified by <ref id="ignore"
 name="ignore"> commands.
-
-<p><bf/edit-message/<label id="edit-messaage"> (default: e)<newline>
-
-This command (available in the ``index'' and ``pager'') allows you to
-edit the current message. Once editing is complete, the <em/Compose/ menu
-is shown. You can now re-send the message or write the edited message
-to any folder using the ``write-fcc'' function.
 
 <p><bf/enter-command/<label id="enter-command"> (default: ``:'')<newline>
 
@@ -452,7 +435,6 @@ returned to the <em/compose/ menu.  The following options are available:
 
 <tscreen><verb>
 a       attach-file             attach a file
-A	attach-message		attach message(s) to the message
 ESC k   attach-key              attach a PGP public key
 d       edit-description        edit description on attachment
 D       detach-file             detach a file
@@ -465,18 +447,9 @@ f       edit-fcc                specify an ``Fcc'' mailbox
 p       pgp-menu                select PGP options (``i'' version only)
 P       postpone-message        postpone this message until later
 q       quit                    quit (abort) sending the message
-w	write-fcc		write the message to a folder
 i       ispell                  check spelling (if available on your system)
 ^F      forget-passphrase       whipe PGP passphrase from memory
 </verb></tscreen>
-
-<bf/Note:/ The attach-message function will prompt you for a folder to
-attach messages from. You can now tag messages in that folder and they
-will be attached to the message you are sending. Note that certain
-operations like composing a new mail, replying, forwarding, etc. are
-not permitted when you are in that folder. The %r in <ref
-id="status_format" name="&dollar;status&lowbar;format"> will change to
-a 'A' to indicate that you are in attach-message mode.
 
 <sect2>Editing the message header<label id="edit_headers">
 <p>
@@ -534,18 +507,15 @@ See also the <ref id="postpone" name="&dollar;postpone"> quad-option.
 <sect>Configuration
 <p>
 
-While the default configuration (or ``preferences'') make Mutt
-usable right out of the box, it is often desirable to tailor Mutt to
-suit your own tastes. When Mutt is first invoked, it will attempt to
-read the ``system'' configuration file (defaults set by your local
-system administrator), unless the ``-n'' <ref id="commandline"
-name="command line"> option is specified.  This file is typically
-<tt>/usr/local/share/Muttrc</tt> or <tt>/usr/local/lib/Muttrc</tt>.
-If your home directory has a subdirectory named <tt/.mutt/, mutt
-will next look for a file named <tt>.mutt/muttrc</tt>. Otherwise, it
-looks for a file in your home directory named <tt/.muttrc/.  In this
-file is where you place <ref id="commands" name="commands"> to
-configure Mutt.
+While the default configuration (or ``preferences'') make Mutt usable right
+out of the box, it is often desirable to tailor Mutt to suit your own tastes.
+When Mutt is first invoked, it will attempt to read the ``system''
+configuration file (defaults set by your local system administrator), unless
+the ``-n'' <ref id="commandline" name="command line"> option is
+specified.  This file is typically
+<tt>/usr/local/share/Muttrc</tt> or <tt>/usr/local/lib/Muttrc</tt>.  Next,
+it looks for a file in your home directory named <tt/.muttrc/.  In this file
+is where you place <ref id="commands" name="commands"> to configure Mutt.
 
 In addition, mutt supports version specific configuration files that are
 parsed instead of the default files as explained above.  For instance, if
@@ -701,7 +671,6 @@ defined maps are:
 <item>compose
 <item>pager
 <item>pgp
-<item>postpone
 </itemize>
 
 <em/key/ is the key (or key sequence) you wish to bind.  To specify a
@@ -1394,8 +1363,6 @@ messages:
 ~e EXPR         message which contains EXPR in the ``Sender'' field
 ~F              flagged messages
 ~f USER         messages originating from USER
-~g              PGP signed messages
-~G              PGP encrypted messages
 ~h EXPR         messages which contain EXPR in the message header
 ~i ID           message which match ID in the ``Message-ID'' field
 ~L EXPR         message is either originated or received by EXPR
@@ -2441,50 +2408,6 @@ Default: unset
 If set, Mutt will prompt you for carbon-copy (Cc) recipients before editing
 the body of an outgoing message.
 
-<sect2>attach&lowbar;format<label id="attach_format">
-<p>
-Type: format string<newline>
-Default: &dquot;&percnt;u&percnt;D&percnt;t&percnt;2n &percnt;T&percnt;.40d&percnt;&gt; &lsqb;&percnt;.7m/&percnt;.10M, &percnt;.6e, &percnt;s&rsqb;&nbsp;&dquot;
-
-This variable describes the format of the `attachment' menu.  The
-following printf-style sequences are understood:
-
-<tscreen><verb>
-%D      deleted flag
-%d      description
-%e      MIME content-transfer-encoding
-%f      filename
-%m      major MIME type
-%M      MIME subtype
-%n      attachment number
-%s      size
-%t      tagged flag
-%u      unlink (=to delete) flag
-
-%>X     right justify the rest of the string and pad with character "X"
-%|X     pad to the end of the line with character "X"
-</verb></tscreen>
-
-<sect2>attach&lowbar;sep<label id="attach_sep">
-<p>
-Type: string<newline>
-Default: newline
-
-The separator to add between attachments when operating (saving,
-printing, piping, etc) on a list of tagged attachments.
-
-<sect2>attach&lowbar;split<label id="attach_split">
-<p>
-Type: boolean<newline>
-Default: set
-
-If this variable is unset, when operating (saving, printing, piping,
-etc) on a list of tagged attachments, Mutt will concatenate the
-attachments and will operate on them as a single attachment. The <ref
-id="attach_sep" name="&dollar;attach&lowbar;sep"> separator is added
-after each attachment. When set, Mutt will operate on the attachments
-one by one.
-
 <sect2>attribution<label id="attribution">
 <p>
 Type: format string<newline>
@@ -2558,14 +2481,6 @@ some time since it involves scanning the directory and checking each
 file to see if it has already been looked at.  If <em/check&lowbar;new/
 is <em/unset/, no check for new mail is performed while the mailbox is
 open.
-
-<sect2>collapse&lowbar;unread<label id="collapse_unread">
-<p>
-Type: boolean<newline>
-Default: unset
-
-When <em/set/, Mutt will not collapse a thread if it contains any
-unread messages.
 
 <sect2>confirmappend<label id="confirmappend">
 <p>
@@ -2785,23 +2700,11 @@ Type: boolean<newline>
 Default: set
 
 Controls the decoding of complex MIME messages into text/plain when
-forwarding a message.  The message header is also RFC2047 decoded.
+forwarding a message and the message header is also RFC2047 decoded.
 This variable is only used, if <ref id="mime_forward"
 name="mime&lowbar;forward"> is <em/unset/, otherwise <ref
-id="mime_forward_decode" name="mime&lowbar;forward&lowbar;decode">
-is used instead.
-
-<sect2>forward&lowbar;decrypt<label id="forward_decrypt">
-<p>
-Type: boolean<newline>
-Default: unset
-
-Controls the handling of encrypted messages when forwarding a
-message.  When set, the outer layer of encryption is stripped off.
-This variable is only used if <ref id="mime_forward"
-name="mime&lowbar;forward"> is <em/set/ and <ref
-id="mime_forward_decode" name="mime&lowbar;forward&lowbar;decode">
-is <em/unset/.
+id="mime_forward_decode" name="mime&lowbar;forward&lowbar;decode"> is
+used instead.
 
 <sect2>forward&lowbar;format<label id="forward_format">
 <p>
@@ -2974,7 +2877,6 @@ following sequences are defined in Mutt:
 %l      number of lines in the message
 %L      list-from function
 %m      total number of message in the mailbox
-%M	number of hidden messages if the thread is collapsed.
 %N      message score
 %n      author's real name (or address if missing)
 %O       (_O_riginal save folder)  Where mutt would formerly have stashed the
@@ -2984,7 +2886,6 @@ following sequences are defined in Mutt:
 %t      `to:' field (recipients)
 %T      the appropriate character from the $to_chars string
 %u      user (login) name of the author
-%v      first name of the author, or the recipient if the message is from you
 %Z      message status flags
 
 %{fmt}  the date and time of the message is converted to sender's 
@@ -3117,16 +3018,6 @@ the high bit removed.  For example, if the key pressed has an ASCII value of
 0xf4, then this is treated as if the user had pressed ESC then ``x''.  This
 is because the result of removing the high bit from ``0xf4'' is ``0x74'',
 which is the ASCII character ``x''.
-
-<sect2>mh&lowbar;purge<label id="mh_purge">
-<p>
-Type: boolean<newline>
-Default: unset
-
-When unset, mutt will mimic mh's behaviour and rename deleted
-messages to <em/,&lt;old file name&gt;/ in mh folders instead of
-really deleting them.  If the variable is set, the message files
-will simply be deleted.
 
 <sect2>mime&lowbar;forward<label id="mime_forward">
 <p>
@@ -3848,15 +3739,6 @@ internal pager. If set, long lines are wrapped at a word boundary.
 If unset, lines are simply wrapped at the screen edge. Also see the
 <ref id="markers" name="&dollar;markers"> variable.
 
-<sect2>smileys<label id="smileys">
-<p>
-Type: string<newline>
-Default: (&gt;From)|(:&lsqb;-^&rsqb;?&lsqb;&rsqb;&lsqb;)(&gt;&lt;}{|/DP&rsqb;)
-
-The <em/pager/ uses this variable to catch some common false
-positives of <ref id="quote_regexp" name="quote&lowbar;regexp">,
-most notably smileys in the beginning of a line
-
 <sect2>sort<label id="sort">
 <p>
 Type: string<newline>
@@ -3951,7 +3833,7 @@ both messages are identical.
 <sect2>status&lowbar;chars<label id="status_chars">
 <p>
 Type: string<newline>
-Default: &dquot;-*&percnt;A&dquot;
+Default: &dquot;-*&percnt;&dquot;
 
 Controls the characters used by the &dquot;&percnt;r&dquot; indicator
 in <ref id="status_format" name="status&lowbar;format">. The first
@@ -3960,10 +3842,7 @@ the mailbox has been changed, and it needs to be resynchronized. The
 third is used if the mailbox is in read-only mode, or if the mailbox
 will not be written when exiting that mailbox (You can toggle whether
 to write changes to a mailbox with the toggle-write operation, bound by
-default to &dquot;&percnt;&dquot;). The fourth is used to indicate
-that the current folder has been opened in attach-message mode
-(Certain operations like composing a new mail, replying, forwarding,
-etc. are not permitted in this mode).
+default to &dquot;&percnt;&dquot;).
 
 <sect2>status&lowbar;format<label id="status_format">
 <p>
@@ -3989,7 +3868,7 @@ sequences:
 %o      number of old unread messages
 %p      number of postponed messages *
 %P      percentage of the way through the index
-%r      modified/read-only/won't-write/attach-message indicator, according to $status_chars
+%r      modified/read-only/won't-write indicator, according to $status_chars
 %s      current sorting mode ($sort)
 %S      current aux sorting method ($sort_aux)
 %t      number of tagged messages *
@@ -4114,14 +3993,6 @@ header field, but you are not the only recipient of the message (default:
 T).  The fourth character is used when your address is specified in the CC
 header field, but you are not the only recipient.  The fifth character is used
 to indicate mail that was sent by <em/you/.
-
-<sect2>uncollapse&lowbar;jump<label id="uncollapse_jump">
-<p>
-Type: boolean<newline>
-Default: unset
-
-When <em/set/, Mutt will jump to the next unread message, if any, when
-the current thread is <em/un/collapsed.
 
 <sect2>use&lowbar;8bitmime<label id="use_8bitmime">
 <p>
@@ -4300,7 +4171,6 @@ delete-thread             ^D   delete all messages in thread
 display-address            @   display full address of sender
 display-headers            h   display message with full headers
 display-message          RET   display a message
-edit-message               e   edit the current message
 exit                       x   exit without saving changes
 extract-keys              ^K   extract PGP public keys
 fetch-mail                 G   retrieve mail from POP server
@@ -4365,7 +4235,6 @@ delete-subthread       ESC d   delete all messages in subthread
 delete-thread             ^D   delete all messages in thread
 display-address            @   display full address of sender
 display-headers            h   display message with full headers
-edit-message               e   edit the current message
 enter-command              :   enter a muttrc command
 exit                       i   return to the main-menu
 extract-keys              ^K   extract PGP public keys
@@ -4465,7 +4334,6 @@ view-text                  T   view attachment as text
 <p>
 <verb>
 attach-file                a   attach a file(s) to this message
-attach-message             A   attach message(s) to this message
 attach-key             ESC k   attach a PGP public key
 copy-file                  C   save message/attachment to a file
 detach-file                D   delete the current entry
@@ -4496,9 +4364,8 @@ rename-file                R   rename/move an attached file
 send-message               y   send the message
 toggle-unlink              u   toggle whether to delete file after sending it
 view-attach              RET   view attachment using mailcap entry if necessary
-write-fcc		   w   write the message to a folder
 </verb>
-<sect2>postpone
+<sect2>postponed
 <p>
 <verb>
 delete-entry               d   delete the current entry
@@ -4554,8 +4421,8 @@ co-developed the original MIME parsing code back in the ELM-ME days.
 
 The following people have been very helpful to the development of Mutt:
 
-Vikas Agnihotri <htmlurl url="mailto:VikasA@att.com" name="&lt;VikasA@att.com&gt;">,<newline>
-Francois Berjon <htmlurl url="mailto:Francois.Berjon@aar.alcatel-alsthom.fr" name="&lt;Francois.Berjon@aar.alcatel-alsthom.fr&gt;">,<newline>
+Francois Berjon <htmlurl url="mailto:Francois.Berjon@aar.alcatel-alsthom.fr"
+name="&lt;Francois.Berjon@aar.alcatel-alsthom.fr&gt;">,<newline>
 Aric Blumer <htmlurl url="mailto:aric@fore.com" name="&lt;aric@fore.com&gt;">,<newline>
 John Capo <htmlurl url="mailto:jc@irbs.com" name="&lt;jc@irbs.com&gt;">,<newline>
 Liviu Daia <htmlurl url="mailto:daia@stoilow.imar.ro" name="&lt;daia@stoilow.imar.ro&gt;">,<newline>
@@ -4565,12 +4432,10 @@ Michael Finken <htmlurl url="mailto:finken@conware.de" name="&lt;finken@conware.
 Sven Guckes <htmlurl url="mailto:guckes@math.fu-berlin.de" name="&lt;guckes@math.fu-berlin.de&gt;">,<newline>
 Mark Holloman <htmlurl url="mailto:holloman@nando.net" name="&lt;holloman@nando.net&gt;">,<newline>
 Andreas Holzmann <htmlurl url="mailto:holzmann@fmi.uni-passau.de" name="&lt;holzmann@fmi.uni-passau.de&gt;">,<newline>
-Byrial Jensen <htmlurl url="mailto:byrial@post3.tele.dk" name="&lt;byrial@post3.tele.dk&gt;">,<newline>
 David Jeske <htmlurl url="mailto:jeske@igcom.net" name="&lt;jeske@igcom.net&gt;">,<newline>
 Christophe Kalt <htmlurl url="mailto:kalt@hugo.int-evry.fr" name="&lt;kalt@hugo.int-evry.fr&gt;">,<newline>
 Felix von Leitner (a.k.a ``Fefe'') <htmlurl url="mailto:leitner@math.fu-berlin.de" name="&lt;leitner@math.fu-berlin.de&gt;">,<newline>
 Brandon Long <htmlurl url="mailto:blong@fiction.net" name="&lt;blong@fiction.net&gt;">,<newline>
-Jimmy Mäkelä <htmlurl url="mailto:jmy@flashback.net" name="&lt;jmy@flashback.net&gt;">,<newline>
 Lars Marowsky-Bree <htmlurl url="mailto:lmb@pointer.in-minden.de" name="&lt;lmb@pointer.in-minden.de&gt;">,<newline>
 Thomas ``Mike'' Michlmayr <htmlurl url="mailto:mike@cosy.sbg.ac.at" name="&lt;mike@cosy.sbg.ac.at&gt;">,<newline>
 David O'Brien <htmlurl url="mailto:obrien@Nuxi.cs.ucdavis.edu" name="&lt;obrien@Nuxi.cs.ucdavis.edu&gt;">,<newline>
@@ -4578,9 +4443,8 @@ Clint Olsen <htmlurl url="mailto:olsenc@ichips.intel.com" name="&lt;olsenc@ichip
 Park Myeong Seok <htmlurl url="mailto:pms@romance.kaist.ac.kr" name="&lt;pms@romance.kaist.ac.kr&gt;">,<newline>
 Thomas Parmelan <htmlurl url="mailto:tom@ankh.fr.eu.org" name="&lt;tom@ankh.fr.eu.org&gt;">,<newline>
 Ollivier Robert <htmlurl url="mailto:roberto@keltia.freenix.fr" name="&lt;roberto@keltia.freenix.fr&gt;">,<newline>
-Roland Rosenfeld <htmlurl url="roland@spinnaker.rhein.de" name="&lt;roland@spinnaker.rhein.de&gt;">,<newline>
+Thomas Roessler <htmlurl url="mailto:roessler@guug.de" name="&lt;roessler@guug.de&gt;">,<newline>
 Allain Thivillon <htmlurl url="mailto:Allain.Thivillon@alma.fr" name="&lt;Allain.Thivillon@alma.fr&gt;">,<newline>
-Gero Treuner <htmlurl url="mailto:gero@faveve.uni-stuttgart.de" name="&lt;gero@faveve.uni-stuttgart.de&gt;">,<newline>
 Ken Weinert <htmlurl url="mailto:kenw@ihs.com" name="&lt;kenw@ihs.com&gt;">
 
 <sect1>About this document
