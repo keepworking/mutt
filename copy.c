@@ -203,7 +203,7 @@ mutt_copy_hdr (FILE *in, FILE *out, long off_start, long off_end, int flags,
     if (headers[x])
     {
       if (flags & CH_DECODE)
-	rfc2047_decode (headers[x], headers[x], mutt_strlen (headers[x]));
+	rfc2047_decode (headers[x], headers[x], mutt_strlen (headers[x]) + 1);
 
       /* We couldn't do the prefixing when reading because RFC 2047
        * decoding may have concatenated lines.
@@ -395,20 +395,20 @@ static int count_delete_lines (FILE *fp, BODY *b, long *length, size_t datelen)
 }
 
 /* make a copy of a message
- * 
- * fpout	where to write output
- * fpin		where to get input
- * hdr		header of message being copied
- * body		structure of message being copied
- * flags
- * 	M_CM_NOHEADER	don't copy header
- * 	M_CM_PREFIX	quote header and body
- *	M_CM_DECODE	decode message body to text/plain
- *	M_CM_DISPLAY	displaying output to the user
- *	M_CM_UPDATE	update structures in memory after syncing
- *	M_CM_DECODE_PGP	used for decoding PGP messages
- *	M_CM_CHARCONV	perform character set conversion 
- * chflags	flags to mutt_copy_header()
+ 
+   fpout	where to write output
+   fpin		where to get input
+   hdr		header of message being copied
+   body		structure of message being copied
+   flags
+	M_CM_NOHEADER	don't copy header
+ 	M_CM_PREFIX	quote header and body
+ 	M_CM_DECODE	decode message body to text/plain
+ 	M_CM_DISPLAY	displaying output to the user
+	M_CM_UPDATE	update structures in memory after syncing
+	M_CM_DECODE_PGP	used for decoding PGP messages
+        M_CM_CHARCONV	perform character set conversion
+   chflags	flags to mutt_copy_header()
  */
 
 int
@@ -504,7 +504,7 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
       s.flags |= M_WEED;
     if (flags & M_CM_CHARCONV)
       s.flags |= M_CHARCONV;
-    
+
 #ifdef _PGPPATH
     if (flags & M_CM_VERIFY)
       s.flags |= M_VERIFY;

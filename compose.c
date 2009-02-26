@@ -25,11 +25,6 @@
 #include "mapping.h"
 #include "mailbox.h"
 #include "sort.h"
-#include "charset.h"
-
-#ifdef MIXMASTER
-#include "remailer.h"
-#endif
 
 #include <string.h>
 #include <sys/stat.h>
@@ -51,14 +46,12 @@ enum
   HDR_REPLYTO,
   HDR_FCC,
 
-#ifdef MIXMASTER
-  HDR_MIX,
-#endif
 
 #ifdef _PGPPATH
   HDR_PGP,
   HDR_PGPSIGINFO,
 #endif
+  
   
 
   HDR_ATTACH  = (HDR_FCC + 5) /* where to start printing the attachments */
@@ -128,9 +121,13 @@ static void redraw_pgp_lines (int pgp)
 
 static int pgp_send_menu (int bits, int *redraw)
 {
-  pgp_key_t *p;
+  char *p;
+  char *micalg = NULL;
   char input_signas[SHORT_STRING];
   char input_micalg[SHORT_STRING];
+  KEYINFO *secring;
+
+  struct pgp_vinfo *pgp = pgp_get_vinfo(PGP_SIGN);
 
   switch (mutt_multi_choice (_("(e)ncrypt, (s)ign, sign (a)s, (b)oth, select (m)ic algorithm, or (f)orget it? "),
 			     _("esabmf")))
@@ -144,26 +141,39 @@ static int pgp_send_menu (int bits, int *redraw)
     break;
 
   case 3: /* sign (a)s */
-
     unset_option(OPTPGPCHECKTRUST);
 
-    if ((p = pgp_ask_for_key (_("Sign as: "), NULL, KEYFLAG_CANSIGN, PGP_PUBRING)))
+    if(pgp)
     {
-      snprintf (input_signas, sizeof (input_signas), "0x%s", pgp_keyid (p));
-      safe_free((void **) &PgpSignAs); 	    PgpSignAs = safe_strdup (input_signas);
-      safe_free((void **) &PgpSignMicalg);  PgpSignMicalg = safe_strdup (pgp_pkalg_to_mic (p->algorithm));
-      pgp_free_key (&p);
-      
-      bits |= PGPSIGN;
-	
-      pgp_void_passphrase ();	/* probably need a different passphrase */
+      if(!(secring = pgp->read_secring(pgp)))
+      {
+	mutt_error _("Can't open your secret key ring!");
+	bits &= ~PGPSIGN;
+      }
+      else 
+      {
+	if ((p = pgp_ask_for_key (pgp, secring, _("Sign as: "), 
+				  NULL, KEYFLAG_CANSIGN, &micalg)))
+	{
+	  snprintf (input_signas, sizeof (input_signas), "0x%s", p);
+	  safe_free((void **) &PgpSignAs);
+	  PgpSignAs = safe_strdup(input_signas);
+	  safe_free((void **) &PgpSignMicalg);
+	  PgpSignMicalg = micalg;	/* micalg is malloc()ed by pgp_ask_for_key */
+	  pgp_void_passphrase ();	/* probably need a different passphrase */
+	  safe_free ((void **) &p);
+	  bits |= PGPSIGN;
+	}
+
+	pgp_close_keydb(&secring);
+	*redraw = REDRAW_FULL;
+      }
     }
     else
     {
       bits &= ~PGPSIGN;
+      mutt_error _("An unkown PGP version was defined for signing.");
     }
-
-    *redraw = REDRAW_FULL;
     break;
 
   case 4: /* (b)oth */
@@ -171,24 +181,24 @@ static int pgp_send_menu (int bits, int *redraw)
     break;
 
   case 5: /* select (m)ic algorithm */
-    if (!(bits & PGPSIGN))
+    if(!(bits & PGPSIGN))
       mutt_error _("This doesn't make sense if you don't want to sign the message.");
     else
     {
       /* Copy the existing MIC algorithm into place */
-      strfcpy(input_micalg, NONULL (PgpSignMicalg), sizeof (input_micalg));
+      strfcpy(input_micalg, NONULL(PgpSignMicalg), sizeof(input_micalg));
 
-      if (mutt_get_field (_("MIC algorithm: "), input_micalg, sizeof (input_micalg), 0) == 0)
+      if(mutt_get_field (_("MIC algorithm: "), input_micalg, sizeof(input_micalg), 0) == 0)
       {
-	if (mutt_strcasecmp (input_micalg, "pgp-md5") && mutt_strcasecmp (input_micalg, "pgp-sha1")
-	   && mutt_strcasecmp (input_micalg, "pgp-rmd160"))
+	if(mutt_strcasecmp(input_micalg, "pgp-md5") && mutt_strcasecmp(input_micalg, "pgp-sha1")
+	   && mutt_strcasecmp(input_micalg, "pgp-rmd160"))
 	{
 	  mutt_error _("Unknown MIC algorithm, valid ones are: pgp-md5, pgp-sha1, pgp-rmd160");
 	}
 	else 
 	{
-	  safe_free ((void **) &PgpSignMicalg);
-	  PgpSignMicalg = safe_strdup (input_micalg);
+	  safe_free((void **) &PgpSignMicalg);
+	  PgpSignMicalg = safe_strdup(input_micalg);
 	}
       }
     }
@@ -204,39 +214,7 @@ static int pgp_send_menu (int bits, int *redraw)
 }
 #endif /* _PGPPATH */
 
-#ifdef MIXMASTER
 
-static void redraw_mix_line (LIST *chain)
-{
-  int c;
-  char *t;
-
-  mvaddstr (HDR_MIX, 0,     "     Mix: ");
-
-  if (!chain)
-  {
-    addstr ("<no chain defined>");
-    clrtoeol ();
-    return;
-  }
-  
-  for (c = 12; chain; chain = chain->next)
-  {
-    t = chain->data;
-    if (t && t[0] == '0' && t[1] == '\0')
-      t = "<random>";
-    
-    if (c + mutt_strlen (t) + 2 >= COLS)
-      break;
-
-    addstr (NONULL(t));
-    if (chain->next)
-      addstr (", ");
-
-    c += mutt_strlen (t) + 2;
-  }
-}
-#endif
 
 static int
 check_attachments(ATTACHPTR **idx, short idxlen)
@@ -298,17 +276,9 @@ static void draw_envelope (HEADER *msg, char *fcc)
   redraw_pgp_lines (msg->pgp);
 #endif /* _PGPPATH */
 
-#ifdef MIXMASTER
-  redraw_mix_line (msg->chain);
-#endif
 
-  SETCOLOR (MT_COLOR_STATUS);
-  mvaddstr (HDR_ATTACH - 1, 0, _("-- Attachments"));
-  BKGDSET (MT_COLOR_STATUS);
-  clrtoeol ();
 
-  BKGDSET (MT_COLOR_NORMAL);
-  SETCOLOR (MT_COLOR_NORMAL);
+  mvaddstr (HDR_ATTACH - 1, 0, _("===== Attachments ====="));
 }
 
 static int edit_address_list (int line, ADDRESS **addr)
@@ -383,38 +353,6 @@ static void update_idx (MUTTMENU *menu, ATTACHPTR **idx, short idxlen)
   return;
 }
 
-static int change_attachment_charset (BODY *b)
-{
-  char buff[SHORT_STRING];
-
-  if (!mutt_is_text_type (b->type, b->subtype))
-  {
-    mutt_error _("Can't change character set for non-text attachments!");
-    return 0;
-  }
-
-  mutt_get_send_charset (buff, sizeof(buff), b, 0);
-  
-  if (mutt_get_field (_("Enter character set: "), buff, sizeof(buff), 0) == -1)
-    return 0;
-    
-  if (mutt_is_utf8(buff))
-  {
-    if (!b->noconv)
-    {
-      mutt_error (_("UTF-8 encoding attachments has not yet been implemented."));
-      return 0;
-    }
-  }
-  else if (mutt_get_charset (buff) == NULL)
-  {
-    mutt_error (_("Character set %s is unknown."), buff);
-    return 0;
-  }
-  
-  mutt_set_body_charset (b, buff);
-  return REDRAW_CURRENT;
-}
 
 /* return values:
  *
@@ -441,7 +379,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
   int fccSet = 0;	/* has the user edited the Fcc: field ? */
   CONTEXT *ctx = NULL, *this = NULL;
   /* Sort, SortAux could be changed in mutt_index_menu() */
-  int oldSort, oldSortAux;
+  int oldSort = Sort, oldSortAux = SortAux;
   struct stat st;
 
   idx = mutt_gen_attach_list (msg->content, -1, idx, &idxlen, &idxmax, 0, 1);
@@ -588,74 +526,49 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 
 
       case OP_COMPOSE_ATTACH_FILE:
-	{
-	  char *prompt, **files;
-	  int error, numfiles;
-
-	  fname[0] = 0;
-	  prompt = _("Attach file");
-	  numfiles = 0;
-	  files = NULL;
-
-	  if (_mutt_enter_fname (prompt, fname, sizeof (fname), &menu->redraw, 0, 1, &files, &numfiles) == -1)
-	    break;
-
-	  if (idxlen + numfiles >= idxmax)
-	  {
-	    safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (idxmax += 5 + numfiles));
-	    menu->data = idx;
-	  }
-
-	  error = 0;
-	  if (numfiles > 1)
-	    mutt_message _("Attaching selected files...");
-	  for (i = 0; i < numfiles; i++)
-	  {
-	    char *att = files[i];
-	    idx[idxlen] = (ATTACHPTR *) safe_calloc (1, sizeof (ATTACHPTR));
-	    idx[idxlen]->content = mutt_make_file_attach (att);
-	    if (idx[idxlen]->content != NULL)
-	      update_idx (menu, idx, idxlen++);
-	    else
-	    {
-	      error = 1;
-	      mutt_error (_("Unable to attach %s!"), att);
-	      safe_free ((void **) &idx[idxlen]);
-	    }
-	  }
-	  
-	  FREE (&files);
-	  if (!error) mutt_clear_error ();
-
-	  menu->redraw |= REDRAW_INDEX | REDRAW_STATUS;
-	}
-	break;
-
       case OP_COMPOSE_ATTACH_MESSAGE:
+
+	fname[0] = 0;
 	{
-	  char *prompt;
-	  HEADER *h;
+	  char* prompt;
+	  int flag;
 
-	  fname[0] = 0;
-	  prompt = _("Open mailbox to attach message from");
-
-	  if (Context)
+	  if (op == OP_COMPOSE_ATTACH_FILE)
 	  {
-	    strfcpy (fname, NONULL (Context->path), sizeof (fname));
-	    mutt_pretty_mailbox (fname);
+	    prompt = _("Attach file");
+	    flag = 0;
+	  }
+	  else
+	  {
+	    prompt = _("Open mailbox to attach message from");
+	    if (Context)
+	    {
+	      strfcpy (fname, NONULL (Context->path), sizeof (fname));
+	      mutt_pretty_mailbox (fname);
+	    }
+	    flag = 1;
 	  }
 
-	  if (mutt_enter_fname (prompt, fname, sizeof (fname), &menu->redraw, 1) == -1 || !fname[0])
+	  if (mutt_enter_fname (prompt, fname, sizeof (fname), &menu->redraw, flag) == -1)
 	    break;
+	}
 
-	  mutt_expand_path (fname, sizeof (fname));
-	  /* check to make sure the file exists and is readable */
-	  if (access (fname, R_OK) == -1)
-	  {
-	    mutt_perror (fname);
-	    break;
-	  }
+	if (!fname[0])
+	  continue;
+	mutt_expand_path (fname, sizeof (fname));
 
+#ifdef USE_IMAP
+        if (!mx_is_imap (fname))
+#endif
+	/* check to make sure the file exists and is readable */
+	if (access (fname, R_OK) == -1)
+	{
+	  mutt_perror (fname);
+	  break;
+	}
+
+	if (op == OP_COMPOSE_ATTACH_MESSAGE)
+	{
 	  menu->redraw = REDRAW_FULL;
 
 	  ctx = mx_open_mailbox (fname, M_READONLY, NULL);
@@ -672,10 +585,8 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	    mutt_error _("No messages in that folder.");
 	    break;
 	  }
-
-	  this = Context; /* remember current folder and sort methods*/
-	  oldSort = Sort; oldSortAux = SortAux;
 	  
+	  this = Context; /* remember current folder */
 	  Context = ctx;
 	  set_option(OPTATTACHMSG);
 	  mutt_message _("Tag the messages you want to attach!");
@@ -692,13 +603,36 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	    menu->redraw |= REDRAW_INDEX | REDRAW_STATUS;
 	    break;
 	  }
+	}
+        {
+	  int numtag = 0;
 
-	  if (idxlen + Context->tagged >= idxmax)
+	  if (op == OP_COMPOSE_ATTACH_MESSAGE)
+	    numtag = Context->tagged;
+	  if (idxlen + numtag >= idxmax)
 	  {
-	    safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (idxmax += 5 + Context->tagged));
+	    safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (idxmax += 5 + numtag));
 	    menu->data = idx;
 	  }
+	}
 
+	if (op == OP_COMPOSE_ATTACH_FILE)
+	{
+	  idx[idxlen] = (ATTACHPTR *) safe_calloc (1, sizeof (ATTACHPTR));
+	  idx[idxlen]->content = mutt_make_file_attach (fname);
+	  if (idx[idxlen]->content != NULL)
+	    update_idx (menu, idx, idxlen++);
+	  else
+	  {
+	    mutt_error _("Unable to attach!");
+	    safe_free ((void **) &idx[idxlen]);
+	  }
+	  menu->redraw |= REDRAW_INDEX | REDRAW_STATUS;
+	  break;
+        }
+	else
+	{
+	  HEADER *h;
 	  for (i = 0; i < Context->msgcount; i++)
 	  {
 	    h = Context->hdrs[i];
@@ -716,19 +650,19 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	    }
 	  }
 	  menu->redraw |= REDRAW_FULL;
-
-	  if (close == OP_QUIT) 
-	    mx_close_mailbox (Context);
-	  else
-	    mx_fastclose_mailbox (Context);
-	  safe_free ((void **) &Context);
-
-	  /* go back to the folder we started from */
-	  Context = this;
-	  /* Restore old $sort and $sort_aux */
-	  Sort = oldSort;
-	  SortAux = oldSortAux;
 	}
+
+	if (close == OP_QUIT) 
+	  mx_close_mailbox (Context);
+	else
+	  mx_fastclose_mailbox (Context);
+	safe_free ((void **) &Context);
+	
+	/* go back to the folder we started from */
+	Context = this;
+	/* Restore old $sort and $sort_aux */
+	Sort = oldSort;
+	SortAux = oldSortAux;
 	break;
 
       case OP_DELETE:
@@ -747,68 +681,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	if (menu->current == 0)
 	  msg->content = idx[0]->content;
 	break;
-
-      case OP_COMPOSE_CHANGE_CHARSET:
-        CHECK_COUNT;
-        menu->redraw = change_attachment_charset(idx[menu->current]->content);
-        break;
-
-#define CURRENT idx[menu->current]->content
-      
-      case OP_COMPOSE_TOGGLE_RECODE:
-      {      
-        CHECK_COUNT;
-        if (!mutt_is_text_type (CURRENT->type, CURRENT->subtype))
-        {
-	  mutt_error (_("Recoding only affects text attachments."));
-	  break;
-	}
-	if (mutt_is_utf8 (mutt_get_parameter ("charset", CURRENT->parameter)))
-	{
-	  mutt_error (_("We currently can't encode to utf-8."));
-	  break;
-	}
-        CURRENT->noconv = !CURRENT->noconv;
-        if (CURRENT->noconv)
-	  mutt_message (_("The current attachment won't be converted."));
-        else
-	  mutt_message (_("The current attachment will be converted."));
-	menu->redraw = REDRAW_CURRENT;
-        break;
-      }
-
-      case OP_COMPOSE_RECODE:
-      {
-	const char *chs;
-	int rv;
-
-        CHECK_COUNT;
-        if (!mutt_is_text_type (CURRENT->type, CURRENT->subtype))
-        {
-	  mutt_error (_("Recoding only affetcs text attachments."));
-	  break;
-	}
-
-	if (!(chs = mutt_get_parameter ("charset", CURRENT->parameter)))
-	  chs = SendCharset;
-
-        if (CURRENT->noconv)
-	  rv = mutt_recode_file (CURRENT->filename, chs, Charset);
-	else
-	  rv = mutt_recode_file (CURRENT->filename, Charset, chs);
-
-	mutt_update_encoding (CURRENT);
-	
-	if (rv == 0)
-	{
-	  mutt_message (_("Recoding successful."));
-	  CURRENT->noconv = !CURRENT->noconv;
-	}
-
-	menu->redraw = REDRAW_CURRENT;
-	break;
-      }
-#undef CURRENT
 
       case OP_COMPOSE_EDIT_DESCRIPTION:
 	CHECK_COUNT;
@@ -919,12 +791,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  menu->redraw = REDRAW_FULL;
 	  break;
 	}
-
-      
-#ifdef MIXMASTER
-        if (msg->chain && mix_check_message (msg) != 0)
-	  break;
-#endif
       
 	if (!fccSet && *fcc)
 	{
@@ -950,15 +816,8 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
       case OP_COMPOSE_TOGGLE_UNLINK:
 	CHECK_COUNT;
 	idx[menu->current]->content->unlink = !idx[menu->current]->content->unlink;
-
-#if 0
-        /* OPTRESOLVE is otherwise ignored on this menu.
-	 * Where's the bug?
-	 */
-
-        if (option (OPTRESOLVE) && menu->current + 1 < menu->max)
+	if (option (OPTRESOLVE) && menu->current + 1 < menu->max)
 	  menu->current++;
-# endif
 	menu->redraw = REDRAW_INDEX;
 	break;
 
@@ -1142,7 +1001,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	/* fall through to postpone! */
 
       case OP_COMPOSE_POSTPONE_MESSAGE:
-
+      
         if(check_attachments(idx, idxlen) != 0)
         {
 	  menu->redraw = REDRAW_FULL;
@@ -1208,12 +1067,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 #endif /* _PGPPATH */
 
 
-#ifdef MIXMASTER
-      case OP_COMPOSE_MIX:
-      
-      	mix_make_chain (&msg->chain, &menu->redraw);
-        break;
-#endif
 
     }
   }
