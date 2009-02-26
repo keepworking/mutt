@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 1996,1997 Michael R. Elkins <me@cs.hmc.edu>
  * Copyright (c) 1998 Thomas Roessler <roessler@guug.de>
- *
+ * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
  *     the Free Software Foundation; either version 2 of the License, or
@@ -51,7 +51,7 @@ static struct pgp_vinfo pgp_vinfo[] =
   { PGP_V2, 	
     "pgp2",	
     &PgpV2,	&PgpV2Pubring,	&PgpV2Secring, 	&PgpV2Language, 
-    pgp_get_candidates,
+    pgp_read_pubring, pgp_read_secring,
     pgp_v2_invoke_decode, pgp_v2_invoke_verify, pgp_v2_invoke_decrypt,
     pgp_v2_invoke_sign, pgp_v2_invoke_encrypt, pgp_v2_invoke_import,
     pgp_v2_invoke_export, pgp_v2_invoke_verify_key 
@@ -60,7 +60,7 @@ static struct pgp_vinfo pgp_vinfo[] =
   { PGP_V3, 	
     "pgp3",	
     &PgpV3,	&PgpV3Pubring,	&PgpV3Secring, 	&PgpV3Language, 
-    pgp_get_candidates,
+    pgp_read_pubring, pgp_read_secring,
     pgp_v3_invoke_decode, pgp_v3_invoke_verify, pgp_v3_invoke_decrypt,
     pgp_v3_invoke_sign, pgp_v3_invoke_encrypt, pgp_v3_invoke_import,
     pgp_v3_invoke_export, pgp_v3_invoke_verify_key 
@@ -69,7 +69,7 @@ static struct pgp_vinfo pgp_vinfo[] =
   { PGP_V3, 	
     "pgp5",	
     &PgpV3,	&PgpV3Pubring,	&PgpV3Secring, 	&PgpV3Language, 
-    pgp_get_candidates,
+    pgp_read_pubring, pgp_read_secring,
     pgp_v3_invoke_decode, pgp_v3_invoke_verify, pgp_v3_invoke_decrypt,
     pgp_v3_invoke_sign, pgp_v3_invoke_encrypt, pgp_v3_invoke_import,
     pgp_v3_invoke_export, pgp_v3_invoke_verify_key 
@@ -78,7 +78,7 @@ static struct pgp_vinfo pgp_vinfo[] =
   { PGP_GPG, 	
     "gpg",	
     &PgpGpg,	&PgpGpgDummy,	&PgpGpgDummy, &PgpGpgDummy,
-    gpg_get_candidates,
+    gpg_read_pubring, gpg_read_secring,
     pgp_gpg_invoke_decode, pgp_gpg_invoke_verify, pgp_gpg_invoke_decrypt,
     pgp_gpg_invoke_sign, pgp_gpg_invoke_encrypt, pgp_gpg_invoke_import,
     pgp_gpg_invoke_export, pgp_gpg_invoke_verify_key 
@@ -178,15 +178,15 @@ struct pgp_vinfo *pgp_get_vinfo(enum pgp_ops op)
   return NULL;
 }
 
-char *pgp_keyid(pgp_key_t *k)
+char *pgp_keyid(KEYINFO *k)
 {
-  if((k->flags & KEYFLAG_SUBKEY) && k->parent)
-    k = k->parent;
+  if((k->flags & KEYFLAG_SUBKEY) && k->mainkey)
+    k = k->mainkey;
 
   return _pgp_keyid(k);
 }
 
-char *_pgp_keyid(pgp_key_t *k)
+char *_pgp_keyid(KEYINFO *k)
 {
   if(option(OPTPGPLONGIDS))
     return k->keyid;
@@ -217,7 +217,7 @@ static void pgp_current_time (STATE *s)
 
 /* Support for the Application/PGP Content Type. */
 
-void pgp_application_pgp_handler (BODY *m, STATE *s)
+void application_pgp_handler (BODY *m, STATE *s)
 {
   int needpass = -1, pgp_keyblock = 0;
   int clearsign = 0;
@@ -482,12 +482,11 @@ void pgp_application_pgp_handler (BODY *m, STATE *s)
 int mutt_is_multipart_signed(BODY *b)
 {
   char *p;
-
+  
   if(!b || b->type != TYPEMULTIPART ||
      !b->subtype || mutt_strcasecmp(b->subtype, "signed") ||
      !(p = mutt_get_parameter("protocol", b->parameter)) ||
-     (mutt_strcasecmp(p, "application/pgp-signature")
-      && mutt_strcasecmp(p, "multipart/mixed")))
+     mutt_strcasecmp(p, "application/pgp-signature"))
     return 0;
 
   return PGPSIGN;
@@ -565,208 +564,129 @@ int pgp_query (BODY *m)
   return t;
 }
 
-static void pgp_fetch_signatures (BODY ***signatures, BODY *a, int *n)
-{
-  for (; a; a = a->next)
-  {
-    if(a->type == TYPEMULTIPART)
-      pgp_fetch_signatures (signatures, a->parts, n);
-    else
-    {
-      if((*n % 5) == 0)
-	safe_realloc((void **) signatures, (*n + 6) * sizeof(BODY **));
-
-      (*signatures)[(*n)++] = a;
-    }
-  }
-}
-
-static int pgp_write_signed(BODY *a, STATE *s, const char *tempfile)
-{
-  FILE *fp;
-  int c;
-  short hadcr;
-  size_t bytes;
-
-  if(!(fp = safe_fopen (tempfile, "w")))
-  {
-    mutt_perror(tempfile);
-    return -1;
-  }
-      
-  fseek (s->fpin, a->hdr_offset, 0);
-  bytes = a->length + a->offset - a->hdr_offset;
-  hadcr = 0;
-  while (bytes > 0)
-  {
-    if((c = fgetc(s->fpin)) == EOF)
-      break;
-    
-    bytes--;
-    
-    if(c == '\r')
-      hadcr = 1;
-    else 
-    {
-      if(c == '\n' && !hadcr)
-	fputc('\r', fp);
-      
-      hadcr = 0;
-    }
-    
-    fputc(c, fp);
-    
-  }
-  fclose (fp);
-
-  return 0;
-}
-
-static int pgp_verify_one (BODY *sigbdy, STATE *s, const char *tempfile, struct pgp_vinfo *pgp)
-{
-  char sigfile[_POSIX_PATH_MAX], pgperrfile[_POSIX_PATH_MAX];
-  FILE *fp, *pgpout, *pgperr;
-  pid_t thepid;
-  
-  snprintf (sigfile, sizeof (sigfile), "%s.asc", tempfile);
-  
-  if(!(fp = safe_fopen (sigfile, "w")))
-  {
-    mutt_perror(sigfile);
-    return -1;
-  }
-	
-  fseek (s->fpin, sigbdy->offset, 0);
-  mutt_copy_bytes (s->fpin, fp, sigbdy->length);
-  fclose (fp);
-  
-  mutt_mktemp(pgperrfile);
-  if(!(pgperr = safe_fopen(pgperrfile, "w+")))
-  {
-    mutt_perror(pgperrfile);
-    unlink(sigfile);
-    return -1;
-  }
-  
-  pgp_current_time (s);
-  
-  if((thepid = pgp->invoke_verify (pgp,
-				   NULL, &pgpout, NULL, 
-				   -1, -1, fileno(pgperr),
-				   tempfile, sigfile)) != -1)
-  {
-    mutt_copy_stream(pgpout, s->fpout);
-    fclose (pgpout);
-    fflush(pgperr);
-    rewind(pgperr);
-    mutt_copy_stream(pgperr, s->fpout);
-    fclose(pgperr);
-    
-    mutt_wait_filter (thepid);
-  }
-  
-  state_puts (_("[-- End of PGP output --]\n\n"), s);
-  
-  mutt_unlink (sigfile);
-  mutt_unlink (pgperrfile);
-
-  return 0;
-}
-
 /*
  * This routine verifies a PGP/MIME signed body.
  */
 void pgp_signed_handler (BODY *a, STATE *s)
 {
-  char tempfile[_POSIX_PATH_MAX];
-  char *protocol;
-  int protocol_major = TYPEOTHER;
-  char *protocol_minor = NULL;
-  
+  FILE *fp, *pgpout, *pgperr;
+  char tempfile[_POSIX_PATH_MAX], sigfile[_POSIX_PATH_MAX],
+  	pgperrfile[_POSIX_PATH_MAX];
+  int bytes;
+  int hadcr;
+  int c;
+  pid_t thepid;
   struct pgp_vinfo *pgp = pgp_get_vinfo(PGP_VERIFY);
-
-  BODY **signatures = NULL;
-  int sigcnt = 0;
-  int i;
-
   
-  if (!pgp)
+  if(!pgp)
     return;
-
-  protocol = mutt_get_parameter ("protocol", a->parameter);
+  
   a = a->parts;
 
-  /* extract the protocol information */
-  
-  if (protocol)
+  /* First do some error checking to make sure that this looks like a valid
+   * multipart/signed body.
+   */
+  if (a && a->next && a->next->type == TYPEAPPLICATION && a->next->subtype &&
+      mutt_strcasecmp (a->next->subtype, "pgp-signature") == 0)
   {
-    char major[STRING];
-    char *t;
-
-    if ((protocol_minor = strchr(protocol, '/'))) protocol_minor++;
-    
-    strfcpy(major, protocol, sizeof(major));
-    if((t = strchr(major, '/')))
-      *t = '\0';
-    
-    protocol_major = mutt_check_mime_type (major);
-  }
-
-  /* consistency check */
-
-  if (!(a && a->next && a->next->type == protocol_major && 
-      !mutt_strcasecmp(a->next->subtype, protocol_minor)))
-  {
-    state_puts(_("[-- Error: Inconsistant multipart/signed structure! --]\n\n"), s);
-    mutt_body_handler (a, s);
-    return;
-  }
-
-  if(!(protocol_major == TYPEAPPLICATION && !mutt_strcasecmp(protocol_minor, "pgp-signature"))
-     && !(protocol_major == TYPEMULTIPART && !mutt_strcasecmp(protocol_minor, "mixed")))
-  {
-    state_printf(s, _("[-- Error: Unknown multipart/signed protocol %s! --]\n\n"), protocol);
-    mutt_body_handler (a, s);
-    return;
-  }
-  
-  if (s->flags & M_DISPLAY)
-  {
-    
-    pgp_fetch_signatures(&signatures, a->next, &sigcnt);
-    
-    if (sigcnt)
+    if (s->flags & M_DISPLAY)
     {
       mutt_mktemp (tempfile);
-      if (pgp_write_signed (a, s, tempfile) == 0)
+
+      if(!(fp = safe_fopen (tempfile, "w")))
       {
-	for (i = 0; i < sigcnt; i++)
+	mutt_perror(tempfile);
+	return;
+      }
+
+      fseek (s->fpin, a->hdr_offset, 0);
+      bytes = a->length + a->offset - a->hdr_offset;
+      hadcr = 0;
+      while (bytes > 0)
+      {
+	if((c = fgetc(s->fpin)) == EOF)
+	  break;
+	
+	bytes--;
+
+	if(c == '\r')
+	  hadcr = 1;
+	else 
 	{
-	  if (signatures[i]->type == TYPEAPPLICATION 
-	      && !mutt_strcasecmp(signatures[i]->subtype, "pgp-signature"))
-	    pgp_verify_one (signatures[i], s, tempfile, pgp);
-	  else
-	    state_printf (s, _("[-- Warning: We can't verify %s/%s signatures. --]\n\n"),
-			  TYPE(signatures[i]), signatures[i]->subtype);
+	  if(c == '\n' && !hadcr)
+	    fputc('\r', fp);
+	  
+	  hadcr = 0;
 	}
+
+	fputc(c, fp);
+
+      }
+      fclose (fp);
+
+      /* Now grab the signature.  Since signature data is required to be 7bit,
+       * we don't have to worry about doing CTE decoding...
+       */
+      snprintf (sigfile, sizeof (sigfile), "%s.asc", tempfile);
+      if(!(fp = safe_fopen (sigfile, "w")))
+      {
+	mutt_perror(sigfile);
+	unlink(tempfile);
+	return;
+      }
+
+      fseek (s->fpin, a->next->offset, 0);
+      mutt_copy_bytes (s->fpin, fp, a->next->length);
+      fclose (fp);
+
+      mutt_mktemp(pgperrfile);
+      if(!(pgperr = safe_fopen(pgperrfile, "w+")))
+      {
+	mutt_perror(pgperrfile);
+	unlink(tempfile);
+	unlink(sigfile);
+	return;
       }
       
+      pgp_current_time (s);
+
+      if((thepid = pgp->invoke_verify (pgp,
+				       NULL, &pgpout, NULL, 
+				       -1, -1, fileno(pgperr),
+				       tempfile, sigfile)) != -1)
+      {
+	mutt_copy_stream(pgpout, s->fpout);
+	fclose (pgpout);
+	
+	fflush(pgperr);
+	rewind(pgperr);
+	mutt_copy_stream(pgperr, s->fpout);
+	fclose(pgperr);
+	
+	mutt_wait_filter (thepid);
+      }
+      
+      state_puts (_("[-- End of PGP output --]\n\n"), s);
+      
       mutt_unlink (tempfile);
+      mutt_unlink (sigfile);
+      mutt_unlink (pgperrfile);
       
       /* Now display the signed body */
-      state_puts (_("[-- The following data is signed --]\n\n"), s);
-
-
-      safe_free((void **) &signatures);
+      state_puts (_("[-- The following data is PGP/MIME signed --]\n\n"), s);
     }
-    else
-      state_puts (_("[-- Warning: Can't find any signatures. --]\n\n"), s);
+
+    mutt_body_handler (a, s);
+
+    if (s->flags & M_DISPLAY)
+      state_puts (_("\n[-- End of PGP/MIME signed data --]\n"), s);
   }
-  
-  mutt_body_handler (a, s);
-  
-  if (s->flags & M_DISPLAY && sigcnt)
-    state_puts (_("\n[-- End of signed data --]\n"), s);
+  else
+  {
+    dprint (1,(debugfile, "pgp_signed_handler: invalid format!\n"));
+    state_puts (_("[-- Error: this message does not comply with the PGP/MIME specification! --]\n\n"), s);
+    mutt_decode_attachment (a, s); /* just treat the data as text/plain... */
+  }
 }
 
 /* Extract pgp public keys from messages or attachments */
@@ -1231,19 +1151,22 @@ static BODY *pgp_sign_message (BODY *a)
  */
 char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
 {
-  char *keyID, *keylist = NULL;
+  char *key, *keyID, *keylist = NULL;
   size_t keylist_size = 0;
   size_t keylist_used = 0;
   ADDRESS *tmp = NULL;
   ADDRESS **last = &tmp;
   ADDRESS *p;
   int i;
-  pgp_key_t *k_info, *key;
-  struct pgp_vinfo *pgp = pgp_get_vinfo (PGP_ENCRYPT);
+  KEYINFO *db;
+  KEYINFO *k_info;
+  struct pgp_vinfo *pgp = pgp_get_vinfo(PGP_ENCRYPT);
   
-  if (!pgp)
+  if(!pgp)
     return NULL;
   
+  db = pgp->read_pubring(pgp);
+
   for (i = 0; i < 3; i++) 
   {
     switch (i)
@@ -1270,40 +1193,37 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
     {
       snprintf (buf, sizeof (buf), _("Use keyID = \"%s\" for %s?"), keyID, p->mailbox);
       if (mutt_yesorno (buf, M_YES) == M_YES)
-	k_info = pgp_getkeybystr (pgp, keyID, KEYFLAG_CANENCRYPT, PGP_PUBRING);
+	k_info = ki_getkeybystr (pgp, keyID, db, KEYFLAG_CANENCRYPT);
     }
-
-    if (k_info == NULL && (k_info = pgp_getkeybyaddr (pgp, p, KEYFLAG_CANENCRYPT, PGP_PUBRING)) == NULL)
+    if (k_info == NULL && (k_info = ki_getkeybyaddr (pgp, p, db, KEYFLAG_CANENCRYPT)) == NULL)
     {
       snprintf (buf, sizeof (buf), _("Enter keyID for %s: "), p->mailbox);
       
-      if ((key = pgp_ask_for_key (pgp, buf, p->mailbox,
-				  KEYFLAG_CANENCRYPT, PGP_PUBRING)) == NULL)
+      if ((key = pgp_ask_for_key (pgp, db, buf, p->mailbox,
+				  KEYFLAG_CANENCRYPT, NULL)) == NULL)
       {
+	pgp_close_keydb (&db);
 	safe_free ((void **)&keylist);
 	rfc822_free_address (&tmp);
 	return NULL;
       }
     }
     else
-      key = k_info;
+      key = pgp_keyid(k_info);
 
-    keyID = pgp_keyid (key);
-    pgp_free_key (&key);
-    
-    keylist_size += mutt_strlen (keyID) + 4;
+    keylist_size += mutt_strlen (key) + 4;
     safe_realloc ((void **)&keylist, keylist_size);
     sprintf (keylist + keylist_used, "%s0x%s", keylist_used ? " " : "",
-	     keyID);
+	     key);
     keylist_used = mutt_strlen (keylist);
   }
   rfc822_free_address (&tmp);
+  pgp_close_keydb (&db);
   return (keylist);
 }
 
 /* Warning: "a" is no longer free()d in this routine, you need
  * to free() it later.  This is necessary for $fcc_attach. */
-
 static BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
 {
   char buf[LONG_STRING];
