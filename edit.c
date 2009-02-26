@@ -129,9 +129,9 @@ static int be_barf_file (const char *path, char **buf, int buflen)
 static void be_free_memory (char **buf, int buflen)
 {
   while (buflen-- > 0)
-    free (buf[buflen]);
+    FREE (&buf[buflen]);
   if (buf)
-    free (buf);
+    FREE (&buf);
 }
 
 static char **
@@ -382,7 +382,11 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
 	  break;
 	case 'r':
 	  if (*p)
-	    buf = be_snarf_file (p, buf, &bufmax, &buflen, 1);
+          {
+	    strncpy(tmp, p, sizeof(tmp));
+	    mutt_expand_path(tmp, sizeof(tmp));
+	    buf = be_snarf_file (tmp, buf, &bufmax, &buflen, 1);
+          }
 	  else
 	    addstr ("missing filename.\n");
 	  break;
@@ -400,7 +404,7 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
 	    buflen--;
 	    strfcpy (tmp, buf[buflen], sizeof (tmp));
 	    tmp[strlen (tmp)-1] = 0;
-	    free (buf[buflen]);
+	    FREE (&buf[buflen]);
 	    buf[buflen] = NULL;
 	    continue;
 	  }
