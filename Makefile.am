@@ -52,7 +52,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 LDADD = @LIBOBJS@ @INTLLIBS@
 
-SUBDIRS = doc intl m4 po contrib
+SUBDIRS = doc intl m4 po contrib charsets
 
 OPS=$(srcdir)/OPS $(srcdir)/OPS.PGP
 
