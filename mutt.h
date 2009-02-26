@@ -32,25 +32,6 @@
 #include "rfc822.h"
 #include "hash.h"
 
-#ifdef ENABLE_NLS
-# include <libintl.h>
-# define _(a) gettext (a)
-# ifdef gettext_noop
-#  define N_(a) gettext_noop (a)
-# else
-#  define N_(a) (a)
-# endif
-#else
-# define _(a) (a)
-# define N_(a) (a)
-#endif
-
-#ifdef SUBVERSION
-# define MUTT_VERSION (VERSION SUBVERSION)
-#else  
-# define MUTT_VERSION (VERSION)
-#endif
-
 /* nifty trick I stole from ELM 2.5alpha. */
 #ifdef MAIN_C
 #define WHERE 
@@ -90,7 +71,6 @@
 #define  M_PASS    (1<<4) /* password mode (no echo) */
 #define  M_CLEAR   (1<<5) /* clear input if printable character is pressed */
 #define  M_COMMAND (1<<6) /* do command completion */
-#define  M_PATTERN (1<<7) /* pattern mode - only used for history classes */
 
 /* flags for mutt_get_token() */
 #define M_TOKEN_EQUAL		1	/* treat '=' as a special */
@@ -119,9 +99,7 @@ typedef enum
   M_FORMAT_TREE		= (1<<1), /* draw the thread tree */
   M_FORMAT_MAKEPRINT	= (1<<2), /* make sure that all chars are printable */
   M_FORMAT_OPTIONAL	= (1<<3),
-  M_FORMAT_STAT_FILE	= (1<<4), /* used by mutt_attach_fmt */
-  M_FORMAT_ARROWCURSOR	= (1<<5), /* reserve space for arrow_cursor */
-  M_FORMAT_INDEX	= (1<<6)  /* this is a main index entry */
+  M_FORMAT_STAT_FILE	= (1<<4)  /* used by mutt_attach_fmt */
 } format_flag;
 
 /* types for mutt_add_hook() */
@@ -143,12 +121,6 @@ typedef enum
 #define M_TREE_STAR		8
 #define M_TREE_HIDDEN		9
 #define M_TREE_MAX		10
-
-#define M_THREAD_COLLAPSE	(1<<0)
-#define M_THREAD_UNCOLLAPSE	(1<<1)
-#define M_THREAD_GET_HIDDEN	(1<<2)
-#define M_THREAD_UNREAD		(1<<3)
-#define M_THREAD_NEXT_UNREAD	(1<<4)
 
 enum
 {
@@ -198,19 +170,12 @@ enum
   M_PERSONAL_RECIP,
   M_PERSONAL_FROM,
   M_ADDRESS,
-#ifdef _PGPPATH
-  M_PGP_SIGN,
-  M_PGP_ENCRYPT,
-#endif
-  
+
   /* Options for Mailcap lookup */
   M_EDIT,
   M_COMPOSE,
   M_PRINT,
   M_AUTOVIEW,
-
-  /* options for socket code */
-  M_NEW_SOCKET,
 
   /* Options for mutt_save_attachment */
   M_SAVE_APPEND
@@ -257,75 +222,27 @@ enum
 #define SENDBATCH	(1<<5)
 #define SENDMAILX	(1<<6)
 #define SENDKEY		(1<<7)
-#define SENDEDITMSG	(1<<8)
 
 /* boolean vars */
 enum
 {
-  OPTALLOW8BIT,
-  OPTARROWCURSOR,
-  OPTASCIICHARS,
-  OPTASKBCC,
-  OPTASKCC,
-  OPTATTACHSPLIT,
-  OPTAUTOEDIT,
-  OPTAUTOTAG,
-  OPTBEEP,
-  OPTBEEPNEW,
-  OPTCHECKNEW,
-  OPTCOLLAPSEUNREAD,
-  OPTCONFIRMAPPEND,
-  OPTCONFIRMCREATE,
-  OPTEDITHDRS,
-  OPTFASTREPLY,
-  OPTFCCATTACH,
-  OPTFOLLOWUPTO,
-  OPTFORCENAME,
-  OPTFORWDECODE,
-  OPTFORWQUOTE,
-  OPTHDRS,
-  OPTHEADER,
-  OPTHELP,
-  OPTHIDDENHOST,
-  OPTIGNORELISTREPLYTO,
-  OPTMARKERS,
-  OPTMARKOLD,
-  OPTMENUSCROLL,	/* scroll menu instead of implicit next-page */
-  OPTMETAKEY,		/* interpret ALT-x as ESC-x */
-  OPTMETOO,
-  OPTMHPURGE,
-  OPTMIMEFORWDECODE,
-  OPTPAGERSTOP,
-  OPTPIPEDECODE,
-  OPTPIPESPLIT,
-  OPTPOPDELETE,
   OPTPROMPTAFTER,
-  OPTREADONLY,
-  OPTRESOLVE,
+  OPTSTATUSONTOP,
+  OPTALLOW8BIT,
+  OPTASCIICHARS,
+  OPTMETOO,
+  OPTEDITHDRS,
+  OPTARROWCURSOR,
+  OPTASKCC,
+  OPTHEADER,
   OPTREVALIAS,
   OPTREVNAME,
-  OPTSAVEADDRESS,
+  OPTFORCENAME,
   OPTSAVEEMPTY,
-  OPTSAVENAME,
+  OPTPAGERSTOP,
   OPTSIGDASHES,
-  OPTSORTRE,
-  OPTSTATUSONTOP,
-  OPTSTRICTTHREADS,
-  OPTSUSPEND,
-  OPTTHOROUGHSRC,
-  OPTTILDE,
-  OPTUNCOLLAPSEJUMP,
-  OPTUSE8BITMIME,
-  OPTUSEDOMAIN,
-  OPTUSEFROM,
-  OPTWAITKEY,
-  OPTWEED,
-  OPTWRAP,
-  OPTWRAPSEARCH,
-  OPTWRITEBCC,		/* write out a bcc header? */
-
-  /* PGP options */
-  
+  OPTASKBCC,
+  OPTAUTOEDIT,
 #ifdef _PGPPATH
   OPTPGPAUTOSIGN,
   OPTPGPAUTOENCRYPT,
@@ -334,11 +251,45 @@ enum
   OPTPGPREPLYSIGN,
   OPTPGPENCRYPTSELF,
   OPTPGPSTRICTENC,
-  OPTFORWDECRYPT,
 #endif
-
-  /* pseudo options */
-
+  OPTMARKOLD,
+  OPTCONFIRMCREATE,
+  OPTCONFIRMAPPEND,
+  OPTPOPDELETE,
+  OPTSAVENAME,
+  OPTTHOROUGHSRC,
+  OPTTILDE,
+  OPTMARKERS,
+  OPTFCCATTACH,
+  OPTPIPESPLIT,
+  OPTPIPEDECODE,
+  OPTREADONLY,
+  OPTRESOLVE,
+  OPTSTRICTTHREADS,
+  OPTAUTOTAG,
+  OPTBEEP,
+  OPTHELP,
+  OPTHDRS,
+  OPTWEED,
+  OPTWRAP,
+  OPTCHECKNEW,
+  OPTFASTREPLY,
+  OPTWAITKEY,
+  OPTWRAPSEARCH,
+  OPTIGNORELISTREPLYTO,
+  OPTSAVEADDRESS,
+  OPTSUSPEND,
+  OPTSORTRE,
+  OPTUSEDOMAIN,
+  OPTUSEFROM,
+  OPTUSE8BITMIME,
+  OPTFORWDECODE,
+  OPTMIMEFORWDECODE,
+  OPTFORWQUOTE,
+  OPTBEEPNEW,
+  OPTFOLLOWUPTO,
+  OPTMENUSCROLL,	/* scroll menu instead of implicit next-page */
+  OPTMETAKEY,		/* interpret ALT-x as ESC-x */
   OPTAUXSORT,		/* (pseudo) using auxillary sort function */
   OPTFORCEREFRESH,	/* (pseudo) refresh even during macros */
   OPTLOCALES,		/* (pseudo) set if user has valid locale definition */
@@ -354,14 +305,12 @@ enum
   OPTFORCEREDRAWPAGER,	/* (pseudo) used to force a redraw in the pager */
   OPTSORTSUBTHREADS,	/* (pseudo) used when $sort_aux changes */
   OPTNEEDRESCORE,	/* (pseudo) set when the `score' command is used */
-  OPTSORTCOLLAPSE,	/* (pseudo) used by mutt_sort_headers() */
-  OPTUSEHEADERDATE,	/* (pseudo) used by edit-message */
-  OPTATTACHMSG,		/* (pseudo) used by attach-message */
-  
+
 #ifdef _PGPPATH
   OPTPGPCHECKTRUST,	/* (pseudo) used by pgp_select_key () */
   OPTDONTHANDLEPGPKEYS,	/* (pseudo) used to extract PGP keys */
 #endif
+
 
 
 
@@ -424,7 +373,6 @@ typedef struct envelope
   char *real_subj;		/* offset of the real subject */
   char *message_id;
   char *supersedes;
-  char *date;
   LIST *references;		/* message references (in reverse order) */
   LIST *userhdrs;		/* user defined headers */
 } ENVELOPE;
@@ -447,12 +395,10 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
-  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
 {
-  char *xtype;			/* content-type if x-unknown */
   char *subtype;                /* content-type subtype */
   PARAMETER *parameter;         /* parameters of the content-type */
   char *description;            /* content-description */
@@ -500,10 +446,6 @@ typedef struct body
 
 typedef struct header
 {
-  #ifdef _PGPPATH
-  unsigned int pgp : 3;
-#endif
-
   unsigned int mime : 1;    /* has a Mime-Version header? */
   unsigned int mailcap : 1; /* requires mailcap to display? */
   unsigned int flagged : 1; /* marked important? */
@@ -515,14 +457,28 @@ typedef struct header
   unsigned int read : 1;
   unsigned int expired : 1; /* already expired? */
   unsigned int superseded : 1; /* got superseded? */
+
+
+
+
+#ifdef _PGPPATH
+  unsigned int pgp : 3;
+#endif
+
+
+
+
+
+
+
+
+
   unsigned int replied : 1;
   unsigned int subject_changed : 1; /* used for threading */
   unsigned int display_subject : 1; /* used for threading */
   unsigned int fake_thread : 1;     /* no ref matched, but subject did */
   unsigned int threaded : 1;        /* message has been threaded */
-  unsigned int recip_valid : 1;  /* is_recipient is valid */
-  unsigned int active : 1;	    /* message is not to be removed */
-  
+
   /* timezone of the sender of this message */
   unsigned int zhours : 5;
   unsigned int zminutes : 6;
@@ -532,13 +488,6 @@ typedef struct header
   unsigned int searched : 1;
   unsigned int matched : 1;
 
-  /* the following are used to support collapsing threads  */
-  unsigned int collapsed : 1; /* is this message part of a collapsed thread? */
-  unsigned int limited : 1;   /* is this message in a limited view?  */
-  size_t num_hidden;          /* number of hidden messages in this view */
-
-  short recipient;	/* user_is_recipient()'s return value, cached */
-  
   int pair; /* color-pair to use when displaying in the index */
 
   time_t date_sent;     /* time when the message was sent (UTC) */
@@ -588,7 +537,6 @@ typedef struct
   char *path;
   FILE *fp;
   time_t mtime;
-  time_t mtime_cur;		/* used with maildir folders */
   off_t size;
   off_t vsize;
   char *pattern;                /* limit pattern string */
@@ -609,6 +557,7 @@ typedef struct
   int msgnotreadyet;		/* which msg "new" in pager, -1 if none */
 #ifdef USE_IMAP
   void *data;			/* driver specific data */
+  int fd;
 #endif /* USE_IMAP */
 
   short magic;			/* mailbox type */
@@ -621,7 +570,6 @@ typedef struct
   unsigned int setgid : 1;
   unsigned int quiet : 1;	/* inhibit status messages? */
   unsigned int revsort : 1;	/* mailbox sorted in reverse? */
-  unsigned int collapsed : 1;   /* are all threads collapsed? */
 } CONTEXT;
 
 typedef struct attachptr
@@ -653,8 +601,6 @@ typedef struct
 
 #define state_puts(x,y) fputs(x,(y)->fpout)
 #define state_putc(x,y) fputc(x,(y)->fpout)
-
-void state_prefix_putc(char, STATE *);
 
 #include "protos.h"
 #include "globals.h"
