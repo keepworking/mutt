@@ -37,10 +37,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 
 #define BUFI_SIZE 1000
 #define BUFO_SIZE 2000
@@ -80,7 +76,7 @@ static void state_prefix_put (const char *d, size_t dlen, STATE *s)
     fwrite (d, dlen, 1, s->fpout);
 }
 
-void mutt_convert_to_state(iconv_t cd, char *bufi, size_t *l, STATE *s)
+static void convert_to_state(iconv_t cd, char *bufi, size_t *l, STATE *s)
 {
   char bufo[BUFO_SIZE];
   ICONV_CONST char *ib;
@@ -144,11 +140,11 @@ void mutt_decode_xbit (STATE *s, long len, int istext, iconv_t cd)
 
       bufi[l++] = c;
       if (l == sizeof (bufi))
-	mutt_convert_to_state (cd, bufi, &l, s);
+	convert_to_state (cd, bufi, &l, s);
     }
 
-    mutt_convert_to_state (cd, bufi, &l, s);
-    mutt_convert_to_state (cd, 0, 0, s);
+    convert_to_state (cd, bufi, &l, s);
+    convert_to_state (cd, 0, 0, s);
 
     state_reset_prefix (s);
   }
@@ -226,7 +222,7 @@ static void qp_decode_line (char *dest, char *src, size_t *l,
  * result of qp_decode_line.
  * 
  * Finally, at soft line breaks, some part of a multibyte character
- * may have been left over by mutt_convert_to_state().  This shouldn't
+ * may have been left over by convert_to_state().  This shouldn't
  * be more than 6 characters, so STRING + 7 should be sufficient
  * memory to store the decoded data.
  * 
@@ -273,10 +269,10 @@ void mutt_decode_quoted (STATE *s, long len, int istext, iconv_t cd)
     
     qp_decode_line (decline + l, line, &l3, last);
     l += l3;
-    mutt_convert_to_state (cd, decline, &l, s);
+    convert_to_state (cd, decline, &l, s);
   }
 
-  mutt_convert_to_state (cd, 0, 0, s);
+  convert_to_state (cd, 0, 0, s);
   state_reset_prefix(s);
 }
 
@@ -351,13 +347,13 @@ void mutt_decode_base64 (STATE *s, long len, int istext, iconv_t cd)
       bufi[l++] = ch;
     
     if (l + 8 >= sizeof (bufi))
-      mutt_convert_to_state (cd, bufi, &l, s);
+      convert_to_state (cd, bufi, &l, s);
   }
 
   if (cr) bufi[l++] = '\r';
 
-  mutt_convert_to_state (cd, bufi, &l, s);
-  mutt_convert_to_state (cd, 0, 0, s);
+  convert_to_state (cd, bufi, &l, s);
+  convert_to_state (cd, 0, 0, s);
 
   state_reset_prefix(s);
 }
@@ -410,13 +406,13 @@ void mutt_decode_uuencoded (STATE *s, long len, int istext, iconv_t cd)
 	if (c == linelen)
 	  break;
       }
-      mutt_convert_to_state (cd, bufi, &k, s);
+      convert_to_state (cd, bufi, &k, s);
       pt++;
     }
   }
 
-  mutt_convert_to_state (cd, bufi, &k, s);
-  mutt_convert_to_state (cd, 0, 0, s);
+  convert_to_state (cd, bufi, &k, s);
+  convert_to_state (cd, 0, 0, s);
   
   state_reset_prefix(s);
 }
@@ -1389,7 +1385,7 @@ int mutt_can_decode (BODY *a)
 
 
 
-#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     if (ascii_strcasecmp (a->subtype, "signed") == 0 ||
 	ascii_strcasecmp (a->subtype, "encrypted") == 0)
       return (1);
@@ -1411,21 +1407,13 @@ int mutt_can_decode (BODY *a)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
   else if (a->type == TYPEAPPLICATION)
   {
-#ifdef HAVE_PGP
     if (mutt_is_application_pgp(a))
       return (1);
-#ifdef HAVE_SMIME
-    if (mutt_is_application_smime(a))
-      return (1);
-#endif
-#endif
   }
 #endif
-
-
 
 
 
@@ -1720,7 +1708,7 @@ static void external_body_handler (BODY *b, STATE *s)
 
 void mutt_decode_attachment (BODY *b, STATE *s)
 {
-  int istext = mutt_is_text_part (b);
+  int istext = mutt_is_text_type (b->type, b->subtype);
   iconv_t cd = (iconv_t)(-1);
 
   if (istext && s->flags & M_CHARCONV)
@@ -1785,11 +1773,6 @@ void mutt_body_handler (BODY *b, STATE *s)
       /* avoid copying this part twice since removing the transfer-encoding is
        * the only operation needed.
        */
-#ifdef HAVE_PGP
-      if (mutt_is_application_pgp (b))
-	handler = pgp_application_pgp_handler;
-      else
-#endif	
       if (ascii_strcasecmp ("flowed", mutt_get_parameter ("format", b->parameter)) == 0)
 	handler = text_plain_flowed_handler;
       else
@@ -1814,9 +1797,9 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     char *p;
-#endif /* HAVE_(PGP||SMIME) */
+#endif /* HAVE_PGP */
 
 
 
@@ -1825,18 +1808,21 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     else if (ascii_strcasecmp ("signed", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
         mutt_error _("Error: multipart/signed has no protocol.");
-      else if (s->flags & M_VERIFY)
-	handler = mutt_signed_handler;
+      else if (ascii_strcasecmp ("application/pgp-signature", p) == 0 ||
+	       ascii_strcasecmp ("multipart/mixed", p) == 0)
+      {
+	if (s->flags & M_VERIFY)
+	  handler = pgp_signed_handler;
+      }
     }
-#ifdef HAVE_PGP
-    else if (mutt_strcasecmp ("encrypted", b->subtype) == 0)
+    else if (ascii_strcasecmp ("encrypted", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
@@ -1846,7 +1832,7 @@ void mutt_body_handler (BODY *b, STATE *s)
         handler = pgp_encrypted_handler;
     }
 #endif /* HAVE_PGP */
-#endif /* HAVE_(PGP||SMIME) */
+
 
 
     if (!handler)
@@ -1855,20 +1841,13 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
   else if (b->type == TYPEAPPLICATION)
   {
-#ifdef HAVE_PGP
-    if (mutt_is_application_pgp (b))
+    if (mutt_is_application_pgp(b))
       handler = pgp_application_pgp_handler;
-#endif /* HAVE_PGP */
-#ifdef HAVE_SMIME
-    if (mutt_is_application_smime(b))
-      handler = smime_application_smime_handler;
-#endif /* HAVE_SMIME */
   }
-#endif /* HAVE_(PGP||SMIME) */
-
+#endif /* HAVE_PGP */
 
 
 
@@ -1879,7 +1858,7 @@ void mutt_body_handler (BODY *b, STATE *s)
     /* see if we need to decode this part before processing it */
     if (b->encoding == ENCBASE64 || b->encoding == ENCQUOTEDPRINTABLE ||
 	b->encoding == ENCUUENCODED || plaintext || 
-	mutt_is_text_part (b))				/* text subtypes may
+	mutt_is_text_type (b->type, b->subtype))	/* text subtypes may
 							 * require character
 							 * set conversion even
 							 * with 8bit encoding.

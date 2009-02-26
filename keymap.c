@@ -43,10 +43,6 @@ struct mapping_t Menus[] = {
  { "pgp",	MENU_PGP },
 #endif  
   
-#ifdef HAVE_SMIME
- { "smime",	MENU_SMIME },
-#endif
- 
 #ifdef MIXMASTER
   { "mix", 	MENU_MIX },
 #endif
@@ -535,10 +531,6 @@ void km_init (void)
 
 #ifdef HAVE_PGP
   create_bindings (OpPgp, MENU_PGP);
-#endif
-
-#ifdef HAVE_SMIME
-  create_bindings (OpSmime, MENU_SMIME);
 #endif
 
 #ifdef MIXMASTER

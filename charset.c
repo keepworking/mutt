@@ -314,8 +314,12 @@ iconv_t mutt_iconv_open (const char *tocode, const char *fromcode, int flags)
   iconv_t cd;
   
   mutt_canonical_charset (tocode1, sizeof (tocode1), tocode);
+
+#ifdef M_ICONV_HOOK_TO
+  /* Not used. */
   if ((flags & M_ICONV_HOOK_TO) && (tmp = mutt_charset_hook (tocode1)))
     mutt_canonical_charset (tocode1, sizeof (tocode1), tmp);
+#endif
 
   mutt_canonical_charset (fromcode1, sizeof (fromcode1), fromcode);
   if ((flags & M_ICONV_HOOK_FROM) && (tmp = mutt_charset_hook (fromcode1)))
@@ -493,27 +497,6 @@ FGETCONV *fgetconv_open (FILE *file, const char *from, const char *to, int flags
   fc->file = file;
   fc->cd = cd;
   return (FGETCONV *)fc;
-}
-
-char *fgetconvs (char *buf, size_t l, FGETCONV *_fc)
-{
-  int c;
-  size_t r;
-  
-  for (r = 0; r + 1 < l;)
-  {
-    if ((c = fgetconv (_fc)) == EOF)
-      break;
-    buf[r++] = (char) c;
-    if (c == '\n') 
-      break;
-  }
-  buf[r] = '\0';
-  
-  if (r) 
-    return buf;
-  else 
-    return NULL;
 }
 
 int fgetconv (FGETCONV *_fc)
