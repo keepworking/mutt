@@ -968,12 +968,13 @@ Mutt has a few nice features for <ref id="using_lists" name="handling mailing
 lists">.  In order to take advantage of them, you must specify which addresses
 belong to mailing lists.
 
-It is important to note that you should <bf/never/ specify the domain name
-(the part after the ``@'') with the lists command.  You should only
-specify the ``mailbox'' portion of the address (the part before the ``@'').
-For example, if you've subscribed to the Mutt mailing list, you will receive
-mail addressed to <em/mutt-users@mutt.org/.  So, to tell Mutt that this is a
-mailing list, you would add ``lists mutt-users'' to your initialization file.
+Specify as much of the address as you need to to remove ambiguity.  For
+example, if you've subscribed to the Mutt mailing list, you will receive mail
+addresssed to <em/mutt-users@mutt.org/.  So, to tell Mutt that this is a
+mailing list, you could add ``lists mutt-users'' to your initialization file.
+If you also happen to get mail from someone whose address is
+<em/mutt-users@example.com/. you could use ``lists mutt-users@mutt.org'' to
+match only mail from the actual list.
 
 The ``unlists'' command is to remove a token from the list of mailing-lists.
 Use ``unlists *'' to remove all tokens.
@@ -1811,7 +1812,7 @@ url="http://www.ccil.org/~esr/fetchmail" name="fetchmail">
 
 If Mutt was compiled with IMAP support (by running the <em/configure/
 script with the <em/--enable-imap/ flag), it has the ability to work
-with folders located on a remote IMAP server.
+with folders located on a remote imap server.
 
 You can access the remote inbox by selecting the folder
 <tt/{imapserver}inbox/, where <tt/imapserver/ is the name of the IMAP
@@ -1821,30 +1822,8 @@ server, you should use <tt>{imapserver}path/to/folder</tt> where
 <tt>path/to/folder</tt> is the path of the folder you want to access
 relative to your home directory.
 
-You can select an alternative port by specifying it with the server, ie:
-<tt/{imapserver:port}inbox/.
-
-Note that not all servers use / as the hierarchy separator.  Mutt should
-correctly notice which separator is being used by the server and convert
-paths accordingly.
-
-When browsing folders on an IMAP server, you can toggle whether to look
-at only the folders you are subscribed to, or all folders with the
-<em/toggle-subscribed/ command.  See also the 
-<ref id="imap&lowbar;list&lowbar;subscribed" name="&dollar;imap&lowbar;list&lowbar;subscribed"> variable.
-
-Mutt was designed to work with IMAP4rev1 servers, and has been tested
-with both the UWash IMAP server v11.241 and the Cyrus IMAP server v1.5.14.
-Note that if you are using mbox as the mail store on the UWash server,
-the server will disconnect a client if another client selects the same
-folder.
-
-Mutt currently does not support completion of IMAP folder names.  Hit
-the <em/complete/ key again to go to the IMAP browser.
-
-<bf/Note:/ The IMAP support has had very limited testing due to a lack
-of developers using it.  It should work with the reference servers
-mentioned above, but if you need a more stable way to access your
+<bf/Note:/ The IMAP support is in a very early state and quite
+unstable at the moment. If you need a more stable way to access your
 IMAP folder, consider using a specialized program, such as <htmlurl
 url="http://www.ccil.org/~esr/fetchmail" name="fetchmail">.
 
@@ -1854,8 +1833,8 @@ If a message contains URLs (<em/unified ressource locator/ = address in the
 WWW space like <em>http://www.mutt.org/</em>), it is efficient to get
 a menu with all the URLs and start a WWW browser on one of them.  This
 functionality is provided by the external urlview program which can be
-retrieved at <htmlurl url="ftp://ftp.cs.hmc.edu/pub/me/"
-name="ftp://ftp.cs.hmc.edu/pub/me/"> and the configuration commands:
+retrieved at <htmlurl url="ftp://ftp.guug.de/pub/mutt/contrib/"
+name="ftp://ftp.guug.de/pub/mutt/contrib/"> and the configuration commands:
 <tscreen><verb>
 macro index \cb |urlview\n
 macro pager \cb |urlview\n
@@ -2852,28 +2831,6 @@ to even if that mailbox does not exist.
 
 Also see the <ref id="record" name="&dollar;record"> variable.
 
-<sect2>forward&lowbar;attachment<label id="forward_attachment">
-<p>
-Type: boolean<newline>
-Default: unset
-
-When set, and you (tag-)forward attachments from the Attachment menu,
-Mutt creates a new message with the specified attachments <em/only/.
-<ref id="forward_format" name="&dollar;forward&lowbar;format"> is used
-to set the default subject.
-
-When unset, Mutt creates a pseudo-message comprising the tagged
-attachments and forwards that. See the section on Forwarding a message
-for details.
-
-For example: if you have a message containing a image/gif,
-application/octet-stream, or whatever attachment, you can go to the
-Attachment menu and forward ONLY that attachment to someone else.
-
-Basically, setting this variable produces the same effect as
-explicitly saving the attachment(s), composing a new message and then
-attaching the saved file(s).
-
 <sect2>forward&lowbar;decode<label id="forward_decode">
 <p>
 Type: boolean<newline>
@@ -3006,15 +2963,6 @@ Default: 0
 This variable configures how often (in seconds) IMAP should look for
 new mail.
 
-<sect2>imap&lowbar;list&lowbar;subscribed<label id="imap_list_subscribed">
-<p>
-Type: boolean<newline>
-Default: unset
-
-This variable configures whether IMAP folder browsing will look for only
-subscribed folders or all folders.  This can be toggled in the IMAP
-browser with the <em/toggle-subscribed/ command.
-
 <sect2>imap&lowbar;pass<label id="imap_pass">
 <p>
 Type: string<newline>
@@ -3025,16 +2973,6 @@ for your password when you invoke the fetch-mail function. <bf/Warning/:
 you should only use this option when you are on a fairly secure machine,
 because the superuser can read your muttrc even if you are the only one who
 can read the file.
-
-<sect2>imap&lowbar;passive<label id="imap_passive">
-<p>
-Type: boolean<newline>
-Default: set
-
-When set, mutt will not open new IMAP connections to check for new mail.
-Mutt will only check for new mail over existing IMAP connections.  This
-is useful if you don't want to be prompted to user/password pairs on
-mutt invocation, or if opening the connection is slow.
 
 <sect2>imap&lowbar;user<label id="imap_user">
 <p>
@@ -3060,16 +2998,6 @@ at the environment variable <em/MM&lowbar;NOASK/.  Setting this to
 ``yes''.  Otherwise, the value of <em/MM_NOASK/ is interpreted as a
 comma-separated list of type names (without white space) for which
 the corresponding mailcap entries will be used to display MIME parts.
-
-<sect2>in&lowbar;reply&lowbar;to
-<p>
-Type: format string<newline>
-Default: &dquot;&percnt;i; from &bsol;&dquot;&percnt;n&bsol;&dquot; on &percnt;{!&percnt;a, &percnt;b &percnt;d, &percnt;Y at &percnt;I:&percnt;M:&percnt;S&percnt;p}&dquot;
-
-This specifies the format of the <tt/In-Reply-To:/ header
-field added when replying to a message. For a full listing of
-defined escape sequences see the section on <ref id="index_format"
-name="&dollar;index&lowbar;format">.
 
 <sect2>include<label id="include">
 <p>
@@ -3427,29 +3355,6 @@ Default: set
 
 If set, the PGP <em/+encrypttoself/ flag is used when encrypting messages.
 
-<sect2>pgp&lowbar;entry&lowbar;format<label id="pgp_entry_format">
-<p>
-Type: format string<newline>
-Default: &dquot;&percnt;4n &percnt;t&percnt;f &percnt;4l/0x&percnt;k &percnt;-4a &percnt;2c &percnt;u&dquot;
-
-This variable allows you to customize the PGP key selection menu to
-your personal taste. This string is similar to <ref id="index_format"
-name="&dollar;index&lowbar;format">, but has its own set of
-printf()-like sequences:
-
-<tscreen><verb>
-%n      number
-%k      key id
-%u      user id
-%a      algorithm
-%l      key length
-%f      flags
-%c      capabilities
-%t      trust/validity of the key-uid association
-%[<s>]  date of the key where <s> is an strftime(3) expression
-</verb></tscreen>
-
-
 <sect2>pgp&lowbar;gpg<label id="pgp_gpg">
 <p>
 Type: string<newline>
@@ -3477,7 +3382,6 @@ Type: boolean<newline>
 Default: unset
 
 If set, use 64 bit PGP key IDs. Unset uses the normal 32 bit Key IDs.
-
 
 <sect2>pgp&lowbar;receive&lowbar;version<label id="pgp_receive_version">
 <p>
@@ -3508,19 +3412,6 @@ If set, automatically PGP sign replies to messages which are signed.
 <bf/Note:/ this does not work on messages, that are encrypted <bf/and/
 signed!
 
-<sect2>pgp&lowbar;replysignencrypted<label id="pgp_replysignencrypted">
-<p>
-Type: boolean<newline>
-Default: unset
-
-If set, automatically PGP sign replies to messages which are
-encrypted. This makes sense in combination with <ref
-id="pgp_replyencrypt" name="&dollar;pgp&lowbar;replyencrypt">, because 
-it allows you to sign all messages which are automatically encrypted.
-This works around the problem noted in <ref
-id="pgp_replysign" name="&dollar;pgp&lowbar;replysign">, that mutt is
-not able to find out whether an encrypted message is also signed.
-
 <sect2>pgp&lowbar;send&lowbar;version<label id="pgp_send_version">
 <p>
 Type: string<newline>
@@ -3532,15 +3423,6 @@ default defined in <ref id="pgp_default_version"
 name="&dollar;pgp&lowbar;default&lowbar;version"> will be used. Set
 this to pgp2 (PGP 2.*), pgp5 (PGP 5.*), or gpg (GNU privacy guard) if
 you want to use a different PGP version for sending operations.
-
-<sect2>pgp&lowbar;show&lowbar;unusable<label id="pgp_show_unusable">
-<p>
-Type: boolean<newline>
-Default: set
-
-If set, mutt will display non-usable keys on the PGP key selection
-menu.  This includes keys which have been revoked, have expired, or
-have been marked as ``disabled'' by the user.
 
 <sect2>pgp&lowbar;sign&lowbar;as<label id="pgp_sign_as">
 <p>
@@ -4148,24 +4030,6 @@ are sorted alphabetically.  Valid values:
 You may optionally use the <tt/reverse-/ prefix to specify reverse sorting
 order (example: <tt/set sort_browser=reverse-date/).
 
-<sect2>pgp&lowbar;sort&lowbar;keys<label id="pgp_sort_keys">
-<p>
-Type: string<newline>
-Default: address
-
-Specifies how the entries in the `pgp keys' menu are sorted. The
-following are legal values:
-
-<itemize>
-<item>address (sort alphabetically by user id)
-<item>keyid (sort alphabetically by key id)
-<item>date (sort by key creation date)
-<item>trust (sort by the trust of the key).
-</itemize>
-
-If you prefer reverse order of the above values, prefix it with
-`reverse-'.
-
 <sect2>spoolfile<label id="spoolfile">
 <p>
 Type: string<newline>
@@ -4276,15 +4140,6 @@ following construct:
 <tscreen><verb>
         %?<sequence_char>?<if_string>&<else_string>?
 </verb></tscreen>
-
-You can additionally force the result of any printf-like sequence to
-be lowercase by prefixing the sequence character with an underscore
-(&lowbar;) sign.  For example, if you want to display the local
-hostname in lowercase, you would use:
-
-<tscreen><verb>
-	%_h
-</verb</tscreen>
 
 <sect2>status&lowbar;on&lowbar;top<label id="status_on_top">
 <p>
@@ -4616,7 +4471,7 @@ mail                       m   compose a new mail message
 mail-key               ESC k   mail a PGP public key
 mark-as-new                N   toggle a message's 'new' flag
 next-line                RET   scroll down one line
-next-message               J   move to the next entry
+next-entry                 J   move to the next entry
 next-new                 TAB   jump to the next new message
 next-page                      move to the next page
 next-subthread         ESC n   jump to the next subthread
@@ -4625,7 +4480,7 @@ next-undeleted             j   move to the next undeleted message
 next-unread        not bound   jump to the next unread message
 pipe-message               |   pipe message/attachment to a shell command
 previous-line      BackSpace   scroll up one line
-previous-message           K   move to the previous entry
+previous-entry             K   move to the previous entry
 previous-new       not bound   jump to the previous new message
 previous-page              -   move to the previous page
 previous-subthread     ESC p   jump to previous subthread
@@ -4751,11 +4606,6 @@ search-reverse         ESC /   search backwards for a regular expression
 select-new                 N   select a new file in this directory
 sort                       o   sort messages
 sort-reverse               O   sort messages in reverse order
-toggle-mailboxes         TAB   toggle whether to browse mailboxes or all files
-view-file              SPACE   view file
-subscribe                  s   subscribe to current mailbox (IMAP Only)
-unsubscribe                u   unsubscribe to current mailbox (IMAP Only)
-toggle-subscribed          T   toggle view all/subscribed mailboxes (IMAP Only)
 </verb>
 <sect2>pgp
 <p>
@@ -4826,6 +4676,6 @@ Ken Weinert <htmlurl url="mailto:kenw@ihs.com" name="&lt;kenw@ihs.com&gt;">
 <sect1>About this document
 <p>
 This document was written in SGML, and then rendered using the
-<htmlurl url="http://pobox.com/~cg/sgmltools/" name="sgml-tools"> package.
+<htmlurl url="http://www.sgml-tools.org/" name="sgml-tools"> package.
 
 </article>
