@@ -131,7 +131,7 @@ void mh_parse_message (CONTEXT *ctx,
 /*
  * Mark all the mails in ctx read.
  */
-static void tag_all_read (CONTEXT * ctx)
+void tag_all_read (CONTEXT * ctx)
 {
   int i;
 
@@ -148,7 +148,7 @@ static void tag_all_read (CONTEXT * ctx)
 /*
  * Mark one mail as unread
  */
-static int tag_unread (CONTEXT * ctx, char *name)
+int tag_unread (CONTEXT * ctx, char *name)
 {
   int i;
 
@@ -621,18 +621,14 @@ int mh_sync_mailbox (CONTEXT * ctx)
     if (ctx->hdrs[i]->deleted)
     {
       snprintf (path, sizeof (path), "%s/%s", ctx->path, ctx->hdrs[i]->path);
-      if (ctx->magic == M_MAILDIR || (option (OPTMHPURGE) && ctx->magic == M_MH))
+      if (ctx->magic == M_MAILDIR)
 	unlink (path);
-      else if (ctx->magic == M_MH)
+      else
       {
 	/* MH just moves files out of the way when you delete them */
-	if(*ctx->hdrs[i]->path != ',')
-	{
-	  snprintf (tmp, sizeof (tmp), "%s/,%s", ctx->path, ctx->hdrs[i]->path);
-	  unlink (tmp);
-	  rename (path, tmp);
-	}
-	  
+	snprintf (tmp, sizeof (tmp), "%s/,%s", ctx->path, ctx->hdrs[i]->path);
+	unlink (tmp);
+	rename (path, tmp);
       }
     }
     else if (ctx->hdrs[i]->changed || ctx->hdrs[i]->attach_del)
