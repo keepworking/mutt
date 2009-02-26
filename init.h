@@ -87,6 +87,8 @@ struct option_t MuttVars[] = {
   { "beep_new",		DT_BOOL, R_NONE, OPTBEEPNEW, 0 },
   { "charset",		DT_STR,	 R_NONE, UL &Charset, UL "iso-8859-1" },
   { "check_new",	DT_BOOL, R_NONE, OPTCHECKNEW, 1 },
+  { "collapse_unread",	DT_BOOL, R_NONE, OPTCOLLAPSEUNREAD, 1 },
+  { "uncollapse_jump", 	DT_BOOL, R_NONE, OPTUNCOLLAPSEJUMP, 0 },
   { "confirmappend",	DT_BOOL, R_NONE, OPTCONFIRMAPPEND, 1 },
   { "confirmcreate",	DT_BOOL, R_NONE, OPTCONFIRMCREATE, 1 },
   { "copy",		DT_QUAD, R_NONE, OPT_COPY, M_YES },
@@ -142,6 +144,7 @@ struct option_t MuttVars[] = {
   { "metoo",		DT_BOOL, R_NONE, OPTMETOO, 0 },
   { "menu_scroll",	DT_BOOL, R_NONE, OPTMENUSCROLL, 0 },
   { "meta_key",		DT_BOOL, R_NONE, OPTMETAKEY, 0 },
+  { "mh_purge",		DT_BOOL, R_NONE, OPTMHPURGE, 0 },
   { "mime_forward",	DT_QUAD, R_NONE, OPT_MIMEFWD, 0 },
   { "mime_forward_decode", DT_BOOL, R_NONE, OPTMIMEFORWDECODE, 0 },
   { "mime_fwd",		DT_SYN,  R_NONE, UL "mime_forward", 0 },
@@ -196,10 +199,10 @@ struct option_t MuttVars[] = {
   { "pgp_receive_version", 	DT_STR,	R_NONE, UL &PgpReceiveVersion, UL "default" },
   { "pgp_send_version",		DT_STR,	R_NONE, UL &PgpSendVersion, UL "default" },
   { "pgp_key_version",		DT_STR, R_NONE, UL &PgpKeyVersion, UL "default" },
-  
+
+  { "forward_decrypt",	DT_BOOL, R_NONE, OPTFORWDECRYPT, 1 },
+  { "forw_decrypt",	DT_SYN,  R_NONE, UL "forward_decrypt", 0 },
 #endif /* _PGPPATH */
-  
-  
   
   { "pipe_split",	DT_BOOL, R_NONE, OPTPIPESPLIT, 0 },
   { "pipe_decode",	DT_BOOL, R_NONE, OPTPIPEDECODE, 0 },
@@ -242,13 +245,14 @@ struct option_t MuttVars[] = {
   { "signature",	DT_PATH, R_NONE, UL &Signature, UL "~/.signature" },
   { "simple_search",	DT_STR,	 R_NONE, UL &SimpleSearch, UL "~f %s | ~s %s" },
   { "smart_wrap",	DT_BOOL, R_PAGER, OPTWRAP, 1 },
+  { "smileys",		DT_RX,	 R_PAGER, UL &Smileys, UL "(>From )|(:[-^]?[][)(><}{|/DP])" },
   { "sort",		DT_SORT, R_INDEX|R_RESORT, UL &Sort, SORT_DATE },
   { "sort_alias",	DT_SORT|DT_SORT_ALIAS,	R_NONE,	UL &SortAlias, SORT_ALIAS },
   { "sort_aux",		DT_SORT, R_INDEX|R_RESORT_BOTH, UL &SortAux, SORT_DATE },
   { "sort_browser",	DT_SORT|DT_SORT_BROWSER, R_NONE, UL &BrowserSort, SORT_SUBJECT },
   { "sort_re",		DT_BOOL, R_INDEX|R_RESORT_BOTH, OPTSORTRE, 1 },
   { "spoolfile",	DT_PATH, R_NONE, UL &Spoolfile, 0 },
-  { "status_chars",	DT_STR,	 R_BOTH, UL &StChars, UL "-*%" },
+  { "status_chars",	DT_STR,	 R_BOTH, UL &StChars, UL "-*%A" },
   { "status_format",	DT_STR,	 R_BOTH, UL &Status, UL "-%r-Mutt: %f [Msgs:%?M?%M/?%m%?n? New:%n?%?o? Old:%o?%?d? Del:%d?%?F? Flag:%F?%?t? Tag:%t?%?p? Post:%p?%?b? Inc:%b?%?l? %l?]---(%s/%S)-%>-(%P)---" },
   { "status_on_top",	DT_BOOL, R_BOTH, OPTSTATUSONTOP, 0 },
   { "strict_threads",	DT_BOOL, R_RESORT|R_INDEX, OPTSTRICTTHREADS, 0 },
@@ -328,6 +332,7 @@ struct command_t Commands[] = {
   { "color",		mutt_parse_color,	0 },
   { "uncolor",		mutt_parse_uncolor,	0 },
 #endif
+  { "exec",		mutt_parse_exec,	0 },
   { "fcc-hook",		mutt_parse_hook,	M_FCCHOOK },
   { "fcc-save-hook",	mutt_parse_hook,	M_FCCHOOK | M_SAVEHOOK },
   { "folder-hook",	mutt_parse_hook,	M_FOLDERHOOK },
