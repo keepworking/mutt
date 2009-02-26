@@ -24,9 +24,7 @@ WHERE char Errorbuf[SHORT_STRING];
 
 WHERE char *AliasFile;
 WHERE char *AliasFmt;
-WHERE char *AttachSep;
 WHERE char *Attribution;
-WHERE char *AttachFormat;
 WHERE char *Charset;
 WHERE char *DefaultHook;
 WHERE char *DateFmt;
@@ -126,7 +124,7 @@ WHERE int debuglevel INITVAL (0);
 const char *Weekdays[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 const char *Months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "ERR" };
 
-const char *BodyTypes[] = { "x-unknown", "audio", "application", "image", "message", "model", "multipart", "text", "video" };
+const char *BodyTypes[] = { "x-unknown", "audio", "application", "image", "message", "multipart", "text", "video" };
 const char *BodyEncodings[] = { "x-unknown", "7bit", "8bit", "quoted-printable", "base64", "binary" };
 #else
 extern const char *Weekdays[];
