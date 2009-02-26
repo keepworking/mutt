@@ -26,6 +26,7 @@
 #include "mailbox.h"
 #include "sort.h"
 #include "charset.h"
+#include "iconv.h"
 
 #ifdef MIXMASTER
 #include "remailer.h"
@@ -67,7 +68,7 @@ enum
 };
 
 #define HDR_XOFFSET 10
-#define TITLE_FMT "%10s"
+#define TITLE_FMT "%10s" /* Used for Prompts, which are ASCII */
 #define W (COLS - HDR_XOFFSET)
 
 static char *Prompts[] =
@@ -277,7 +278,8 @@ static void draw_envelope_addr (int line, ADDRESS *addr)
 
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), addr);
-  mvprintw (line, 0, TITLE_FMT "%-*.*s", Prompts[line - 1], W, W, buf);
+  mvprintw (line, 0, TITLE_FMT, Prompts[line - 1]);
+  mutt_paddstr (W, buf);
 }
 
 static void draw_envelope (HEADER *msg, char *fcc)
@@ -286,10 +288,11 @@ static void draw_envelope (HEADER *msg, char *fcc)
   draw_envelope_addr (HDR_TO, msg->env->to);
   draw_envelope_addr (HDR_CC, msg->env->cc);
   draw_envelope_addr (HDR_BCC, msg->env->bcc);
-  mvprintw (HDR_SUBJECT, 0, TITLE_FMT "%-*.*s", Prompts[HDR_SUBJECT - 1], W, W,
-	    NONULL(msg->env->subject));
+  mvprintw (HDR_SUBJECT, 0, TITLE_FMT, Prompts[HDR_SUBJECT - 1]);
+  mutt_paddstr (W, NONULL (msg->env->subject));
   draw_envelope_addr (HDR_REPLYTO, msg->env->reply_to);
-  mvprintw (HDR_FCC, 0, TITLE_FMT "%-*.*s", Prompts[HDR_FCC - 1], W, W, fcc);
+  mvprintw (HDR_FCC, 0, TITLE_FMT, Prompts[HDR_FCC - 1]);
+  mutt_paddstr (W, fcc);
 
 
 
@@ -331,7 +334,8 @@ static int edit_address_list (int line, ADDRESS **addr)
   /* redraw the expanded list so the user can see the result */
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), *addr);
-  mvprintw (line, HDR_XOFFSET, "%-*.*s", W, W, buf);
+  move (line, HDR_XOFFSET);
+  mutt_paddstr (W, buf);
 
   return 0;
 }
@@ -385,6 +389,7 @@ static void update_idx (MUTTMENU *menu, ATTACHPTR **idx, short idxlen)
 static int change_attachment_charset (BODY *b)
 {
   char buff[SHORT_STRING];
+  iconv_t cd;
 
   if (!mutt_is_text_type (b->type, b->subtype))
   {
@@ -396,24 +401,130 @@ static int change_attachment_charset (BODY *b)
   
   if (mutt_get_field (_("Enter character set: "), buff, sizeof(buff), 0) == -1)
     return 0;
-    
-  if (mutt_is_utf8(buff))
-  {
-    if (!b->noconv)
-    {
-      mutt_error (_("UTF-8 encoding attachments has not yet been implemented."));
-      return 0;
-    }
-  }
-  else if (mutt_get_charset (buff) == NULL)
+
+  if ((cd = iconv_open (buff, "us-ascii")) == (iconv_t)-1)
   {
     mutt_error (_("Character set %s is unknown."), buff);
     return 0;
   }
+  else
+    iconv_close (cd);
   
   mutt_set_body_charset (b, buff);
   return REDRAW_CURRENT;
 }
+
+/* 
+ * cum_attachs_size: Cumulative Attachments Size
+ *
+ * 
+ * Returns the total number of bytes used by the attachments in the
+ * attachment list.
+ */
+
+static unsigned long cum_attachs_size (MUTTMENU *menu)
+{
+  size_t s;
+  unsigned short i;
+  ATTACHPTR **idx = menu->data;
+  CONTENT *info;
+  
+  for (i = 0, s = 0; i < menu->max; i++)
+  {
+    if ((info = idx[i]->content->content))
+    {
+      switch (idx[i]->content->encoding)
+      {
+	case ENCQUOTEDPRINTABLE:
+	  s += 3 * (info->lobin + info->hibin) + info->ascii;
+	  break;
+	case ENCBASE64:
+	  s += (4 * (info->lobin + info->hibin + info->ascii)) / 3;
+	  break;
+	default:
+	  s += info->lobin + info->hibin + info->ascii;
+	  break;
+      }
+    }
+  }
+
+  return s;
+}
+
+/* prototype for use below */
+void compose_status_line (char *buf, size_t buflen, MUTTMENU *menu, 
+      const char *p);
+
+/*
+ * compose_format_str()
+ *
+ * %a = total number of attachments 
+ * %h = hostname  [option]
+ * %l = approx. length of current message (in bytes) 
+ * %v = Mutt version 
+ *
+ * This function is similar to status_format_str().  Look at that function for
+ * help when modifying this function.
+ */
+
+static const char *
+compose_format_str (char *buf, size_t buflen, char op, const char *src,
+		   const char *prefix, const char *ifstring,
+		   const char *elsestring,
+		   unsigned long data, format_flag flags)
+{
+  char fmt[SHORT_STRING], tmp[SHORT_STRING];
+  int optional = (flags & M_FORMAT_OPTIONAL);
+  MUTTMENU *menu = (MUTTMENU *) data;
+
+  *buf = 0;
+  switch (op)
+  {
+    case 'a': /* total number of attachments */
+	snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+	snprintf (buf, buflen, fmt, menu->max);
+      break;
+
+    case 'h':  /* hostname */
+      snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+      snprintf (buf, buflen, fmt, NONULL(Hostname));
+      break;
+
+    case 'l': /* approx length of current message in bytes */
+	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+	mutt_pretty_size (tmp, sizeof (tmp), menu ? cum_attachs_size(menu) : 0);
+	snprintf (buf, buflen, fmt, tmp);
+      break;
+
+    case 'v':
+      snprintf (fmt, sizeof (fmt), "Mutt %%s");
+      snprintf (buf, buflen, fmt, MUTT_VERSION);
+      break;
+
+    case 0:
+      *buf = 0;
+      return (src);
+
+    default:
+      snprintf (buf, buflen, "%%%s%c", prefix, op);
+      break;
+  }
+
+  if (optional)
+    compose_status_line (buf, buflen, menu, ifstring);
+  else if (flags & M_FORMAT_OPTIONAL)
+    compose_status_line (buf, buflen, menu, elsestring);
+
+  return (src);
+}
+
+void compose_status_line (char *buf, size_t buflen, MUTTMENU *menu, 
+      const char *p)
+{
+  mutt_FormatString (buf, buflen, p, compose_format_str, 
+        (unsigned long) menu, 0);
+}
+
 
 /* return values:
  *
@@ -451,7 +562,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
   menu->max = idxlen;
   menu->make_entry = snd_entry;
   menu->tag = mutt_tag_attach;
-  menu->title = _("Compose");
   menu->data = idx;
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_COMPOSE, ComposeHelp);
   
@@ -460,7 +570,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
     switch (op = mutt_menuLoop (menu))
     {
       case OP_REDRAW:
-	menu_redraw_status (menu);
 	draw_envelope (msg, fcc);
 	menu->offset = HDR_ATTACH;
 	menu->pagelen = LINES - HDR_ATTACH - 2;
@@ -488,7 +597,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  move (HDR_SUBJECT, HDR_XOFFSET);
 	  clrtoeol ();
 	  if (msg->env->subject)
-	    printw ("%-*.*s", W, W, msg->env->subject);
+	    mutt_paddstr (W, msg->env->subject);
 	}
 	break;
       case OP_COMPOSE_EDIT_REPLY_TO:
@@ -500,7 +609,8 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	{
 	  strfcpy (fcc, buf, _POSIX_PATH_MAX);
 	  mutt_pretty_mailbox (fcc);
-	  mvprintw (HDR_FCC, HDR_XOFFSET, "%-*.*s", W, W, fcc);
+	  move (HDR_FCC, HDR_XOFFSET);
+	  mutt_paddstr (W, fcc);
 	  fccSet = 1;
 	}
 	MAYBE_REDRAW (menu->redraw);
@@ -510,7 +620,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	{
 	  mutt_edit_file (Editor, msg->content->filename);
 	  mutt_update_encoding (msg->content);
-	  menu->redraw = REDRAW_CURRENT;
+	  menu->redraw = REDRAW_CURRENT | REDRAW_STATUS;
 	  break;
 	}
 	/* fall through */
@@ -574,7 +684,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 
 	menu->redraw |= REDRAW_STATUS;
 
-	if(option(OPTNEEDREDRAW))
+	if (option(OPTNEEDREDRAW))
 	{
 	  menu->redraw = REDRAW_FULL;
 	  unset_option(OPTNEEDREDRAW);
@@ -748,6 +858,8 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 
 	if (menu->current == 0)
 	  msg->content = idx[0]->content;
+
+        menu->redraw |= REDRAW_STATUS;
 	break;
 
       case OP_COMPOSE_CHANGE_CHARSET:
@@ -763,11 +875,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
         if (!mutt_is_text_type (CURRENT->type, CURRENT->subtype))
         {
 	  mutt_error (_("Recoding only affects text attachments."));
-	  break;
-	}
-	if (mutt_is_utf8 (mutt_get_parameter ("charset", CURRENT->parameter)))
-	{
-	  mutt_error (_("We currently can't encode to utf-8."));
 	  break;
 	}
         CURRENT->noconv = !CURRENT->noconv;
@@ -841,7 +948,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
         else
         {
           mutt_update_encoding(idx[menu->current]->content);
-	  menu->redraw = REDRAW_CURRENT;
+	  menu->redraw = REDRAW_CURRENT | REDRAW_STATUS;
 	}
         break;
       
@@ -873,7 +980,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  if ((i = mutt_check_encoding (buf)) != ENCOTHER && i != ENCUUENCODED)
 	  {
 	    idx[menu->current]->content->encoding = i;
-	    menu->redraw = REDRAW_CURRENT;
+	    menu->redraw = REDRAW_CURRENT | REDRAW_STATUS;
 	    mutt_clear_error();
 	  }
 	  else
@@ -913,7 +1020,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	mutt_edit_file ((!Editor || mutt_strcmp ("builtin", Editor) == 0) ? NONULL(Visual) : NONULL(Editor),
 			idx[menu->current]->content->filename);
 	mutt_update_encoding (idx[menu->current]->content);
-	menu->redraw = REDRAW_CURRENT;
+	menu->redraw = REDRAW_CURRENT | REDRAW_STATUS;
 	break;
 
       case OP_COMPOSE_TOGGLE_UNLINK:
@@ -1081,6 +1188,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	mutt_pipe_attachment_list (NULL, menu->tagprefix, menu->tagprefix ? msg->content : idx[menu->current]->content, op == OP_FILTER);
 	if (op == OP_FILTER) /* cte might have changed */
 	  menu->redraw = menu->tagprefix ? REDRAW_FULL : REDRAW_CURRENT; 
+        menu->redraw |= REDRAW_STATUS;
 	break;
 
       case OP_EXIT:
@@ -1125,7 +1233,10 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	if (mutt_system (buf) == -1)
 	  mutt_error (_("Error running \"%s\"!"), buf);
 	else
+        {
 	  mutt_update_encoding (msg->content);
+	  menu->redraw |= REDRAW_STATUS;
+	}
 	break;
 
       case OP_COMPOSE_WRITE_MESSAGE:
@@ -1177,6 +1288,17 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
         break;
 #endif
 
+    }
+
+    /* Draw formated compose status line */
+    if (menu->redraw & REDRAW_STATUS) 
+    {
+       	compose_status_line (buf, sizeof (buf), menu, NONULL(ComposeFormat));
+	CLEARLINE (option (OPTSTATUSONTOP) ? 0 : LINES-2);
+	SETCOLOR (MT_COLOR_STATUS);
+	printw ("%-*.*s", COLS, COLS, buf);
+	SETCOLOR (MT_COLOR_NORMAL);
+	menu->redraw &= ~REDRAW_STATUS;
     }
   }
 
