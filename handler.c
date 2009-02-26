@@ -37,6 +37,10 @@
 #include "pgp.h"
 #endif
 
+#ifdef HAVE_SMIME
+#include "smime.h"
+#endif
+
 
 #define BUFI_SIZE 1000
 #define BUFO_SIZE 2000
@@ -1385,7 +1389,7 @@ int mutt_can_decode (BODY *a)
 
 
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
     if (ascii_strcasecmp (a->subtype, "signed") == 0 ||
 	ascii_strcasecmp (a->subtype, "encrypted") == 0)
       return (1);
@@ -1407,13 +1411,21 @@ int mutt_can_decode (BODY *a)
 
 
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
   else if (a->type == TYPEAPPLICATION)
   {
+#ifdef HAVE_PGP
     if (mutt_is_application_pgp(a))
       return (1);
+#ifdef HAVE_SMIME
+    if (mutt_is_application_smime(a))
+      return (1);
+#endif
+#endif
   }
 #endif
+
+
 
 
 
@@ -1708,7 +1720,7 @@ static void external_body_handler (BODY *b, STATE *s)
 
 void mutt_decode_attachment (BODY *b, STATE *s)
 {
-  int istext = mutt_is_text_type (b->type, b->subtype);
+  int istext = mutt_is_text_part (b);
   iconv_t cd = (iconv_t)(-1);
 
   if (istext && s->flags & M_CHARCONV)
@@ -1773,6 +1785,11 @@ void mutt_body_handler (BODY *b, STATE *s)
       /* avoid copying this part twice since removing the transfer-encoding is
        * the only operation needed.
        */
+#ifdef HAVE_PGP
+      if (mutt_is_application_pgp (b))
+	handler = pgp_application_pgp_handler;
+      else
+#endif	
       if (ascii_strcasecmp ("flowed", mutt_get_parameter ("format", b->parameter)) == 0)
 	handler = text_plain_flowed_handler;
       else
@@ -1797,9 +1814,9 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
     char *p;
-#endif /* HAVE_PGP */
+#endif /* HAVE_(PGP||SMIME) */
 
 
 
@@ -1808,21 +1825,18 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
     else if (ascii_strcasecmp ("signed", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
         mutt_error _("Error: multipart/signed has no protocol.");
-      else if (ascii_strcasecmp ("application/pgp-signature", p) == 0 ||
-	       ascii_strcasecmp ("multipart/mixed", p) == 0)
-      {
-	if (s->flags & M_VERIFY)
-	  handler = pgp_signed_handler;
-      }
+      else if (s->flags & M_VERIFY)
+	handler = mutt_signed_handler;
     }
-    else if (ascii_strcasecmp ("encrypted", b->subtype) == 0)
+#ifdef HAVE_PGP
+    else if (mutt_strcasecmp ("encrypted", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
@@ -1832,7 +1846,7 @@ void mutt_body_handler (BODY *b, STATE *s)
         handler = pgp_encrypted_handler;
     }
 #endif /* HAVE_PGP */
-
+#endif /* HAVE_(PGP||SMIME) */
 
 
     if (!handler)
@@ -1841,13 +1855,20 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
   else if (b->type == TYPEAPPLICATION)
   {
-    if (mutt_is_application_pgp(b))
+#ifdef HAVE_PGP
+    if (mutt_is_application_pgp (b))
       handler = pgp_application_pgp_handler;
-  }
 #endif /* HAVE_PGP */
+#ifdef HAVE_SMIME
+    if (mutt_is_application_smime(b))
+      handler = smime_application_smime_handler;
+#endif /* HAVE_SMIME */
+  }
+#endif /* HAVE_(PGP||SMIME) */
+
 
 
 
@@ -1858,7 +1879,7 @@ void mutt_body_handler (BODY *b, STATE *s)
     /* see if we need to decode this part before processing it */
     if (b->encoding == ENCBASE64 || b->encoding == ENCQUOTEDPRINTABLE ||
 	b->encoding == ENCUUENCODED || plaintext || 
-	mutt_is_text_type (b->type, b->subtype))	/* text subtypes may
+	mutt_is_text_part (b))				/* text subtypes may
 							 * require character
 							 * set conversion even
 							 * with 8bit encoding.
