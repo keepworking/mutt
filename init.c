@@ -286,6 +286,7 @@ int mutt_extract_token (BUFFER *dest, BUFFER *tok, int flags)
   return 0;
 }
 
+
 static void add_to_list (LIST **list, const char *str)
 {
   LIST *t, *last = NULL;
@@ -347,12 +348,17 @@ static void remove_from_list (LIST **l, const char *str)
   }
 }
 
+
 static int parse_unignore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
   do
   {
     mutt_extract_token (buf, s, 0);
-    add_to_list (&UnIgnore, buf->data);
+
+    /* don't add "*" to the unignore list */
+    if (strcmp (buf->data, "*")) 
+      add_to_list (&UnIgnore, buf->data);
+
     remove_from_list (&Ignore, buf->data);
   }
   while (MoreArgs (s));
@@ -372,6 +378,7 @@ static int parse_ignore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err
 
   return 0;
 }
+
 
 static int parse_list (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
@@ -397,33 +404,6 @@ static int parse_unlist (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err
   return 0;
 }
 
-
-static int parse_unlists (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
-{
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    remove_from_list (&MailLists, buf->data);
-    remove_from_list (&SubscribedLists, buf->data);
-  }
-  while (MoreArgs (s));
-
-  return 0;
-}
-
-static int parse_subscribe (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
-{
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    add_to_list (&MailLists, buf->data);
-    add_to_list (&SubscribedLists, buf->data);
-  }
-  while (MoreArgs (s));
-
-  return 0;
-}
-  
 static int parse_unalias (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
   ALIAS *tmp, *last = NULL;
@@ -646,13 +626,6 @@ static void mutt_restore_default (struct option_t *p)
 	*((char **) p->data) = safe_strdup (path);
       }
       break;
-    case DT_ADDR:
-      if (p->init)
-      {
-	rfc822_free_address ((ADDRESS **) p->data);
-	*((ADDRESS **) p->data) = rfc822_parse_adrlist (NULL, (char *) p->init);
-      }
-      break;
     case DT_BOOL:
       if (p->init)
 	set_option (p->data);
@@ -821,51 +794,30 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
 	set_option (MuttVars[idx].data);
     }
     else if (DTYPE (MuttVars[idx].type) == DT_STR ||
-	     DTYPE (MuttVars[idx].type) == DT_PATH ||
-	     DTYPE (MuttVars[idx].type) == DT_ADDR)
+	     DTYPE (MuttVars[idx].type) == DT_PATH)
     {
       if (query || *s->dptr != '=')
       {
-	char _tmp[STRING];
-	char *val = NULL;
-	
-	if (DTYPE (MuttVars[idx].type) == DT_ADDR)
-	{
-	  _tmp[0] = '\0';
-	  rfc822_write_address (_tmp, sizeof (_tmp), *((ADDRESS **) MuttVars[idx].data));
-	  val = _tmp;
-	}
-	else
-	  val = *((char **) MuttVars[idx].data);
-	
 	/* user requested the value of this variable */
 	snprintf (err->data, err->dsize, "%s=\"%s\"", MuttVars[idx].option,
-		  NONULL (val));
+		  NONULL (*((char **) MuttVars[idx].data)));
 	break;
       }
 
       s->dptr++;
 
       /* copy the value of the string */
-      if (DTYPE (MuttVars[idx].type) == DT_ADDR)
-	rfc822_free_address ((ADDRESS **) MuttVars[idx].data);
-      else
-	FREE (MuttVars[idx].data);
-
+      FREE (MuttVars[idx].data);
       mutt_extract_token (tmp, s, 0);
-      if (DTYPE (MuttVars[idx].type) == DT_PATH)
+      if (MuttVars[idx].type == DT_PATH)
       {
 	strfcpy (scratch, tmp->data, sizeof (scratch));
 	mutt_expand_path (scratch, sizeof (scratch));
 	*((char **) MuttVars[idx].data) = safe_strdup (scratch);
       }
-      else if (DTYPE (MuttVars[idx].type) == DT_STR)
-      {
-	*((char **) MuttVars[idx].data) = safe_strdup (tmp->data);
-      }
       else
       {
-	*((ADDRESS **) MuttVars[idx].data) = rfc822_parse_adrlist (NULL, tmp->data);
+	*((char **) MuttVars[idx].data) = safe_strdup (tmp->data);
       }
     }
     else if (DTYPE(MuttVars[idx].type) == DT_RX)
@@ -1090,11 +1042,6 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
 	case DT_SORT_BROWSER:
 	  map = SortBrowserMethods;
 	  break;
-#ifdef _PGPPATH
-	case DT_SORT_KEYS:
-	  map = SortKeyMethods;
-	  break;
-#endif
 	default:
 	  map = SortMethods;
 	  break;
@@ -1133,6 +1080,16 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
       set_option (OPTNEEDRESORT);
   }
   return (r);
+}
+
+void mutt_nocurses_error (const char *fmt, ...)
+{
+  va_list ap;
+
+  va_start (ap, fmt);
+  vfprintf (stderr, fmt, ap);
+  va_end (ap);
+  fputc ('\n', stderr);
 }
 
 /* reads the specified initialization file.  returns -1 if errors were found
@@ -1460,29 +1417,20 @@ int mutt_var_value_complete (char *buffer, size_t len, int pos)
       return 0; /* no such variable. */
     else
     {
-      char tmp [LONG_STRING], tmp2[LONG_STRING];
-      char *s, *d;
+      char tmp [LONG_STRING];
       size_t dlen = buffer + len - pt - spaces;
       char *vals[] = { "no", "yes", "ask-no", "ask-yes" };
-
-      tmp[0] = '\0';
-
+      strfcpy (tmp, pt, sizeof(tmp));
+      
       if ((DTYPE(MuttVars[idx].type) == DT_STR) || 
 	  (DTYPE(MuttVars[idx].type) == DT_PATH) ||
 	  (DTYPE(MuttVars[idx].type) == DT_RX))
-      {
-	strfcpy (tmp, NONULL (*((char **) MuttVars[idx].data)), sizeof (tmp));
-	if (DTYPE (MuttVars[idx].type) == DT_PATH)
-	  mutt_pretty_mailbox (tmp);
-      }
-      else if (DTYPE (MuttVars[idx].type) == DT_ADDR)
-      {
-	rfc822_write_address (tmp, sizeof (tmp), *((ADDRESS **) MuttVars[idx].data));
-      }
+	snprintf(pt, dlen, "%s\"%s\"", tmp, 
+		  NONULL (*((char **) MuttVars[idx].data)));
       else if (DTYPE (MuttVars[idx].type) == DT_QUAD)
-	strfcpy (tmp, vals[quadoption (MuttVars[idx].data)], sizeof (tmp));
+	snprintf(pt, dlen, "%s%s", tmp,  vals[quadoption (MuttVars[idx].data)]);
       else if (DTYPE (MuttVars[idx].type) == DT_NUM)
-	snprintf (tmp, sizeof (tmp), "%d", (*((short *) MuttVars[idx].data)));
+	snprintf (pt, dlen, "%s%d", tmp, (*((short *) MuttVars[idx].data)));
       else if (DTYPE (MuttVars[idx].type) == DT_SORT)
       {
 	const struct mapping_t *map;
@@ -1496,37 +1444,21 @@ int mutt_var_value_complete (char *buffer, size_t len, int pos)
 	  case DT_SORT_BROWSER:
 	    map = SortBrowserMethods;
 	    break;
-#ifdef _PGPPATH
-	  case DT_SORT_KEYS:
-	    map = SortKeyMethods;
-	    break;
-#endif
 	  default:
 	    map = SortMethods;
 	    break;
 	}
 	p = mutt_getnamebyvalue (*((short *) MuttVars[idx].data) & SORT_MASK, map);
-	snprintf (tmp, sizeof (tmp), "%s%s%s",
+	snprintf (pt, dlen, "%s\"%s%s%s\"", tmp,
 		  (*((short *) MuttVars[idx].data) & SORT_REVERSE) ? "reverse-" : "",
 		  (*((short *) MuttVars[idx].data) & SORT_LAST) ? "last-" : "",
 		  p);
       }
       else if (DTYPE (MuttVars[idx].type) == DT_BOOL)
-	strfcpy (tmp, option (MuttVars[idx].data) ? "yes" : "no", sizeof (tmp));
+	snprintf (pt, dlen, "%s%s", tmp, 
+		  option (MuttVars[idx].data) ? "yes" : "no");
       else
 	return 0;
-      
-      for (s = tmp, d = tmp2; *s && (d - tmp2) < sizeof (tmp2) - 2;)
-      {
-	if (*s == '\\' || *s == '"')
-	  *d++ = '\\';
-	*d++ = *s++;
-      }
-      *d = '\0';
-      
-      strfcpy (tmp, pt, sizeof (tmp));
-      snprintf (pt, dlen, "%s\"%s\"", tmp, tmp2);
-	  
       return 1;
     }
   }
@@ -1702,6 +1634,71 @@ void mutt_init (int skip_sys_rc, LIST *commands)
 
   Tempdir = safe_strdup ((p = getenv ("TMPDIR")) ? p : "/tmp");
 
+  
+
+#ifdef _PGPPATH
+#ifdef _PGPV2PATH
+  PgpV2 = safe_strdup (_PGPV2PATH);
+  if ((p = getenv("PGPPATH")) != NULL)
+  {
+    snprintf (buffer, sizeof (buffer), "%s/pubring.pgp", p);
+    PgpV2Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/secring.pgp", p); 
+    PgpV2Secring = safe_strdup (buffer);
+  }
+  else
+  {
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pgp", NONULL(Homedir));
+    PgpV2Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.pgp", NONULL(Homedir));
+    PgpV2Secring = safe_strdup (buffer);
+  }
+#endif
+
+#ifdef _PGPV3PATH
+  PgpV3 = safe_strdup (_PGPV3PATH);
+  if ((p = getenv("PGPPATH")) != NULL)
+  {
+    snprintf (buffer, sizeof (buffer), "%s/pubring.pkr", p);
+    PgpV3Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/secring.skr", p); 
+    PgpV3Secring = safe_strdup (buffer);
+  }
+  else
+  {
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pkr", NONULL(Homedir));
+    PgpV3Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.skr", NONULL(Homedir));
+    PgpV3Secring = safe_strdup (buffer);
+  }
+#endif
+
+#ifdef _PGPV6PATH
+  PgpV6 = safe_strdup (_PGPV6PATH);
+  if ((p = getenv("PGPPATH")) != NULL)
+  {
+    snprintf (buffer, sizeof (buffer), "%s/pubring.pkr", p);
+    PgpV6Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/secring.skr", p); 
+    PgpV6Secring = safe_strdup (buffer);
+  }
+  else
+  {
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pkr", NONULL(Homedir));
+    PgpV6Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.skr", NONULL(Homedir));
+    PgpV6Secring = safe_strdup (buffer);
+  }
+#endif
+  
+#ifdef _PGPGPGPATH
+  PgpGpg = safe_strdup (_PGPGPGPATH);
+#endif
+
+#endif /* _PGPPATH */
+  
+  
+
 #ifdef USE_POP
   PopUser = safe_strdup (Username);
 #endif
@@ -1814,7 +1811,5 @@ void mutt_init (int skip_sys_rc, LIST *commands)
       mutt_exit(1);
   }
 
-#if 0
   set_option (OPTWEED); /* turn weeding on by default */
-#endif
 }
