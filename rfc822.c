@@ -29,7 +29,6 @@
 #define FREE(x) safe_free(x)
 #define ISSPACE isspace
 #define strfcpy(a,b,c) {if (c) {strncpy(a,b,c);a[c-1]=0;}}
-#define STRING 128
 #include "rfc822.h"
 #endif
 
@@ -237,7 +236,7 @@ parse_route_addr (const char *s,
 		  char *comment, size_t *commentlen, size_t commentmax,
 		  ADDRESS *addr)
 {
-  char token[STRING];
+  char token[128];
   size_t tokenlen = 0;
 
   SKIPWS (s);
@@ -282,7 +281,7 @@ parse_addr_spec (const char *s,
 		 char *comment, size_t *commentlen, size_t commentmax,
 		 ADDRESS *addr)
 {
-  char token[STRING];
+  char token[128];
   size_t tokenlen = 0;
 
   s = parse_address (s, token, &tokenlen, sizeof (token) - 1, comment, commentlen, commentmax, addr);
@@ -313,7 +312,7 @@ add_addrspec (ADDRESS **top, ADDRESS **last, const char *phrase,
 ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 {
   const char *begin, *ps;
-  char comment[STRING], phrase[STRING];
+  char comment[128], phrase[128];
   size_t phraselen = 0, commentlen = 0;
   ADDRESS *cur, *last = NULL;
   
@@ -341,7 +340,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
       }
 
 #ifdef EXACT_ADDRESS
-      if (last && !last->val)
+      if (last)
 	last->val = mutt_substrdup (begin, s);
 #endif
       commentlen = 0;
@@ -397,7 +396,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 	last->personal = safe_strdup (comment);
       }
 #ifdef EXACT_ADDRESS
-      if (last && !last->val)
+      if (last)
 	last->val = mutt_substrdup (begin, s);
 #endif
 
@@ -422,7 +421,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
       if (phraselen)
       {
 	if (cur->personal)
-	  FREE (&cur->personal);
+	  free (cur->personal);
 	/* if we get something like "Michael R. Elkins" remove the quotes */
 	rfc822_dequote_comment (phrase);
 	cur->personal = safe_strdup (phrase);
@@ -484,9 +483,10 @@ void rfc822_qualify (ADDRESS *addr, const char *host)
   for (; addr; addr = addr->next)
     if (!addr->group && addr->mailbox && strchr (addr->mailbox, '@') == NULL)
     {
-      p = safe_malloc (strlen (addr->mailbox) + strlen (host) + 2);
+      if (!(p = malloc (strlen (addr->mailbox) + strlen (host) + 2)))
+	return;
       sprintf (p, "%s@%s", addr->mailbox, host);
-      safe_free ((void **) &addr->mailbox);
+      free (addr->mailbox);
       addr->mailbox = p;
     }
 }
@@ -759,11 +759,7 @@ int main (int argc, char **argv)
 {
   ADDRESS *list;
   char buf[256];
-# if 0
   char *str = "michael, Michael Elkins <me@cs.hmc.edu>, testing a really complex address: this example <@contains.a.source.route@with.multiple.hosts:address@example.com>;, lothar@of.the.hillpeople (lothar)";
-# else
-  char *str = "a b c ";
-# endif
   
   list = rfc822_parse_adrlist (NULL, str);
   buf[0] = 0;
