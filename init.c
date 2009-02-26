@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -28,6 +28,11 @@
 
 #ifdef HAVE_PGP
 #include "pgp.h"
+#endif
+
+
+#ifdef HAVE_SMIME
+#include "smime.h"
 #endif
 
 
@@ -218,7 +223,6 @@ int mutt_extract_token (BUFFER *dest, BUFFER *tok, int flags)
       if ((pid = mutt_create_filter (cmd, NULL, &fp, NULL)) < 0)
       {
 	dprint (1, (debugfile, "mutt_get_token: unable to fork command: %s", cmd));
-	FREE (&cmd);
 	return (-1);
       }
       FREE (&cmd);
@@ -776,6 +780,8 @@ static void mutt_restore_default (struct option_t *p)
     set_option (OPTNEEDRESORT);
   if (p->flags & R_RESORT_INIT)
     set_option (OPTRESORTINIT);
+  if (p->flags & R_TREE)
+    set_option (OPTREDRAWTREE);
 }
 
 static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
@@ -1224,6 +1230,8 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
       set_option (OPTNEEDRESORT);
     if (MuttVars[idx].flags & R_RESORT_INIT)
       set_option (OPTRESORTINIT);
+    if (MuttVars[idx].flags & R_TREE)
+      set_option (OPTREDRAWTREE);
   }
   return (r);
 }
@@ -1634,6 +1642,38 @@ int mutt_var_value_complete (char *buffer, size_t len, int pos)
       return 1;
     }
   }
+  return 0;
+}
+
+/* Implement the -Q command line flag */
+int mutt_query_variables (LIST *queries)
+{
+  LIST *p;
+  
+  char errbuff[STRING];
+  char command[STRING];
+  
+  BUFFER err, token;
+  
+  memset (&err, 0, sizeof (err));
+  memset (&token, 0, sizeof (token));
+  
+  err.data = errbuff;
+  err.dsize = sizeof (errbuff);
+  
+  for (p = queries; p; p = p->next)
+  {
+    snprintf (command, sizeof (command), "set ?%s\n", p->data);
+    if (mutt_parse_rc_line (command, &token, &err) == -1)
+    {
+      fprintf (stderr, "%s\n", err.data);
+      FREE (&token.data);
+      return 1;
+    }
+    printf ("%s\n", err.data);
+  }
+  
+  FREE (&token.data);
   return 0;
 }
 
