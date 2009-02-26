@@ -183,8 +183,8 @@ void mutt_unlink (const char *s)
       memset (buf, 0, sizeof (buf));
       while (sb.st_size > 0)
       {
-	fwrite (buf, 1, MIN (sizeof (buf), sb.st_size), f);
-	sb.st_size -= MIN (sizeof (buf), sb.st_size);
+	fwrite (buf, 1, sizeof (buf), f);
+	sb.st_size -= sizeof (buf);
       }
       fclose (f);
     }
@@ -582,6 +582,11 @@ int mutt_strncasecmp(const char *a, const char *b, size_t l)
 size_t mutt_strlen(const char *a)
 {
   return a ? strlen (a) : 0;
+}
+
+int mutt_strcoll(const char *a, const char *b)
+{
+  return strcoll(NONULL(a), NONULL(b));
 }
 
 const char *mutt_stristr (const char *haystack, const char *needle)

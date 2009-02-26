@@ -53,9 +53,12 @@
 
 #ifdef HAVE_PGP
 
+#include "crypt.h"
+
+
 
 char PgpPass[STRING];
-static time_t PgpExptime = 0; /* when does the cached passphrase expire? */
+time_t PgpExptime = 0; /* when does the cached passphrase expire? */
 
 void pgp_void_passphrase (void)
 {
@@ -63,47 +66,8 @@ void pgp_void_passphrase (void)
   PgpExptime = 0;
 }
 
-# if defined(HAVE_SETRLIMIT) && (!defined(DEBUG))
 
-static void disable_coredumps (void)
-{
-  struct rlimit rl = {0, 0};
-  static short done = 0;
-
-  if (!done)
-  {
-    setrlimit (RLIMIT_CORE, &rl);
-    done = 1;
-  }
-}
-
-# endif /* HAVE_SETRLIMIT */
-
-int pgp_valid_passphrase (void)
-{
-  time_t now = time (NULL);
-
-# if defined(HAVE_SETRLIMIT) && (!defined(DEBUG))
-  disable_coredumps ();
-# endif
-
-  if (now < PgpExptime) return 1; /* just use the cached copy. */
-  pgp_void_passphrase ();
-
-  if (mutt_get_password (_("Enter PGP passphrase:"), PgpPass, sizeof (PgpPass)) == 0)
-  {
-    PgpExptime = time (NULL) + PgpTimeout;
-    return (1);
-  }
-  else
-  {
-    PgpExptime = 0;
-    return (0);
-  }
-  /* not reached */
-}
-
-void mutt_forget_passphrase (void)
+void pgp_forget_passphrase (void)
 {
   pgp_void_passphrase ();
   mutt_message _("PGP passphrase forgotten.");
@@ -130,20 +94,6 @@ char *_pgp_keyid(pgp_key_t *k)
  * Routines for handing PGP input.
  */
 
-/* print the current time to avoid spoofing of the signature output */
-static void pgp_current_time (STATE *s)
-{
-  time_t t;
-  char p[STRING];
-
-  t = time (NULL);
-  setlocale (LC_TIME, "");
-  strftime (p, sizeof (p),
-	    _("[-- PGP output follows (current time: %c) --]\n"),
-	    localtime (&t));
-  setlocale (LC_TIME, "C");
-  state_attach_puts (p, s);
-}
 
 
 /* Copy PGP output messages and look for signs of a good signature */
@@ -188,24 +138,31 @@ static int pgp_copy_checksig (FILE *fpin, FILE *fpout)
 /* 
  * Copy a clearsigned message, and strip the signature and PGP's
  * dash-escaping.
+ * 
+ * XXX - charset handling: We assume that it is safe to do
+ * character set decoding first, dash decoding second here, while
+ * we do it the other way around in the main handler.
+ * 
+ * (Note that we aren't worse than Outlook &c in this, and also
+ * note that we can successfully handle anything produced by any
+ * existing versions of mutt.) 
  */
 
-static long pgp_copy_clearsigned (STATE *s, long bytes)
+static void pgp_copy_clearsigned (FILE *fpin, STATE *s, char *charset)
 {
-  long last_pos, offset;
   char buf[HUGE_STRING];
-  short complete, armor_header, have_sig;
-
-  last_pos = ftell (s->fpin);
+  short complete, armor_header;
   
-  for (complete = 1, armor_header = 1, have_sig = 0;
-       bytes > 0 && fgets (buf, sizeof (buf), s->fpin) != NULL;  
+  FGETCONV *fc;
+  
+  rewind (fpin);
+  
+  fc = fgetconv_open (fpin, charset, Charset, M_ICONV_HOOK_FROM);
+  
+  for (complete = 1, armor_header = 1;
+       fgetconvs (buf, sizeof (buf), fc) != NULL;
        complete = strchr (buf, '\n') != NULL)
   {
-    offset   = ftell (s->fpin);
-    bytes   -= (offset - last_pos);
-    last_pos = offset;
-    
     if (!complete)
     {
       if (!armor_header)
@@ -214,10 +171,7 @@ static long pgp_copy_clearsigned (STATE *s, long bytes)
     }
 
     if (mutt_strcmp (buf, "-----BEGIN PGP SIGNATURE-----\n") == 0)
-    {
-      have_sig = 1;
       break;
-    }
     
     if (armor_header)
     {
@@ -235,22 +189,7 @@ static long pgp_copy_clearsigned (STATE *s, long bytes)
       state_puts (buf, s);
   }
   
-  if (!have_sig)
-    return bytes;
-    
-  for (complete = 1;
-       bytes > 0 && fgets (buf, sizeof (buf), s->fpin) != NULL;
-       complete = strchr (buf, '\n') != NULL)
-  {
-    offset   = ftell (s->fpin);
-    bytes   -= (offset - last_pos);
-    last_pos = offset;
-    
-    if (mutt_strcmp (buf, "-----END PGP SIGNATURE-----\n") == 0)
-      break;
-  }
-  
-  return bytes;
+  fgetconv_close (&fc);
 }
 
 
@@ -271,13 +210,16 @@ void pgp_application_pgp_handler (BODY *m, STATE *s)
 
   short maybe_goodsig = 1;
   short have_any_sigs = 0;
+
+  char body_charset[STRING];
+  mutt_get_body_charset (body_charset, sizeof (body_charset), m);
   
   fseek (s->fpin, m->offset, 0);
   last_pos = m->offset;
   
   for (bytes = m->length; bytes > 0;)
   {
-    if (fgets (buf, sizeof (buf) - 1, s->fpin) == NULL)
+    if (fgets (buf, sizeof (buf), s->fpin) == NULL)
       break;
     
     offset = ftell (s->fpin);
@@ -297,13 +239,14 @@ void pgp_application_pgp_handler (BODY *m, STATE *s)
         needpass = 0;
       }
       else if (!option (OPTDONTHANDLEPGPKEYS) &&
-	       mutt_strcmp ("PUBLIC KEY BLOCK-----\n", buf + 15) == 0) 
+	       mutt_strcmp ("PUBLIC KEY BLOCK-----\n", buf + 15) == 0)
       {
         needpass = 0;
         pgp_keyblock =1;
       } 
       else
       {
+	/* XXX - we may wish to recode here */
 	if (s->prefix)
 	  state_puts (s->prefix, s);
 	state_puts (buf, s);
@@ -311,91 +254,77 @@ void pgp_application_pgp_handler (BODY *m, STATE *s)
       }
 
       have_any_sigs = have_any_sigs || (clearsign && (s->flags & M_VERIFY));
-      
-      if(!clearsign || s->flags & M_VERIFY)
-      {
 
-	/* invoke PGP */
+      /* Copy PGP material to temporary file */
+      mutt_mktemp (tmpfname);
+      if ((tmpfp = safe_fopen (tmpfname, "w+")) == NULL)
+      {
+	mutt_perror (tmpfname);
+	return;
+      }
+      
+      fputs (buf, tmpfp);
+      while (bytes > 0 && fgets (buf, sizeof (buf) - 1, s->fpin) != NULL)
+      {
+	offset = ftell (s->fpin);
+	bytes -= (offset - last_pos); /* don't rely on mutt_strlen(buf) */
+	last_pos = offset;
 	
+	fputs (buf, tmpfp);
+
+	if ((needpass && mutt_strcmp ("-----END PGP MESSAGE-----\n", buf) == 0) ||
+	    (!needpass 
+             && (mutt_strcmp ("-----END PGP SIGNATURE-----\n", buf) == 0
+                 || mutt_strcmp ("-----END PGP PUBLIC KEY BLOCK-----\n",buf) == 0)))
+	  break;
+      }
+
+      /* leave tmpfp open in case we still need it - but flush it! */
+      fflush (tmpfp);
+      
+      
+      /* Invoke PGP if needed */
+      if (!clearsign || (s->flags & M_VERIFY))
+      {
 	mutt_mktemp (outfile);
 	if ((pgpout = safe_fopen (outfile, "w+")) == NULL)
 	{
-	  mutt_perror (outfile);
-	  return;
-	}
-	
-	mutt_mktemp (tmpfname);
-	if ((tmpfp = safe_fopen (tmpfname, "w+")) == NULL)
-	{
 	  mutt_perror (tmpfname);
-	  safe_fclose (&pgpout); 
 	  return;
 	}
 	
-	fputs (buf, tmpfp);
-	while (bytes > 0 && fgets (buf, sizeof (buf) - 1, s->fpin) != NULL)
-	{
-	  offset = ftell (s->fpin);
-	  bytes -= (offset - last_pos); /* don't rely on mutt_strlen(buf) */
-	  last_pos = offset;
-	  
-	  fputs (buf, tmpfp);
-	  if ((needpass && mutt_strcmp ("-----END PGP MESSAGE-----\n", buf) == 0) ||
-	      (!needpass 
-             && (mutt_strcmp ("-----END PGP SIGNATURE-----\n", buf) == 0
-                 || mutt_strcmp ("-----END PGP PUBLIC KEY BLOCK-----\n",buf) == 0)))
-	    break;
-	}
-
-	safe_fclose (&tmpfp);
-	
-	if ((thepid = pgp_invoke_decode (&pgpin, NULL,
-					  &pgperr, -1,
-					  fileno (pgpout), 
-					  -1, tmpfname, 
-					  needpass)) == -1)
+	if ((thepid = pgp_invoke_decode (&pgpin, NULL, &pgperr, -1,
+					 fileno (pgpout), -1, tmpfname,
+					 needpass)) == -1)
 	{
 	  safe_fclose (&pgpout);
-	  mutt_unlink (tmpfname);
-
 	  maybe_goodsig = 0;
-
 	  pgpin = NULL;
 	  pgperr = NULL;
-	  
-	  state_attach_puts (_("[-- Error: unable to create PGP subprocess! --]\n"), s);
+	  state_attach_puts (_("[-- Error: unable to create PGP subprocess! --]}n"), s);
 	}
-	else
+	else /* PGP started successfully */
 	{
 	  if (needpass)
 	  {
-	    if (!pgp_valid_passphrase ())
-	      pgp_void_passphrase ();
-	    fputs (PgpPass, pgpin);
-	    fputc ('\n', pgpin);
+	    if (!pgp_valid_passphrase ()) pgp_void_passphrase();
+	    fprintf (pgpin, "%s\n", PgpPass);
 	  }
 	  
 	  safe_fclose (&pgpin);
-	  
-	  if (s->flags & M_DISPLAY)
-	    pgp_current_time (s);
-	  
+
 	  rv = mutt_wait_filter (thepid);
-	  
-	  mutt_unlink (tmpfname);
-	
+
 	  if (s->flags & M_DISPLAY)
 	  {
+	    crypt_current_time (s, "PGP");
 	    rc = pgp_copy_checksig (pgperr, s->fpout);
-	    
-	    if (rc == 0)
-	      have_any_sigs = 1;
-	    if (rc || rv)
-	      maybe_goodsig = 0;
+	    if (rc == 0) have_any_sigs = 1;
+	    if (rc || rv) maybe_goodsig = 0;
 	  }
 	  
 	  safe_fclose (&pgperr);
-
+	  
 	  if (s->flags & M_DISPLAY)
 	  {
 	    state_putc ('\n', s);
@@ -403,50 +332,32 @@ void pgp_application_pgp_handler (BODY *m, STATE *s)
 	  }
 	}
       }
-    
-      if(s->flags & M_DISPLAY)
-      {
-	if (needpass)
-	  state_attach_puts (_("[-- BEGIN PGP MESSAGE --]\n\n"), s);
-	else if (pgp_keyblock)
-	  state_attach_puts (_("[-- BEGIN PGP PUBLIC KEY BLOCK --]\n"), s);
-	else
-	  state_attach_puts (_("[-- BEGIN PGP SIGNED MESSAGE --]\n\n"), s);
-      }
 
-      /* Use PGP's output if there was no clearsig signature. */
-      
-      if(!clearsign && pgpout)
-      {
-	fflush (pgpout);
-	rewind (pgpout);
-	while (fgets (buf, sizeof (buf) - 1, pgpout) != NULL)
-	{
-	  if (s->prefix)
-	    state_puts (s->prefix, s);
-	  state_puts (buf, s);
-	}
-      }
-
-      /* Close the temporary files iff they were created. 
-       * The condition used to be !clearsign || s->flags & M_VERIFY,
-       * but gcc would complain then.
+      /*
+       * Now, copy cleartext to the screen.  NOTE - we expect that PGP
+       * outputs utf-8 cleartext.  This may not always be true, but it 
+       * seems to be a reasonable guess.
        */
-      
-      if(pgpout)
-      {
-	safe_fclose (&pgpout);
-	mutt_unlink (outfile);
-      }
 
-      /* decode clearsign stuff */
-      
       if (clearsign)
       {
-	fseek (s->fpin, start_pos, SEEK_SET);
-	bytes   += (last_pos - start_pos);
-	bytes    = pgp_copy_clearsigned (s, bytes);
-	last_pos = ftell (s->fpin);
+	rewind (tmpfp);
+	if (tmpfp) 
+	  pgp_copy_clearsigned (tmpfp, s, body_charset);
+      }
+      else if (pgpout)
+      {
+	FGETCONV *fc;
+	int c;
+	rewind (pgpout);
+	fc = fgetconv_open (pgpout, "utf-8", Charset, 0);
+	while ((c = fgetconv (fc)) != EOF)
+	{
+	  state_putc (c, s);
+	  if (c == '\n' && s->prefix)
+	    state_puts (s->prefix, s);
+	}
+	fgetconv_close (&fc);
       }
 
       if (s->flags & M_DISPLAY)
@@ -459,9 +370,21 @@ void pgp_application_pgp_handler (BODY *m, STATE *s)
 	else
 	  state_attach_puts (_("[-- END PGP SIGNED MESSAGE --]\n"), s);
       }
+
+      if (tmpfp)
+      {
+	safe_fclose (&tmpfp);
+	mutt_unlink (tmpfname);
+      }
+      if (pgpout)
+      {
+	safe_fclose (&pgpout);
+	mutt_unlink (outfile);
+      }
     }
     else
     {
+      /* XXX - we may wish to recode here */
       if (s->prefix)
 	state_puts (s->prefix, s);
       state_puts (buf, s);
@@ -491,7 +414,7 @@ static int pgp_check_traditional_one_body (FILE *fp, BODY *b, int tagged_only)
 
   if (tagged_only && !b->tagged)
     return 0;
-  
+
   mutt_mktemp (tempfile);
   if (mutt_decode_save_attachment (fp, b, tempfile, 0, 0) != 0)
   {
@@ -504,7 +427,7 @@ static int pgp_check_traditional_one_body (FILE *fp, BODY *b, int tagged_only)
     unlink (tempfile);
     return 0;
   }
-    
+  
   while (fgets (buf, sizeof (buf), tfp))
   {
     if (mutt_strncmp ("-----BEGIN PGP ", buf, 15) == 0)
@@ -515,7 +438,6 @@ static int pgp_check_traditional_one_body (FILE *fp, BODY *b, int tagged_only)
 	sgn = 1;
     }
   }
-  
   safe_fclose (&tfp);
   unlink (tempfile);
 
@@ -524,11 +446,8 @@ static int pgp_check_traditional_one_body (FILE *fp, BODY *b, int tagged_only)
 
   /* fix the content type */
   
-  b->type = TYPEAPPLICATION;
-  mutt_str_replace (&b->subtype, "pgp");
-  
-  mutt_set_parameter ("format", "text", &b->parameter);
-  mutt_set_parameter ("x-action", enc ? "encrypt" : "sign", &b->parameter);
+  mutt_set_parameter ("format", "fixed", &b->parameter);
+  mutt_set_parameter ("x-action", enc ? "pgp-encrypted" : "pgp-signed", &b->parameter);
   
   return 1;
 }
@@ -536,33 +455,25 @@ static int pgp_check_traditional_one_body (FILE *fp, BODY *b, int tagged_only)
 int pgp_check_traditional (FILE *fp, BODY *b, int tagged_only)
 {
   int rv = 0;
+  int r;
   for (; b; b = b->next)
   {
     if (is_multipart (b))
       rv = pgp_check_traditional (fp, b->parts, tagged_only) || rv;
     else if (b->type == TYPETEXT)
-      rv = pgp_check_traditional_one_body (fp, b, tagged_only) || rv;
+    {
+      if ((r = mutt_is_application_pgp (b)))
+	rv = rv || r;
+      else
+	rv = pgp_check_traditional_one_body (fp, b, tagged_only) || rv;
+    }
   }
 
   return rv;
 }
 
-int mutt_is_multipart_signed (BODY *b)
-{
-  char *p;
-
-  if (!b || b->type != TYPEMULTIPART ||
-      !b->subtype || ascii_strcasecmp (b->subtype, "signed") ||
-      !(p = mutt_get_parameter ("protocol", b->parameter)) ||
-      (ascii_strcasecmp (p, "application/pgp-signature")
-      && ascii_strcasecmp (p, "multipart/mixed")))
-    return 0;
-
-  return PGPSIGN;
-}
-   
      
-int mutt_is_multipart_encrypted (BODY *b)
+int pgp_is_multipart_encrypted (BODY *b)
 {
   char *p;
   
@@ -601,99 +512,23 @@ int mutt_is_application_pgp (BODY *m)
     if (!ascii_strcasecmp (m->subtype, "pgp-keys"))
       t |= PGPKEY;
   }
-  return t;
-}
-
-int pgp_query (BODY *m)
-{
-  int t = 0;
-
-  t |= mutt_is_application_pgp (m);
-
-  if ((t & (PGPSIGN|PGPENCRYPT)) && m->goodsig)
-    t |= PGPGOODSIGN|PGPSIGN;
-  else if (m->type == TYPEMULTIPART)
+  else if (m->type == TYPETEXT && ascii_strcasecmp ("plain", m->subtype) == 0)
   {
-    if (mutt_is_multipart_signed(m))
+    if (((p = mutt_get_parameter ("x-mutt-action", m->parameter))
+	 || (p = mutt_get_parameter ("x-action", m->parameter)) 
+	 || (p = mutt_get_parameter ("action", m->parameter)))
+	 && !ascii_strncasecmp ("pgp-sign", p, 8))
       t |= PGPSIGN;
-    else if (mutt_is_multipart_encrypted(m))
+    else if (p && !ascii_strncasecmp ("pgp-encrypt", p, 11))
       t |= PGPENCRYPT;
-
-    if (m->goodsig && 
-	(mutt_is_multipart_signed (m) || mutt_is_multipart_encrypted (m)))
-      t |= PGPGOODSIGN;
   }
-  
-  if (m->type == TYPEMULTIPART || m->type == TYPEMESSAGE)
-  {
-    BODY *p;
- 
-    for (p = m->parts; p; p = p->next)
-      t |= pgp_query(p) & ~PGPGOODSIGN;
-  }
-
   return t;
 }
 
-static void pgp_fetch_signatures (BODY ***signatures, BODY *a, int *n)
-{
-  for (; a; a = a->next)
-  {
-    if(a->type == TYPEMULTIPART)
-      pgp_fetch_signatures (signatures, a->parts, n);
-    else
-    {
-      if((*n % 5) == 0)
-	safe_realloc((void **) signatures, (*n + 6) * sizeof(BODY **));
-
-      (*signatures)[(*n)++] = a;
-    }
-  }
-}
-
-static int pgp_write_signed(BODY *a, STATE *s, const char *tempfile)
-{
-  FILE *fp;
-  int c;
-  short hadcr;
-  size_t bytes;
-
-  if(!(fp = safe_fopen (tempfile, "w")))
-  {
-    mutt_perror(tempfile);
-    return -1;
-  }
-      
-  fseek (s->fpin, a->hdr_offset, 0);
-  bytes = a->length + a->offset - a->hdr_offset;
-  hadcr = 0;
-  while (bytes > 0)
-  {
-    if((c = fgetc(s->fpin)) == EOF)
-      break;
-    
-    bytes--;
-    
-    if(c == '\r')
-      hadcr = 1;
-    else 
-    {
-      if(c == '\n' && !hadcr)
-	fputc('\r', fp);
-      
-      hadcr = 0;
-    }
-    
-    fputc(c, fp);
-    
-  }
-  fclose (fp);
-
-  return 0;
-}
 
 
-static int pgp_verify_one (BODY *sigbdy, STATE *s, const char *tempfile)
+
+int pgp_verify_one (BODY *sigbdy, STATE *s, const char *tempfile)
 {
   char sigfile[_POSIX_PATH_MAX], pgperrfile[_POSIX_PATH_MAX];
   FILE *fp, *pgpout, *pgperr;
@@ -721,7 +556,7 @@ static int pgp_verify_one (BODY *sigbdy, STATE *s, const char *tempfile)
     return -1;
   }
   
-  pgp_current_time (s);
+  crypt_current_time (s, "PGP");
   
   if((thepid = pgp_invoke_verify (NULL, &pgpout, NULL, 
 				   -1, -1, fileno(pgperr),
@@ -756,111 +591,6 @@ static int pgp_verify_one (BODY *sigbdy, STATE *s, const char *tempfile)
   return badsig;
 }
 
-/*
- * This routine verifies a PGP/MIME signed body.
- */
-void pgp_signed_handler (BODY *a, STATE *s)
-{
-  char tempfile[_POSIX_PATH_MAX];
-  char *protocol;
-  int protocol_major = TYPEOTHER;
-  char *protocol_minor = NULL;
-  
-  BODY *b = a;
-  BODY **signatures = NULL;
-  int sigcnt = 0;
-  int i;
-  short goodsig = 1;
-
-  protocol = mutt_get_parameter ("protocol", a->parameter);
-  a = a->parts;
-
-  /* extract the protocol information */
-  
-  if (protocol)
-  {
-    char major[STRING];
-    char *t;
-
-    if ((protocol_minor = strchr(protocol, '/'))) protocol_minor++;
-    
-    strfcpy(major, protocol, sizeof(major));
-    if((t = strchr(major, '/')))
-      *t = '\0';
-    
-    protocol_major = mutt_check_mime_type (major);
-  }
-
-  /* consistency check */
-
-  if (!(a && a->next && a->next->type == protocol_major && 
-      !ascii_strcasecmp(a->next->subtype, protocol_minor)))
-  {
-    state_attach_puts(_("[-- Error: Inconsistent multipart/signed structure! --]\n\n"), s);
-    mutt_body_handler (a, s);
-    return;
-  }
-
-  if(!(protocol_major == TYPEAPPLICATION && !ascii_strcasecmp(protocol_minor, "pgp-signature"))
-     && !(protocol_major == TYPEMULTIPART && !ascii_strcasecmp(protocol_minor, "mixed")))
-  {
-    state_mark_attach (s);
-    state_printf(s, _("[-- Error: Unknown multipart/signed protocol %s! --]\n\n"), protocol);
-    mutt_body_handler (a, s);
-    return;
-  }
-  
-  if (s->flags & M_DISPLAY)
-  {
-    
-    pgp_fetch_signatures(&signatures, a->next, &sigcnt);
-    
-    if (sigcnt)
-    {
-      mutt_mktemp (tempfile);
-      if (pgp_write_signed (a, s, tempfile) == 0)
-      {
-	for (i = 0; i < sigcnt; i++)
-	{
-	  if (signatures[i]->type == TYPEAPPLICATION 
-	      && !ascii_strcasecmp(signatures[i]->subtype, "pgp-signature"))
-	  {
-	    if (pgp_verify_one (signatures[i], s, tempfile) != 0)
-	      goodsig = 0;
-	  }
-	  else
-	  {
-	    state_mark_attach (s);
-	    state_printf (s, _("[-- Warning: We can't verify %s/%s signatures. --]\n\n"),
-			  TYPE(signatures[i]), signatures[i]->subtype);
-	  }
-	}
-      }
-      
-      mutt_unlink (tempfile);
-
-      b->goodsig = goodsig;
-      
-      dprint (2, (debugfile, "pgp_signed_handler: goodsig = %d\n", goodsig));
-      
-      /* Now display the signed body */
-      state_attach_puts (_("[-- The following data is signed --]\n\n"), s);
-
-
-      safe_free((void **) &signatures);
-    }
-    else
-      state_attach_puts (_("[-- Warning: Can't find any signatures. --]\n\n"), s);
-  }
-  
-  mutt_body_handler (a, s);
-  
-  if (s->flags & M_DISPLAY && sigcnt)
-  {
-    state_putc ('\n', s);
-    state_attach_puts (_("[-- End of signed data --]\n"), s);
-  }
-}
 
 /* Extract pgp public keys from messages or attachments */
 
@@ -873,7 +603,7 @@ void pgp_extract_keys_from_messages (HEADER *h)
   if (h)
   {
     mutt_parse_mime_message (Context, h);
-    if(h->pgp & PGPENCRYPT && !pgp_valid_passphrase ())
+    if(h->security & PGPENCRYPT && !pgp_valid_passphrase ())
       return;
   }
 
@@ -893,7 +623,7 @@ void pgp_extract_keys_from_messages (HEADER *h)
       if (Context->hdrs[Context->v2r[i]]->tagged)
       {
 	mutt_parse_mime_message (Context, Context->hdrs[Context->v2r[i]]);
-	if (Context->hdrs[Context->v2r[i]]->pgp & PGPENCRYPT
+	if (Context->hdrs[Context->v2r[i]]->security & PGPENCRYPT
 	   && !pgp_valid_passphrase())
 	{
 	  fclose (fpout);
@@ -907,7 +637,7 @@ void pgp_extract_keys_from_messages (HEADER *h)
   else
   {
     mutt_parse_mime_message (Context, h);
-    if (h->pgp & PGPENCRYPT && !pgp_valid_passphrase())
+    if (h->security & PGPENCRYPT && !pgp_valid_passphrase())
     {
       fclose (fpout);
       goto bailout;
@@ -1132,7 +862,7 @@ void pgp_encrypted_handler (BODY *a, STATE *s)
     return;
   }
 
-  if (s->flags & M_DISPLAY) pgp_current_time (s);
+  if (s->flags & M_DISPLAY) crypt_current_time (s, "PGP");
 
   if ((tattach = pgp_decrypt_part (a, s, fpout, p)) != NULL)
   {
@@ -1171,39 +901,8 @@ void pgp_encrypted_handler (BODY *a, STATE *s)
  * Routines for sending PGP/MIME messages.
  */
 
-static void convert_to_7bit (BODY *a)
-{
-  while (a)
-  {
-    if (a->type == TYPEMULTIPART)
-    {
-      if (a->encoding != ENC7BIT)
-      {
-        a->encoding = ENC7BIT;
-	convert_to_7bit(a->parts);
-      }
-      else if (option (OPTPGPSTRICTENC))
-	convert_to_7bit (a->parts);
-    } 
-    else if (a->type == TYPEMESSAGE
-	     && ascii_strcasecmp(a->subtype, "delivery-status"))
-    {
-      if(a->encoding != ENC7BIT)
-	mutt_message_to_7bit(a, NULL);
-    }
-    else if (a->encoding == ENC8BIT)
-      a->encoding = ENCQUOTEDPRINTABLE;
-    else if (a->encoding == ENCBINARY)
-      a->encoding = ENCBASE64;
-    else if (a->content && a->encoding != ENCBASE64 &&
-	     (a->content->from || (a->content->space && 
-				   option (OPTPGPSTRICTENC))))
-      a->encoding = ENCQUOTEDPRINTABLE;
-    a = a->next;
-  }
-}
 
-static BODY *pgp_sign_message (BODY *a)
+BODY *pgp_sign_message (BODY *a)
 {
   BODY *t;
   char buffer[LONG_STRING];
@@ -1362,7 +1061,7 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
     q = p;
     k_info = NULL;
 
-    if ((keyID = mutt_pgp_hook (p)) != NULL)
+    if ((keyID = mutt_crypt_hook (p)) != NULL)
     {
       int r;
       snprintf (buf, sizeof (buf), _("Use keyID = \"%s\" for %s?"), keyID, p->mailbox);
@@ -1425,7 +1124,7 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
 /* Warning: "a" is no longer freed in this routine, you need
  * to free it later.  This is necessary for $fcc_attach. */
 
-static BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
+BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
 {
   char buf[LONG_STRING];
   char tempfile[_POSIX_PATH_MAX], pgperrfile[_POSIX_PATH_MAX];
@@ -1543,13 +1242,16 @@ static BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
   return (t);
 }
 
-static BODY *pgp_traditional_encryptsign (BODY *a, int flags, char *keylist)
+BODY *pgp_traditional_encryptsign (BODY *a, int flags, char *keylist)
 {
   BODY *b;
 
   char pgpoutfile[_POSIX_PATH_MAX];
   char pgperrfile[_POSIX_PATH_MAX];
   char pgpinfile[_POSIX_PATH_MAX];
+
+  char from_charset[STRING];
+  const char *send_charset;
   
   FILE *pgpout = NULL, *pgperr = NULL, *pgpin = NULL;
   FILE *fp;
@@ -1560,6 +1262,11 @@ static BODY *pgp_traditional_encryptsign (BODY *a, int flags, char *keylist)
   char buff[STRING];
 
   pid_t thepid;
+
+  if (a->type != TYPETEXT)
+    return NULL;
+  if (ascii_strcasecmp (a->subtype, "plain"))
+    return NULL;
   
   if ((fp = fopen (a->filename, "r")) == NULL)
   {
@@ -1575,8 +1282,38 @@ static BODY *pgp_traditional_encryptsign (BODY *a, int flags, char *keylist)
     return NULL;
   }
 
-  mutt_copy_stream (fp, pgpin);
-  fclose (fp);
+  /* The following code is really correct:  If noconv is set,
+   * a's charset parameter contains the on-disk character set, and
+   * we have to convert from that to utf-8.  If noconv is not set,
+   * we have to convert from $charset to utf-8.
+   */
+  if (a->noconv)
+    mutt_get_body_charset (from_charset, sizeof (from_charset), a);
+  else
+    strfcpy (from_charset, NONULL(Charset), sizeof (from_charset));
+  
+  if (!mutt_is_us_ascii (from_charset))
+  {
+    int c;
+    FGETCONV *fc;
+    
+    if (flags & ENCRYPT)
+      send_charset = "us-ascii";
+    else
+      send_charset = "utf-8";
+    
+    fc = fgetconv_open (fp, Charset, "utf-8", M_ICONV_HOOK_FROM);
+    while ((c = fgetconv (fc)) != EOF)
+      fputc (c, pgpin);
+    
+    fgetconv_close (&fc);
+  }
+  else
+  {
+    send_charset = "us-ascii";
+    mutt_copy_stream (fp, pgpin);
+  }
+  safe_fclose (&fp);
   fclose (pgpin);
 
   mutt_mktemp (pgpoutfile);
@@ -1608,7 +1345,7 @@ static BODY *pgp_traditional_encryptsign (BODY *a, int flags, char *keylist)
     return NULL;
   }
 
-  if (flags & PGPSIGN)
+  if (flags & SIGN)
     fprintf (pgpin, "%s\n", PgpPass);
   fclose (pgpin);
 
@@ -1648,121 +1385,37 @@ static BODY *pgp_traditional_encryptsign (BODY *a, int flags, char *keylist)
   
   b->encoding = ENC7BIT;
 
-  b->type = TYPEAPPLICATION;
-  b->subtype = safe_strdup ("pgp");
-
-  mutt_set_parameter ("format", "text", &b->parameter);
-  mutt_set_parameter ("x-action", flags & PGPENCRYPT ? "encrypt" : "sign",
+  b->type = TYPETEXT;
+  b->subtype = safe_strdup ("plain");
+  
+  mutt_set_parameter ("x-action", flags & ENCRYPT ? "pgp-encrypted" : "pgp-signed",
 		      &b->parameter);
-
+  mutt_set_parameter ("charset", send_charset, &b->parameter);
+  
   b->filename = safe_strdup (pgpoutfile);
   
+#if 0
   /* The following is intended to give a clue to some completely brain-dead 
    * "mail environments" which are typically used by large corporations.
    */
 
   b->d_filename = safe_strdup ("msg.pgp");
-  b->disposition = DISPINLINE;
-  b->unlink   = 1;
   b->use_disp = 1;
 
+#endif
+
+  b->disposition = DISPINLINE;
+  b->unlink   = 1;
+
+  b->noconv = 1;
+  
+  if (!(flags & ENCRYPT))
+    b->encoding = a->encoding;
+  
   return b;
 }
 
 
 
-int pgp_get_keys (HEADER *msg, char **pgpkeylist)
-{
-  /* Do a quick check to make sure that we can find all of the encryption
-   * keys if the user has requested this service.
-   */
-
-  set_option (OPTPGPCHECKTRUST);
-
-  *pgpkeylist = NULL;
-  if (msg->pgp & PGPENCRYPT)
-  {
-    if ((*pgpkeylist = pgp_findKeys (msg->env->to, msg->env->cc,
-				      msg->env->bcc)) == NULL)
-      return (-1);
-  }
-
-  return (0);
-}
-
-int pgp_protect (HEADER *msg, char *pgpkeylist)
-{
-  BODY *pbody = NULL;
-  int flags = msg->pgp;
-  int traditional = 0;
-  int i;
-
-  if ((msg->pgp & PGPSIGN) && !pgp_valid_passphrase ())
-    return (-1);
-
-  if ((msg->content->type == TYPETEXT) &&
-      !ascii_strcasecmp (msg->content->subtype, "plain") &&
-      ((flags & PGPENCRYPT) || (msg->content->content && msg->content->content->hibin == 0)))
-  {
-    if ((i = query_quadoption (OPT_PGPTRADITIONAL, _("Create an application/pgp message?"))) == -1)
-      return -1;
-    else if (i == M_YES)
-      traditional = 1;
-  }
-
-  mutt_message _("Invoking PGP...");
-
-  if (!isendwin ())
-    mutt_endwin (NULL);
-
-  if (traditional)
-  {
-    if (!(pbody = pgp_traditional_encryptsign (msg->content, flags, pgpkeylist)))
-      return -1;
-    
-    msg->content = pbody;
-    return 0;
-  }
-
-  if ((flags & PGPSIGN) && (!(flags & PGPENCRYPT) || option (OPTPGPRETAINABLESIG)))
-  {
-    if (!(pbody = pgp_sign_message (msg->content)))
-      return -1;
-
-    msg->content = pbody;
-    flags &= ~PGPSIGN;
-  }
-
-  if (flags & PGPENCRYPT)
-  {
-    if (!(pbody = pgp_encrypt_message (msg->content, pgpkeylist, flags & PGPSIGN)))
-    {
-
-      /* did we perform a retainable signature? */
-      if (flags != msg->pgp)
-      {
-	/* remove the outer multipart layer */
-	msg->content = mutt_remove_multipart (msg->content);
-	/* get rid of the signature */
-	mutt_free_body (&msg->content->next);
-      }
-
-      return (-1);
-    }
-
-    /* destroy temporary signature envelope when doing retainable 
-     * signatures.
-     */
-    if (flags != msg->pgp)
-    {
-      mutt_remove_multipart (msg->content);
-      mutt_free_body (&msg->content->next);
-    }
-    
-    msg->content = pbody;
-  }
-
-  return (0);
-}
 
 #endif /* HAVE_PGP */
