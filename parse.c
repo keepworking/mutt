@@ -240,6 +240,8 @@ int mutt_check_mime_type (const char *s)
     return TYPEAUDIO;
   else if (mutt_strcasecmp ("video", s) == 0)
     return TYPEVIDEO;
+  else if (mutt_strcasecmp ("model", s) == 0)
+    return TYPEMODEL;
   else
     return TYPEOTHER;
 }
@@ -304,13 +306,6 @@ void mutt_parse_content_type (char *s, BODY *ct)
     }
     else
       ct->subtype = safe_strdup ("x-unknown");
-  }
-
-  /* Default character set for text types. */
-  if (ct->type == TYPETEXT)
-  {
-    if (!(pc = mutt_get_parameter ("charset", ct->parameter)))
-      mutt_set_parameter ("charset", "us-ascii", &ct->parameter);
   }
 
 }
@@ -514,7 +509,11 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int di
   {
     len = mutt_strlen (buffer);
 
-    crlf =  (len > 1 && buffer[len - 2] == '\r') ? 1 : 0;
+    /* take note of the line ending.  I'm assuming that either all endings
+     * will use <CR><LF> or none will.
+     */
+    if (len > 1 && buffer[len - 2] == '\r')
+      crlf = 1;
 
     if (buffer[0] == '-' && buffer[1] == '-' &&
 	mutt_strncmp (buffer + 2, boundary, blen) == 0)
@@ -834,7 +833,6 @@ void mutt_parse_mime_message (CONTEXT *ctx, HEADER *cur)
 #ifdef _PGPPATH
     cur->pgp = pgp_query (cur->content);
 #endif /* _PGPPATH */
-
 
 
     mx_close_message (&msg);
