@@ -1,14 +1,11 @@
-dnl Process this file with autoconf to produce a configure script.
+dnl $Id$
 
+dnl Process this file with autoconf to produce a configure script.
 AC_INIT(mutt.h)
 AM_CONFIG_HEADER(config.h)
+AM_INIT_AUTOMAKE(mutt, `cat $srcdir/VERSION`)
 
-srcdir=`(cd $srcdir && pwd)`
-mutt_cv_version=`cat $srcdir/VERSION`
-
-AM_INIT_AUTOMAKE(mutt, $mutt_cv_version)
-
-ALL_LINGUAS="de ru it es uk fr pl nl cs id sk ko"
+ALL_LINGUAS="de ru it es uk fr pl nl cs id sk ko el zh_TW.Big5"
 
 AC_CANONICAL_HOST
 
@@ -50,6 +47,10 @@ else
 		AC_DEFINE_UNQUOTED(_PGPGPGPATH, "$GPG")
 		PGPPATH="$GPG"
 		AC_DEFINE(HAVE_GPG)
+		AC_PATH_PROG(GPGM, gpgm, no)
+		if test $GPGM != no ; then
+			AC_DEFINE(HAVE_GPGM)
+		fi
 	fi
 
 	AC_PATH_PROG(PGPK, pgpk, no)
@@ -62,9 +63,14 @@ else
 
 	AC_PATH_PROG(PGP, pgp, no)
 	if test $PGP != no ; then
-		AC_DEFINE_UNQUOTED(_PGPV2PATH, "$PGP")
+		if pgp 2>&1 | grep -q 6\.5 ; then
+			AC_DEFINE_UNQUOTED(_PGPV6PATH, "$PGP")
+			AC_DEFINE(HAVE_PGP6)
+		else
+			AC_DEFINE_UNQUOTED(_PGPV2PATH, "$PGP")
+			AC_DEFINE(HAVE_PGP2)
+		fi
 		PGPPATH="$PGP"
-		AC_DEFINE(HAVE_PGP2)
 	fi
 
 	if test $PGPPATH != no ; then
@@ -72,27 +78,11 @@ else
 	fi
 
 	if test $PGP != no || test $PGPK != no || test $GPG != no ; then
-		PGPAUX_TARGET=pgpring
-		AM_CONDITIONAL(NEEDS_PGPEWRAP, true)
-		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS pgp.o pgpinvoke.o pgpkey.o pgplib.o gnupgparse.o"
+		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS pgp.o pgpinvoke.o pgpkey.o pgppubring.o sha1dgst.o gnupgparse.o"
 		OPS="$OPS \$(srcdir)/OPS.PGP"
 	fi
-
-	AC_ARG_WITH(mixmaster, [  --with-mixmaster[=PATH]	include Mixmaster support],
-		[if test -x "$withval" ; then
-			MIXMASTER="$withval"
-		 else
-		 	MIXMASTER="mixmaster"
-		 fi
-		 OPS="$OPS \$(srcdir)/OPS.MIX"
-		 MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS remailer.o"
-		 AC_DEFINE_UNQUOTED(MIXMASTER, "$MIXMASTER")
-                ])
-		
 fi
 AC_SUBST(OPS)
-
-AC_SUBST(PGPAUX_TARGET)
 
 AC_DEFINE_UNQUOTED(SUBVERSION, "$SUBVERSION")
 AC_SUBST(SUBVERSION)
@@ -103,7 +93,7 @@ if test $ISPELL != no; then
 fi
 
 AC_ARG_WITH(slang, [  --with-slang[=DIR]         use S-Lang instead of ncurses],
-	[AC_CACHE_CHECK([if -ltermlib is required], mutt_cv_bsdish,
+	[AC_CACHE_CHECK([if this is a BSD system], mutt_cv_bsdish,
 		[AC_TRY_RUN([#include <sys/param.h>
 
 main ()
@@ -152,7 +142,7 @@ main ()
 	AC_MSG_RESULT($mutt_cv_slang)
 	LIBS="$LIBS -lslang -lm"
 	if test $mutt_cv_bsdish = yes; then
-		LIBS="$LIBS -ltermlib"
+		AC_CHECK_LIB(termlib, main)
 	fi
 	AC_DEFINE(USE_SLANG_CURSES)
 	AC_DEFINE(HAVE_COLOR)
@@ -206,6 +196,11 @@ AC_CHECK_HEADERS(stdarg.h sys/ioctl.h sysexits.h getopt.h)
 
 AC_TYPE_SIGNAL
 
+AC_MSG_CHECKING(for sig_atomic_t in signal.h)
+AC_EGREP_HEADER(sig_atomic_t,signal.h,dnl
+  [ ac_cv_type_sig_atomic_t=yes; AC_MSG_RESULT(yes) ],dnl
+  AC_MSG_RESULT(no); AC_CHECK_TYPE(sig_atomic_t, int))
+
 AC_DECL_SYS_SIGLIST
 
 dnl need this for DEC alpha
@@ -215,7 +210,7 @@ AC_TYPE_PID_T
 
 AC_CHECK_FUNCS(setegid srand48 strerror)
 
-AC_REPLACE_FUNCS(strcasecmp)
+AC_REPLACE_FUNCS(strcasecmp strdup)
 
 mutt_cv_snprintf=no
 SNPRINTFOBJS=""
@@ -324,13 +319,9 @@ int main (int argc, char **argv)
 	fi
 fi
 
-AC_ARG_ENABLE(external_dotlock, [  --enable-external-dotlock 	Force use of an external dotlock program],
-	[mutt_cv_external_dotlock=yes])
-
-if test "x$mutt_cv_setgid" = "xyes" || test "x$mutt_cv_fchdir" = "xno" \
-	|| test "x$mutt_cv_external_dotlock" = "xyes"
+if test "x$mutt_cv_setgid" = "xyes" || test "x$mutt_cv_fchdir" = "xno"
 then
-	AC_DEFINE(DL_STANDALONE)
+	CPPFLAGS="$CPPFLAGS -DDL_STANDALONE -DDOTLOCK=\"\\\"\$(bindir)/mutt_dotlock\\\"\""
 	DOTLOCK_TARGET="mutt_dotlock"
 else
 	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS dotlock.o"
@@ -362,31 +353,6 @@ AC_ARG_WITH(sharedir, [  --with-sharedir=PATH       specify where to put arch in
 
 sharedir=$mutt_cv_sharedir
 AC_SUBST(sharedir)
-
-mutt_cv_charmaps=/usr/share/i18n/charmaps
-AC_ARG_WITH(charmaps, [--with-charmaps=PATH	specify where on the system mutt can find character set definitions],
-	[mutt_cv_charmaps=$withval])
-
-AC_MSG_CHECKING(whether character set definitions on your system are usable)
-if test ! -f $mutt_cv_charmaps/ISO_10646 ; then
-	AC_MSG_RESULT(no)
-	mutt_cv_charmaps=$mutt_cv_sharedir/charmaps
-	echo "Mutt will expect character map definitions under $mutt_cv_charmaps." >&AC_FD_MSG
-	if test -d $srcdir/charmaps ; then
-		echo "We will install the included character set definitions." >&AC_FD_MSG
-		mutt_cv_add_subdirs="charmaps"
-	else
-		mutt_cv_add_subdirs=""
-		echo "If you want character set support, read INSTALL".
-        fi
-else
-	AC_MSG_RESULT(yes)
-fi
-
-AC_DEFINE_UNQUOTED(CHARMAPS_DIR, "$mutt_cv_charmaps")
-charmaps=$mutt_cv_charmaps
-AC_SUBST(charmaps)
-		       
 
 AC_ARG_WITH(docdir, [  --with-docdir=PATH       specify where to put the documentation],
 	[mutt_cv_docdir=$withval],
@@ -420,20 +386,20 @@ AC_ARG_WITH(domain, [  --with-domain=DOMAIN       Specify your DNS domain name ]
 
 AC_ARG_ENABLE(pop, [  --enable-pop               Enable POP3 support],
 [	AC_DEFINE(USE_POP)
-	AC_CHECK_LIB(socket, socket)
-	AC_CHECK_LIB(nsl, gethostbyname)
+	AC_CHECK_FUNC(setsockopt, , AC_CHECK_LIB(socket, setsockopt))
+	AC_CHECK_FUNC(gethostent, , AC_CHECK_LIB(nsl, gethostent))
 	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS pop.o"
 ])
 
-AC_ARG_ENABLE(debug, [  --enable-debug		Enable debugging support],
-	[ AC_DEFINE(DEBUG) ])
-
 AC_ARG_ENABLE(imap, [  --enable-imap              Enable IMAP support],
 [	AC_DEFINE(USE_IMAP)
-	AC_CHECK_LIB(socket, socket)
-	AC_CHECK_LIB(nsl, gethostbyname)
+	AC_CHECK_FUNC(setsockopt, , AC_CHECK_LIB(socket, setsockopt))
+	AC_CHECK_FUNC(gethostent, , AC_CHECK_LIB(nsl, gethostent))
 	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS imap.o socket.o"
 ])
+
+AC_ARG_ENABLE(debug, [  --enable-debug            Enable debugging support],
+	[AC_DEFINE(DEBUG)])
 
 AC_ARG_ENABLE(flock, [  --enable-flock             Use flock() to lock files],
 	[if test $enableval = yes; then
@@ -457,6 +423,8 @@ fi])
 if test "$ac_cv_prog_CC" = gcc -a $mutt_cv_warnings = yes; then
 	CFLAGS="-Wall -pedantic $CFLAGS"
 fi
+
+CFLAGS="-DHAVE_CONFIG_H=1 $CFLAGS"
 
 AC_ARG_ENABLE(nfs-fix, [  --enable-nfs-fix           Work around an NFS with broken attributes caching ],
 	[if test x$enableval = xyes; then
@@ -485,9 +453,6 @@ AC_ARG_ENABLE(exact-address, [  --enable-exact-address     enable regeneration o
 
 AC_SUBST(MUTT_LIB_OBJECTS)
 
-ADD_SUBDIRS="$mutt_cv_add_subdirs"
-AC_SUBST(ADD_SUBDIRS)
-
 MUTT_AM_GNU_GETTEXT
 CPPFLAGS="$CPPFLAGS -I\$(srcdir)/intl"
 
@@ -495,13 +460,4 @@ MUTTLOCALEDIR=$mutt_cv_prefix/$DATADIRNAME/locale
 AC_SUBST(MUTTLOCALEDIR)
 AC_DEFINE_UNQUOTED(MUTTLOCALEDIR, "$MUTTLOCALEDIR")
 
-output="Makefile intl/Makefile m4/Makefile po/Makefile.in Muttrc	\
-	doc/Makefile doc/manual.sgml doc/dotlock.man doc/mutt.man 	\
-	contrib/Makefile"
-
-if test -d $srcdir/charmaps ; then
-	output="$output charmaps/Makefile"
-fi
-
-AC_OUTPUT($output)
-
+AC_OUTPUT(Makefile intl/Makefile m4/Makefile po/Makefile.in Muttrc doc/Makefile doc/manual.sgml doc/dotlock.man doc/mutt.man charsets/Makefile contrib/Makefile)

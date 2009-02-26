@@ -17,6 +17,9 @@
 /* Does your version of PGP support the PGPPASSFD environment variable? */
 #define HAVE_PGPPASSFD
 
+/* Disable the X-Mailer header? */
+#undef NO_XMAILER
+
 /* What is your domain name? */
 #undef DOMAIN
 
@@ -25,9 +28,6 @@
 
 /* use dotlocking to lock mailboxes? */
 #undef USE_DOTLOCK
-
-/* use an external dotlocking program? */
-#undef DL_STANDALONE
 
 /* use flock() to lock mailboxes? */
 #undef USE_FLOCK
@@ -74,6 +74,9 @@
 /* Where is PGP 5 located on your system? */
 #undef _PGPV3PATH
 
+/* Where is PGP 6 located on your system? */
+#undef _PGPV6PATH
+
 /* Where is GNU Privacy Guard located on your system? */
 #undef _PGPGPGPATH
 
@@ -82,6 +85,9 @@
 
 /* Do we have PGP 5.0 or up? */
 #undef HAVE_PGP5
+
+/* Do we have PGP 6.0 */
+#undef HAVE_PGP6
 
 /* Do we have GPG? */
 #undef HAVE_GPG
@@ -138,9 +144,8 @@
 /* Use the included regex.c? */
 #undef USE_GNU_REGEX
 
-/* Where's mixmaster located? */
-#undef MIXMASTER
+/* Do we have gpgm installed? */
+#undef HAVE_GPGM
 
-/* Where are the character set definitions located? */
-#undef CHARMAPS_DIR
-
+/* Define to `int' if <signal.h> doesn't define.  */
+#undef sig_atomic_t
