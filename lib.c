@@ -155,6 +155,9 @@ void mutt_free_header (HEADER **h)
   mutt_free_body (&(*h)->content);
   safe_free ((void **) &(*h)->tree);
   safe_free ((void **) &(*h)->path);
+#ifdef MIXMASTER
+  mutt_free_list (&(*h)->chain);
+#endif
   safe_free ((void **) h);
 }
 
@@ -479,7 +482,6 @@ void mutt_free_envelope (ENVELOPE **p)
   rfc822_free_address (&(*p)->mail_followup_to);
   safe_free ((void **) &(*p)->subject);
   safe_free ((void **) &(*p)->message_id);
-  safe_free ((void **) &(*p)->supersedes);
   safe_free ((void **) &(*p)->date);
   mutt_free_list (&(*p)->references);
   mutt_free_list (&(*p)->userhdrs);
@@ -1311,4 +1313,24 @@ int mutt_strncasecmp(const char *a, const char *b, size_t l)
 size_t mutt_strlen(const char *a)
 {
   return a ? strlen (a) : 0;
+}
+
+const char *mutt_stristr (const char *haystack, const char *needle)
+{
+  const char *p, *q;
+
+  if (!haystack)
+    return NULL;
+  if (!needle)
+    return (haystack);
+
+  while (*(p = haystack))
+  {
+    for (q = needle; *p && *q && tolower (*p) == tolower (*q); p++, q++)
+      ;
+    if (!*q)
+      return (haystack);
+    haystack++;
+  }
+  return NULL;
 }
