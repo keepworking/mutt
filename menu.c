@@ -148,13 +148,30 @@ static void menu_make_entry (char *s, int l, MUTTMENU *menu, int i)
     menu->make_entry (s, l, menu, i);
 }
 
-void menu_pad_string (char *s, size_t n)
+void menu_pad_string (char *s, size_t l)
 {
+  size_t n = mutt_strlen (s);
   int shift = option (OPTARROWCURSOR) ? 3 : 0;
-  int cols = COLS - shift;
+  
+  l--; /* save room for the terminal \0 */
+  if (l > COLS - shift)
+    l = COLS - shift;
 
-  mutt_format_string (s, n, cols, cols, 0, ' ', s, strlen (s), 1);
-  s[n - 1] = 0;
+  /* Let's just pad the string anyway ... */
+  mutt_format_string (s, INT_MAX, l, l, 0, ' ', s, n, 1);
+  return;
+
+#if !defined (HAVE_BKGDSET) && !defined (USE_SLANG_CURSES)
+  /* we have to pad the string with blanks to the end of line */
+  if (n < l)
+  {
+    while (n < l)
+      s[n++] = ' ';
+    s[n] = 0;
+  }
+  else
+#endif
+    s[l] = 0;
 }
 
 void menu_redraw_full (MUTTMENU *menu)
@@ -215,8 +232,7 @@ void menu_redraw_index (MUTTMENU *menu)
 
 	if (i == menu->current)
 	{
-          attrset (menu->color (i));
-	  ADDCOLOR (MT_COLOR_INDICATOR);
+	  SETCOLOR (MT_COLOR_INDICATOR);
 	  addstr ("->");
           attrset (menu->color (i));
 	  addch (' ');
@@ -229,14 +245,14 @@ void menu_redraw_index (MUTTMENU *menu)
       }
       else
       {
-        attrset (menu->color (i));
-            
 	if (i == menu->current)
 	{
-	  ADDCOLOR (MT_COLOR_INDICATOR);
+	  SETCOLOR (MT_COLOR_INDICATOR);
 	  BKGDSET (MT_COLOR_INDICATOR);
 	}
-
+        else
+          attrset (menu->color (i));
+            
 	CLEARLINE (i - menu->top + menu->offset);
 	print_enriched_string (menu->color(i), (unsigned char *) buf, i != menu->current);
         SETCOLOR (MT_COLOR_NORMAL);
@@ -281,8 +297,7 @@ void menu_redraw_motion (MUTTMENU *menu)
 
     /* now draw it in the new location */
     move (menu->current + menu->offset - menu->top, 0);
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     addstr ("->");
     SETCOLOR (MT_COLOR_NORMAL);
   }
@@ -298,8 +313,7 @@ void menu_redraw_motion (MUTTMENU *menu)
     /* now draw the new one to reflect the change */
     menu_make_entry (buf, sizeof (buf), menu, menu->current);
     menu_pad_string (buf, sizeof (buf));
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     BKGDSET (MT_COLOR_INDICATOR);
     CLEARLINE (menu->current - menu->top + menu->offset);
     print_enriched_string (menu->color(menu->current), (unsigned char *) buf, 0);
@@ -322,8 +336,7 @@ void menu_redraw_current (MUTTMENU *menu)
     int attr = menu->color (menu->current);
     attrset (attr);
     clrtoeol ();
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     addstr ("->");
     attrset (attr);
     addch (' ');
@@ -333,8 +346,7 @@ void menu_redraw_current (MUTTMENU *menu)
   }
   else
   {
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     BKGDSET (MT_COLOR_INDICATOR);
     clrtoeol ();
     print_enriched_string (menu->color(menu->current), (unsigned char *) buf, 0);
