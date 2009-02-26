@@ -103,14 +103,14 @@ static int is_mmnoask (const char *buf)
   return (0);
 }
 
-int mutt_display_message (HEADER *cur)
+int mutt_display_message (HEADER *cur, const char *attach_msg_status)
 {
   char tempfile[_POSIX_PATH_MAX], buf[LONG_STRING];
   int rc = 0, builtin = 0;
   int cmflags = M_CM_DECODE | M_CM_DISPLAY;
   FILE *fpout;
 
-  snprintf (buf, sizeof (buf), "%s/%s", TYPE (cur->content->type),
+  snprintf (buf, sizeof (buf), "%s/%s", TYPE (cur->content),
 	    cur->content->subtype);
 
   if (cur->mailcap && !mutt_is_autoview (buf))
@@ -176,11 +176,11 @@ int mutt_display_message (HEADER *cur)
     return (0);
   }
 
-  if (strcmp (Pager, "builtin") == 0)
+  if (!Pager || strcmp (Pager, "builtin") == 0)
     builtin = 1;
   else
   {
-    mutt_make_string (buf, sizeof (buf), PagerFmt, Context, cur);
+    mutt_make_string (buf, sizeof (buf), NONULL(PagerFmt), Context, cur);
     fputs (buf, fpout);
     fputs ("\n\n", fpout);
   }
@@ -208,12 +208,12 @@ int mutt_display_message (HEADER *cur)
     memset (&info, 0, sizeof (pager_t));
     info.hdr = cur;
     info.ctx = Context;
-    rc = mutt_pager (NULL, tempfile, 1, &info);
+    rc = mutt_pager (NULL, tempfile, 1, &info, attach_msg_status);
   }
   else
   {
     endwin ();
-    snprintf (buf, sizeof (buf), "%s %s", Pager, tempfile);
+    snprintf (buf, sizeof (buf), "%s %s", NONULL(Pager), tempfile);
     mutt_system (buf);
     unlink (tempfile);
     keypad (stdscr, TRUE);
@@ -293,7 +293,7 @@ int mutt_pipe_message (HEADER *h)
   pid_t thepid;
 
   buffer[0] = 0;
-  if (mutt_get_field ("Pipe to command: ", buffer, sizeof (buffer), 0) != 0 ||
+  if (mutt_get_field ("Pipe to command: ", buffer, sizeof (buffer), M_CMD) != 0 ||
       !buffer[0])
     return 0;
   mutt_expand_path (buffer, sizeof (buffer));
@@ -455,13 +455,16 @@ void mutt_shell_escape (void)
   buf[0] = 0;
   if (mutt_get_field ("Shell command: ", buf, sizeof (buf), M_CMD) == 0)
   {
-    if (!buf[0])
+    if (!buf[0] && Shell)
       strfcpy (buf, Shell, sizeof (buf));
-    CLEARLINE (LINES-1);
-    endwin ();
-    fflush (stdout);
-    if (mutt_system (buf) != 0 || option (OPTWAITKEY))
-      mutt_any_key_to_continue (NULL);
+    if(buf[0])
+    {
+      CLEARLINE (LINES-1);
+      endwin ();
+      fflush (stdout);
+      if (mutt_system (buf) != 0 || option (OPTWAITKEY))
+	mutt_any_key_to_continue (NULL);
+    }
   }
 }
 
@@ -506,64 +509,55 @@ void mutt_display_address (ADDRESS *adr)
   mutt_message ("%s", buf);
 }
 
-/* returns 1 if OK to proceed, 0 to abort */
-static int save_confirm_func (const char *s, struct stat *st)
+static void set_copy_flags(HEADER *hdr, int decode, int decrypt, int *cmflags, int *chflags)
 {
-  char tmp[_POSIX_PATH_MAX];
-  int ret = 1;
-  int magic = 0;
-
-  magic = mx_get_magic (s);
-
-  if (stat (s, st) != -1)
+  *cmflags = 0;
+  *chflags = CH_UPDATE_LEN;
+  
+#ifdef _PGPPATH
+  if(!decode && decrypt && (hdr->pgp & PGPENCRYPT))
   {
-    if (magic == -1)
+    if(mutt_is_multipart_encrypted(hdr->content))
     {
-      mutt_error ("%s is not a mailbox!", s);
-      return 0;
+      *chflags = CH_NONEWLINE | CH_XMIT | CH_MIME;
+      *cmflags = M_CM_DECODE_PGP;
     }
-
-    if (option (OPTCONFIRMAPPEND))
-    {
-      snprintf (tmp, sizeof (tmp), "Append messages to %s?", s);
-      if (mutt_yesorno (tmp, 1) < 1)
-	ret = 0;
-    }
+    else if(mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
+      decode = 1;
   }
-  else
-  {
-    if (magic != M_IMAP)
-    {
-      st->st_mtime = 0;
-      st->st_atime = 0;
+#endif
 
-      if (errno == ENOENT)
-      {
-	if (option (OPTCONFIRMCREATE))
-	{
-	  snprintf (tmp, sizeof (tmp), "Create %s?", s);
-	  if (mutt_yesorno (tmp, 1) < 1)
-	    ret = 0;
-	}
-      }
-      else
-      {
-	mutt_perror (s);
-	return 0;
-      }
-    }
+  if(decode)
+  {
+    *chflags = CH_MIME | CH_TXTPLAIN;
+    *cmflags = M_CM_DECODE;
   }
 
-  CLEARLINE (LINES-1);
-  return (ret);
+}
+
+static void _mutt_save_message (HEADER *h, CONTEXT *ctx, int delete, int decode, int decrypt)
+{
+  int cmflags, chflags;
+  
+  set_copy_flags(h, decode, decrypt, &cmflags, &chflags);
+
+  if (decode  || decrypt)
+    mutt_parse_mime_message (Context, h);
+
+  if (mutt_append_message (ctx, Context, h, cmflags, chflags) == 0 && delete)
+  {
+    mutt_set_flag (Context, h, M_DELETE, 1);
+    mutt_set_flag (Context, h, M_TAG, 0);
+  }
 }
 
 /* returns 0 if the copy/save was successful, or -1 on error/abort */
-int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
+int mutt_save_message (HEADER *h, int delete, int decode, int decrypt, int *redraw)
 {
   int i, need_buffy_cleanup;
-  int cmflags = decode ? M_CM_DECODE : 0;
-  int chflags = decode ? CH_XMIT | CH_MIME : CH_UPDATE_LEN;
+#ifdef _PGPPATH
+  int need_passphrase = 0;
+#endif
   char prompt[SHORT_STRING], buf[_POSIX_PATH_MAX];
   CONTEXT ctx;
   struct stat st;
@@ -577,10 +571,16 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
 
   snprintf (prompt, sizeof (prompt), "%s%s to mailbox",
 	    decode ? (delete ? "Decode-save" : "Decode-copy") :
-	    (delete ? "Save" : "Copy"), h ? "" : " tagged");
-
+	    (decrypt ? (delete ? "Decrypt-save" : "Decrypt-copy"):
+	     (delete ? "Save" : "Copy")), h ? "" : " tagged");
+  
   if (h)
+  {
+#ifdef _PGPPATH
+    need_passphrase = h->pgp & PGPENCRYPT;
+#endif
     mutt_default_save (buf, sizeof (buf), h);
+  }
   else
   {
     /* look for the first tagged message */
@@ -597,6 +597,9 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
     if (h)
     {
       mutt_default_save (buf, sizeof (buf), h);
+#ifdef _PGPPATH
+      need_passphrase |= h->pgp & PGPENCRYPT;
+#endif
       h = NULL;
     }
   }
@@ -615,7 +618,7 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
 
   if (!buf[0])
     return (-1);
-  
+ 
   /* This is an undocumented feature of ELM pointed out to me by Felix von
    * Leitner <leitner@prz.fu-berlin.de>
    */
@@ -627,42 +630,30 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
   mutt_expand_path (buf, sizeof (buf));
 
   /* check to make sure that this file is really the one the user wants */
-  if (!save_confirm_func (buf, &st))
+  if (!mutt_save_confirm (buf, &st))
   {
     CLEARLINE (LINES-1);
     return (-1);
   }
 
+#ifdef _PGPPATH
+  if(need_passphrase && (decode || decrypt) && !pgp_valid_passphrase())
+    return -1;
+#endif
+  
   mutt_message ("Copying to %s...", buf);
   
   if (mx_open_mailbox (buf, M_APPEND, &ctx) != NULL)
   {
     if (h)
-    {
-      if (decode)
-	mutt_parse_mime_message (Context, h);
-      if (mutt_append_message (&ctx, Context, h, cmflags, chflags) == 0 && delete)
-      {
-	mutt_set_flag (Context, h, M_DELETE, 1);
-	mutt_set_flag (Context, h, M_TAG, 0);
-      }
-    }
+      _mutt_save_message(h, &ctx, delete, decode, decrypt);
     else
     {
       for (i = 0; i < Context->vcount; i++)
       {
 	if (Context->hdrs[Context->v2r[i]]->tagged)
-	{
-	  h = Context->hdrs[Context->v2r[i]];
-	  if (decode)
-	    mutt_parse_mime_message (Context, h);
-	  mutt_append_message (&ctx, Context, h, cmflags, chflags);
-	  if (delete)
-	  {
-	    mutt_set_flag (Context, h, M_DELETE, 1);
-	    mutt_set_flag (Context, h, M_TAG, 0);
-	  }
-	}
+	  _mutt_save_message(Context->hdrs[Context->v2r[i]],
+			     &ctx, delete, decode, decrypt);
       }
     }
 
@@ -712,7 +703,7 @@ static void print_msg (FILE *fp, CONTEXT *ctx, HEADER *h)
 
 
   mutt_parse_mime_message (ctx, h);
-  mutt_copy_message (fp, ctx, h, M_CM_DECODE, CH_WEED | CH_DECODE);
+  mutt_copy_message (fp, ctx, h, M_CM_DECODE, CH_WEED | CH_DECODE | CH_REORDER);
 }
 
 void mutt_print_message (HEADER *h)
@@ -725,7 +716,7 @@ void mutt_print_message (HEADER *h)
 			h ? "Print message?" : "Print tagged messages?") != M_YES)
     return;
   endwin ();
-  if ((thepid = mutt_create_filter (PrintCmd, &fp, NULL, NULL)) == -1)
+  if ((thepid = mutt_create_filter (NONULL(PrintCmd), &fp, NULL, NULL)) == -1)
     return;
   if (h)
   {
