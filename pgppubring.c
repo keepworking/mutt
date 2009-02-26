@@ -26,6 +26,7 @@
 #include "sha.h"
 #include "mutt.h"
 #include "pgp.h"
+#include "charset.h"
 
 #define CHUNKSIZE 1024
 
@@ -52,24 +53,25 @@ enum packet_tags {
   PT_COMMENT		/* Comment Packet */
 };
 
+/* FIXME I can't find where those strings are displayed! */
 const char *pgp_packet_name[] = {
-  "reserved",
-  "Encrypted Session Key",
-  "Signature Packet",
-  "Conventionally Encrypted Session Key Packet",
-  "One-Pass Signature Packet",
-  "Secret Key Packet",
-  "Public Key Packet",
-  "Secret Subkey Packet",
-  "Compressed Data Packet",
-  "Symmetrically Encrypted Data Packet",
-  "Marker Packet",
-  "Literal Data Packet",
-  "Trust Packet",
-  "Name Packet",
-  "Subkey Packet",
-  "Reserved",
-  "Comment Packet"
+  N_("reserved"),
+  N_("Encrypted Session Key"),
+  N_("Signature Packet"),
+  N_("Conventionally Encrypted Session Key Packet"),
+  N_("One-Pass Signature Packet"),
+  N_("Secret Key Packet"),
+  N_("Public Key Packet"),
+  N_("Secret Subkey Packet"),
+  N_("Compressed Data Packet"),
+  N_("Symmetrically Encrypted Data Packet"),
+  N_("Marker Packet"),
+  N_("Literal Data Packet"),
+  N_("Trust Packet"),
+  N_("Name Packet"),
+  N_("Subkey Packet"),
+  N_("Reserved"),
+  N_("Comment Packet")
 };
 
 const char *pgp_pkalgbytype(unsigned char type)
@@ -726,6 +728,7 @@ static KEYINFO *pgp_read_keyring(const char *fname)
   KEYINFO *supkey = NULL;
   PGPUID *uid = NULL;
   LIST **addr = NULL;
+  CHARSET *chs = mutt_get_charset(Charset);
   
   if(!(fp = fopen(fname, "r")))
   {
@@ -796,6 +799,7 @@ static KEYINFO *pgp_read_keyring(const char *fname)
 	chr = safe_malloc(l);
 	memcpy(chr, buff + 1, l - 1);
 	chr[l-1] = '\0';
+	mutt_decode_utf8_string(chr, chs);
 	*addr = mutt_new_list();
 	(*addr)->data = safe_malloc(sizeof(PGPUID));
 	uid = (PGPUID *) (*addr)->data;
@@ -834,16 +838,19 @@ void pgp_close_keydb (KEYINFO **ki)
 {
   KEYINFO *tmp, *k = *ki;
   PGPUID *uid;
-  LIST *q;
+  LIST *p, *q;
   
   while (k)
   {
     if (k->keyid) safe_free ((void **)&k->keyid);
-    for(q = k->address; q; q = q-> next)
+    for(q = k->address; q; q = p)
     {
       uid = (PGPUID *) q->data;
+      p = q->next;
+
       safe_free((void **)&uid->addr);
       safe_free((void **)&q->data);
+      safe_free((void **)&q);
     }
     tmp = k;
     k = k->next;
