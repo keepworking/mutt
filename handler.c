@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -64,16 +64,36 @@ int Index_64[128] = {
     41,42,43,44, 45,46,47,48, 49,50,51,-1, -1,-1,-1,-1
 };
 
-void mutt_decode_xbit (STATE *s, BODY *b, int istext, DECODER *dec)
+static void state_maybe_utf8_putc(STATE *s, char c, int is_utf8, CHARSET *chs, CHARSET_MAP *map)
+{
+  if(is_utf8)
+    state_fput_utf8(s, c, chs);
+  else
+    state_prefix_putc(mutt_display_char ((unsigned char) c, map), s);
+}
+
+void mutt_decode_xbit (STATE *s, BODY *b, int istext)
 {
   long len = b->length;
   int c, ch;
-  int l = 0;
-
+  
   if (istext)
   {
-    state_set_prefix(s);
+    CHARSET_MAP *map = NULL;
+    CHARSET *chs = NULL;
+    char *charset = mutt_get_parameter("charset", b->parameter);
+    int is_utf8 = 0;
 
+    if (s->flags & M_CHARCONV)
+    {
+      if((is_utf8 = (mutt_is_utf8(charset) && !mutt_is_utf8(Charset))))
+	chs = mutt_get_charset(Charset);
+      else
+	map = mutt_get_translation(charset, Charset);
+    }
+
+    state_set_prefix(s);
+    
     while ((c = fgetc(s->fpin)) != EOF && len--)
     {
       if(c == '\r' && len)
@@ -86,19 +106,15 @@ void mutt_decode_xbit (STATE *s, BODY *b, int istext, DECODER *dec)
 	else 
 	  ungetc(ch, s->fpin);
       }
-
-      mutt_decoder_push_one (dec, c);
-      if (l++ == 1024)
-      {
-	mutt_decoder_pop_to_state (dec, s);
-	l = 0;
-      }
+	
+      state_maybe_utf8_putc(s, c, is_utf8, chs, map);
     }
+    
+    state_reset_prefix(s);
 
-    mutt_decoder_push (dec, NULL, 0, NULL);
-    mutt_decoder_pop_to_state (dec, s);
-
-    state_reset_prefix (s);
+    if(is_utf8)
+      state_fput_utf8(s, '\0', chs);
+    
   }
   else
     mutt_copy_bytes (s->fpin, s->fpout, len);
@@ -116,14 +132,25 @@ static int handler_state_fgetc(STATE *s)
   return ch;
 }
 
-void mutt_decode_quoted (STATE *s, BODY *b, int istext, DECODER *dec)
+void mutt_decode_quoted (STATE *s, BODY *b, int istext)
 {
   long len = b->length;
   int ch;
-  int l = 0;
-
+  char *charset = mutt_get_parameter("charset", b->parameter);
+  int is_utf8 = 0;
+  CHARSET *chs = NULL;
+  CHARSET_MAP *map = NULL;
+  
+  if(istext && (s->flags & M_CHARCONV))
+  {
+    if((is_utf8 = (mutt_is_utf8(charset) && !mutt_is_utf8(Charset))))
+      chs = mutt_get_charset(Charset);
+    else
+      map = mutt_get_translation(charset, Charset);
+  }
+  
   state_set_prefix(s);
-
+  
   while (len > 0)
   {
     if ((ch = handler_state_fgetc(s)) == EOF)
@@ -176,31 +203,34 @@ void mutt_decode_quoted (STATE *s, BODY *b, int istext, DECODER *dec)
     {
       continue;
     }
-
     if(ch != EOF)
-    {
-      mutt_decoder_push_one (dec, ch);
-      if (l++ == 1024)
-      {
-	mutt_decoder_pop_to_state (dec, s);
-	l = 0;
-      }
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
   }
-
-  mutt_decoder_push (dec, NULL, 0, NULL);
-  mutt_decoder_pop_to_state (dec, s);
   
   state_reset_prefix(s);
+
+  if(is_utf8)
+    state_fput_utf8(s, '\0', chs);
 }
 
-void mutt_decode_base64 (STATE *s, BODY *b, int istext, DECODER *dec)
+void mutt_decode_base64 (STATE *s, BODY *b, int istext)
 {
   long len = b->length;
   char buf[5];
   int c1, c2, c3, c4, ch, cr = 0, i;
-  size_t l = 0;
+  char *charset = mutt_get_parameter("charset", b->parameter);
+  CHARSET_MAP *map = NULL;
+  CHARSET *chs = NULL;
+  int is_utf8 = 0;
 
+  if(istext && (s->flags & M_CHARCONV))
+  {
+    if((is_utf8 = (mutt_is_utf8(charset) && !mutt_is_utf8(Charset))))
+      chs = mutt_get_charset(Charset);
+    else
+      map = mutt_get_translation(charset, Charset);
+  }
+  
   buf[4] = 0;
 
   if (istext) state_set_prefix(s);
@@ -215,28 +245,20 @@ void mutt_decode_base64 (STATE *s, BODY *b, int istext, DECODER *dec)
 	buf[i++] = ch;
     }
     if (i != 4)
-    {
-      dprint (2, (debugfile, "%s:%d [mutt_decode_base64()]: "
-		  "didn't get a multiple of 4 chars.\n", __FILE__, __LINE__));
-      break;
-    }
+      return; /* didn't get a multiple of four chars! */
 
     c1 = base64val (buf[0]);
     c2 = base64val (buf[1]);
     ch = (c1 << 2) | (c2 >> 4);
 
     if (cr && ch != '\n') 
-    {
-      mutt_decoder_push_one (dec, '\r');
-    }
+      state_maybe_utf8_putc(s, '\r', is_utf8, chs, map);
     cr = 0;
       
     if (istext && ch == '\r')
       cr = 1;
     else
-    {
-      mutt_decoder_push_one (dec, ch);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
 
     if (buf[2] == '=')
       break;
@@ -244,46 +266,28 @@ void mutt_decode_base64 (STATE *s, BODY *b, int istext, DECODER *dec)
     ch = ((c2 & 0xf) << 4) | (c3 >> 2);
 
     if (cr && ch != '\n')
-    {
-      mutt_decoder_push_one (dec, ch);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
 
     cr = 0;
 
     if (istext && ch == '\r')
       cr = 1;
     else
-    {
-      mutt_decoder_push_one (dec, ch);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
 
     if (buf[3] == '=') break;
     c4 = base64val (buf[3]);
     ch = ((c3 & 0x3) << 6) | c4;
 
     if (cr && ch != '\n')
-    {
-      mutt_decoder_push_one (dec, ch);
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
     cr = 0;
 
     if (istext && ch == '\r')
       cr = 1;
     else
-    {
-      mutt_decoder_push_one (dec, ch);
-    }
-    
-    if ((l += 3) >= 1024)
-    {
-      mutt_decoder_pop_to_state (dec, s);
-      l = 0;
-    }
+      state_maybe_utf8_putc(s, ch, is_utf8, chs, map);
   }
-
-  mutt_decoder_push (dec, NULL, 0, NULL);
-  mutt_decoder_pop_to_state (dec, s);
-
   state_reset_prefix(s);
 }
 
@@ -294,12 +298,24 @@ unsigned char decode_byte (char ch)
   return ch - 32;
 }
 
-void mutt_decode_uuencoded (STATE *s, BODY *b, int istext, DECODER *dec)
+void mutt_decode_uuencoded (STATE *s, BODY *b, int istext)
 {
   char tmps[SHORT_STRING];
   char linelen, c, l, out;
   char *pt;
+  CHARSET_MAP *map = NULL;
+  CHARSET *chs = NULL;
+  char *charset = mutt_get_parameter("charset", b->parameter);
+  int is_utf8 = 0;
   long len = b->length;
+  
+  if(istext && (s->flags & M_CHARCONV))
+  {
+    if ((is_utf8 = (mutt_is_utf8(charset) && !mutt_is_utf8(Charset))))
+      chs = mutt_get_charset(Charset);
+    else
+      map = mutt_get_translation(charset, Charset);
+  }
 
   if(istext)
     state_set_prefix(s);
@@ -329,20 +345,19 @@ void mutt_decode_uuencoded (STATE *s, BODY *b, int istext, DECODER *dec)
 	out = decode_byte (*pt) << l;
 	pt++;
 	out |= (decode_byte (*pt) >> (6 - l));
-	mutt_decoder_push_one (dec, out);
+	state_maybe_utf8_putc(s, out, is_utf8, chs, map);
 	c++;
 	if (c == linelen)
 	  break;
       }
-      mutt_decoder_pop_to_state (dec, s);
       pt++;
     }
   }
-
-  mutt_decoder_push (dec, NULL, 0, NULL);
-  mutt_decoder_pop_to_state (dec, s);
   
   state_reset_prefix(s);
+  if(is_utf8)
+    state_fput_utf8(s, '\0', chs);
+  
 }
 
 /* ----------------------------------------------------------------------------
@@ -388,6 +403,7 @@ struct enriched_state
   size_t indent_len;
   size_t word_len;
   size_t buff_used;
+  size_t param_used;
   size_t param_len;
   int tag_level[RICH_LAST_TAG];
   int WrapMargin;
@@ -536,7 +552,10 @@ static void enriched_putc (int c, struct enriched_state *stte)
   {
     if (stte->tag_level[RICH_COLOR]) 
     {
-      stte->param[stte->param_len++] = c;
+      if (stte->param_used + 1 >= stte->param_len)
+	safe_realloc ((void **) &stte->param, (stte->param_len += STRING));
+
+      stte->param[stte->param_used++] = c;
     }
     return; /* nothing to do */
   }
@@ -637,7 +656,7 @@ static void enriched_set_flags (const char *tag, struct enriched_state *stte)
 	stte->tag_level[j]--;
       if ((stte->s->flags & M_DISPLAY) && j == RICH_PARAM && stte->tag_level[RICH_COLOR])
       {
-	stte->param[stte->param_len] = '\0';
+	stte->param[stte->param_used] = '\0';
 	if (!mutt_strcasecmp(stte->param, "black"))
 	{
 	  enriched_puts("\033[30m", stte);
@@ -670,12 +689,17 @@ static void enriched_set_flags (const char *tag, struct enriched_state *stte)
 	{
 	  enriched_puts("\033[37m", stte);
 	}
-	stte->param_len = 0;
-	stte->param[0] = '\0';
       }
       if ((stte->s->flags & M_DISPLAY) && j == RICH_COLOR)
       {
 	enriched_puts("\033[0m", stte);
+      }
+
+      /* flush parameter buffer when closing the tag */
+      if (j == RICH_PARAM)
+      {
+	stte->param_used = 0;
+	stte->param[0] = '\0';
       }
     }
     else
@@ -704,6 +728,9 @@ void text_enriched_handler (BODY *a, STATE *s)
   stte.line_max = stte.WrapMargin * 4;
   stte.line = (char *) safe_calloc (1, stte.line_max + 1);
   stte.param = (char *) safe_calloc (1, STRING);
+
+  stte.param_len = STRING;
+  stte.param_used = 0;
 
   if (s->prefix)
   {
@@ -1281,33 +1308,22 @@ static void external_body_handler (BODY *b, STATE *s)
 
 void mutt_decode_attachment (BODY *b, STATE *s)
 {
-  char *charset = mutt_get_parameter ("charset", b->parameter);
-  int istext = mutt_is_text_type (b->type, b->subtype);
-  DECODER *dec;
-
-  if (istext && s->flags & M_CHARCONV)
-    dec = mutt_open_decoder (charset, Charset);
-  else
-    dec = mutt_open_decoder (NULL, NULL);
-
   fseek (s->fpin, b->offset, 0);
   switch (b->encoding)
   {
     case ENCQUOTEDPRINTABLE:
-      mutt_decode_quoted (s, b, istext, dec);
+      mutt_decode_quoted (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
     case ENCBASE64:
-      mutt_decode_base64 (s, b, istext, dec);
+      mutt_decode_base64 (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
     case ENCUUENCODED:
-      mutt_decode_uuencoded (s, b, istext, dec);
+      mutt_decode_uuencoded (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
     default:
-      mutt_decode_xbit (s, b, istext, dec);
+      mutt_decode_xbit (s, b, mutt_is_text_type (b->type, b->subtype));
       break;
   }
-
-  mutt_free_decoder (&dec);
 }
 
 void mutt_body_handler (BODY *b, STATE *s)
@@ -1378,8 +1394,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 
       if (!p)
         mutt_error _("Error: multipart/signed has no protocol.");
-      else if (mutt_strcasecmp ("application/pgp-signature", p) == 0 ||
-	       mutt_strcasecmp ("multipart/mixed", p) == 0)
+      else if (mutt_strcasecmp ("application/pgp-signature", p) == 0)
       {
 	if (s->flags & M_VERIFY)
 	  handler = pgp_signed_handler;
@@ -1408,7 +1423,7 @@ void mutt_body_handler (BODY *b, STATE *s)
   else if (b->type == TYPEAPPLICATION)
   {
     if (mutt_is_application_pgp(b))
-      handler = pgp_application_pgp_handler;
+      handler = application_pgp_handler;
   }
 #endif /* _PGPPATH */
 

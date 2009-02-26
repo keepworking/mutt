@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -566,14 +566,6 @@ static int default_color (int i)
    return ColorDefs[MT_COLOR_NORMAL];
 }
 
-static int menu_search_generic (MUTTMENU *m, regex_t *re, int n)
-{
-  char buf[LONG_STRING];
-
-  m->make_entry (buf, sizeof (buf), m, n);
-  return (regexec (re, buf, 0, NULL, 0));
-}
-
 MUTTMENU *mutt_new_menu (void)
 {
   MUTTMENU *p = (MUTTMENU *) safe_calloc (1, sizeof (MUTTMENU));
@@ -584,7 +576,6 @@ MUTTMENU *mutt_new_menu (void)
   p->redraw = REDRAW_FULL;
   p->pagelen = PAGELEN;
   p->color = default_color;
-  p->search = menu_search_generic;
   return (p);
 }
 
@@ -811,9 +802,11 @@ int mutt_menuLoop (MUTTMENU *menu)
 	{
 	  if (menu->max)
 	  {
-	    short i = menu->tag (menu, menu->current);
-	    menu->tagged += i;
-	    if (i && option (OPTRESOLVE) && menu->current < menu->max - 1)
+	    if (menu->tag (menu, menu->current))
+	      menu->tagged++;
+	    else
+	      menu->tagged--;
+	    if (option (OPTRESOLVE) && menu->current < menu->max - 1)
 	    {
 	      menu->current++;
 	      menu->redraw = REDRAW_MOTION_RESYNCH;

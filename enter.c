@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -50,8 +50,8 @@ enum
  * 	-1 if abort.
  *
  */
-int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
-		       int flags, int multiple, char ***files, int *numfiles)
+int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
+		       int flags)
 {
   event_t event;
   int curpos = 0;		/* the location of the cursor */
@@ -326,7 +326,7 @@ int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	      set_option (OPTNEEDREDRAW);
 	      return (1);
 	    }
-	    if (mutt_complete ((char *) buf + j + 1, buflen - (j + 1)) == 0)
+	    if (mutt_complete ((char *) buf + j + 1) == 0)
 	      strfcpy (tempbuf, (char *) buf + j + 1, sizeof (tempbuf));
 	    else
 	      BEEP ();
@@ -369,7 +369,7 @@ int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	    /* see if the path has changed from the last time */
 	    if (mutt_strcmp (tempbuf, (char *) buf) == 0)
 	    {
-	      _mutt_select_file ((char *) buf, buflen, 0, multiple, files, numfiles);
+	      mutt_select_file ((char *) buf, buflen, 0);
 	      set_option (OPTNEEDREDRAW);
 	      if (buf[0])
 	      {
@@ -380,7 +380,7 @@ int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	      return (-1);
 	    }
 
-	    if (mutt_complete ((char *) buf, buflen) == 0)
+	    if (mutt_complete ((char *) buf) == 0)
 	      strfcpy (tempbuf, (char *) buf, sizeof (tempbuf));
 	    else
 	      BEEP (); /* let the user know that nothing matched */
@@ -448,15 +448,6 @@ self_insert:
 	buf[lastchar] = 0;
 	if (!pass)
 	  mutt_history_add (hclass, (char *) buf);
-	if (multiple)
-	{
-	  char **tfiles;
-	  *numfiles = 1;
-	  tfiles = safe_malloc (*numfiles * sizeof (char *));
-	  mutt_expand_path ((char *) buf, buflen);
-	  tfiles[0] = safe_strdup ((char *) buf);
-	  *files = tfiles;
-	}
 	return (0);
       }
       else if ((ch < ' ' || IsPrint (ch)) && (lastchar + 1 < buflen))
