@@ -102,15 +102,8 @@ void menu_redraw_full (MUTTMENU *menu)
 {
   SETCOLOR (MT_COLOR_NORMAL);
   /* clear() doesn't optimize screen redraws */
-#if 0
   move (0, 0);
   clrtobot ();
-#else
-  /* my ncurses library seems to run into
-   * endless loops in clrtobot...
-   */
-  clear();
-#endif
 
   if (option (OPTHELP))
   {
@@ -281,13 +274,17 @@ void menu_redraw_current (MUTTMENU *menu)
 
 void menu_check_recenter (MUTTMENU *menu)
 {
-  if (menu->current >= menu->top + menu->pagelen)
+  if (menu->max <= menu->pagelen)
+  {
+    menu->top = 0;
+    set_option (OPTNEEDREDRAW);
+  }
+  else if (menu->current >= menu->top + menu->pagelen)
   {
     if (option (OPTMENUSCROLL))
       menu->top = menu->current - menu->pagelen + 1;
     else
       menu->top += menu->pagelen * ((menu->current - menu->top) / menu->pagelen);
-    menu->redraw = REDRAW_INDEX;
   }
   else if (menu->current < menu->top)
   {
@@ -299,8 +296,8 @@ void menu_check_recenter (MUTTMENU *menu)
       if (menu->top < 0)
 	menu->top = 0;
     }
-    menu->redraw = REDRAW_INDEX;
   }
+  menu->redraw |= REDRAW_INDEX;
 }
 
 void menu_jump (MUTTMENU *menu)
@@ -567,14 +564,6 @@ static int default_color (int i)
    return ColorDefs[MT_COLOR_NORMAL];
 }
 
-static int menu_search_generic (MUTTMENU *m, regex_t *re, int n)
-{
-  char buf[LONG_STRING];
-
-  m->make_entry (buf, sizeof (buf), m, n);
-  return (regexec (re, buf, 0, NULL, 0));
-}
-
 MUTTMENU *mutt_new_menu (void)
 {
   MUTTMENU *p = (MUTTMENU *) safe_calloc (1, sizeof (MUTTMENU));
@@ -585,7 +574,6 @@ MUTTMENU *mutt_new_menu (void)
   p->redraw = REDRAW_FULL;
   p->pagelen = PAGELEN;
   p->color = default_color;
-  p->search = menu_search_generic;
   return (p);
 }
 
@@ -812,9 +800,11 @@ int mutt_menuLoop (MUTTMENU *menu)
 	{
 	  if (menu->max)
 	  {
-	    short i = menu->tag (menu, menu->current);
-	    menu->tagged += i;
-	    if (i && option (OPTRESOLVE) && menu->current < menu->max - 1)
+	    if (menu->tag (menu, menu->current))
+	      menu->tagged++;
+	    else
+	      menu->tagged--;
+	    if (option (OPTRESOLVE) && menu->current < menu->max - 1)
 	    {
 	      menu->current++;
 	      menu->redraw = REDRAW_MOTION_RESYNCH;
