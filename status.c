@@ -98,7 +98,7 @@ status_format_str (char *buf, size_t buflen, char op, const char *src,
 	mutt_pretty_mailbox (tmp);
       }
       else
-	strfcpy (tmp, "(no mailbox)", sizeof (tmp));
+	strfcpy (tmp, _("(no mailbox)"), sizeof (tmp));
       snprintf (buf, buflen, fmt, tmp);
       break;
 
@@ -199,14 +199,26 @@ status_format_str (char *buf, size_t buflen, char op, const char *src,
       break;
 
     case 'r':
+    {
+      int i = 0;
+
       if (Context)
-	buf[0] = (Context->readonly || Context->dontwrite) ? StChars[2] :
-	  (Context->changed || Context->deleted) ? StChars[1] : StChars[0];
-      else
+      {
+	i = option(OPTATTACHMSG) ? 3 : ((Context->readonly || Context->dontwrite) ? 2 :
+					(Context->changed || Context->deleted) ? 1 : 0);
+      }
+      
+      if (!StChars)
+	buf[0] = 0;
+      else if (i >= strlen(StChars))
 	buf[0] = StChars[0];
+      else
+	buf[0] = StChars[i];
+
       buf[1] = 0;
       break;
-
+    }
+      
     case 's':
       snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
       snprintf (buf, buflen, fmt,
@@ -241,7 +253,7 @@ status_format_str (char *buf, size_t buflen, char op, const char *src,
 
     case 'v':
       snprintf (fmt, sizeof (fmt), "Mutt %%s");
-      snprintf (buf, buflen, fmt, VERSION);
+      snprintf (buf, buflen, fmt, MUTT_VERSION);
       break;
 
     case 'V':
