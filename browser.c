@@ -75,7 +75,7 @@ static int browser_compare_subject (const void *a, const void *b)
   struct folder_file *pa = (struct folder_file *) a;
   struct folder_file *pb = (struct folder_file *) b;
 
-  int r = mutt_strcoll (pa->name, pb->name);
+  int r = mutt_strcmp (pa->name, pb->name);
 
   return ((BrowserSort & SORT_REVERSE) ? -r : r);
 }
@@ -970,7 +970,7 @@ void _mutt_select_file (char *f, size_t flen, int flags, char ***files, int *num
 	
       case OP_ENTER_MASK:
 
-	strfcpy (buf, Mask.pattern, sizeof (buf));
+	strfcpy (buf, NONULL(Mask.pattern), sizeof (buf));
 	if (mutt_get_field (_("File Mask: "), buf, sizeof (buf), 0) == 0)
 	{
 	  regex_t *rx = (regex_t *) safe_malloc (sizeof (regex_t));

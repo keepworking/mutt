@@ -35,10 +35,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 
 
 static int eat_regexp (pattern_t *pat, BUFFER *, BUFFER *);
@@ -65,9 +61,9 @@ Flags[] =
   { 'E', M_EXPIRED,		0,		NULL },
   { 'f', M_FROM,		0,		eat_regexp },
   { 'F', M_FLAG,		0,		NULL },
-#if defined (HAVE_PGP) || defined (HAVE_SMIME)
-  { 'g', M_CRYPT_SIGN, 		0, 		NULL },
-  { 'G', M_CRYPT_ENCRYPT, 	0, 		NULL },
+#ifdef HAVE_PGP
+  { 'g', M_PGP_SIGN, 		0, 		NULL },
+  { 'G', M_PGP_ENCRYPT, 	0, 		NULL },
 #endif
   { 'h', M_HEADER,		M_FULL_MSG,	eat_regexp },
   { 'i', M_ID,			0,		eat_regexp },
@@ -91,9 +87,6 @@ Flags[] =
   { 't', M_TO,			0,		eat_regexp },
   { 'U', M_UNREAD,		0,		NULL },
   { 'v', M_COLLAPSED,		0,		NULL },
-#if defined (HAVE_PGP) || defined (HAVE_SMIME)
-  { 'V', M_CRYPT_VERIFIED,      0,              NULL },
-#endif
   { 'x', M_REFERENCE,		0,		eat_regexp },
   { 'y', M_XLABEL,		0,		eat_regexp },
   { 'z', M_SIZE,		0,		eat_range },
@@ -180,8 +173,8 @@ msg_search (CONTEXT *ctx, regex_t *rx, char *buf, size_t blen, int op, int msgno
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-	if (h->security & ENCRYPT && !crypt_valid_passphrase(h->security))
+#ifdef HAVE_PGP
+	if (h->pgp & PGPENCRYPT && !pgp_valid_passphrase())
 	{
 	  mx_close_message (&msg);
 	  if (fp)
@@ -1038,7 +1031,7 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
 					pat->alladdr, 4, h->env->from,
 					h->env->sender, h->env->to, h->env->cc));
     case M_RECIPIENT:
-           return (pat->not ^ match_adrlist (pat->rx, flags & M_MATCH_FULL_ADDRESS,
+      return (pat->not ^ match_adrlist (pat->rx, flags & M_MATCH_FULL_ADDRESS,
 					pat->alladdr, 2, h->env->to, h->env->cc));
     case M_LIST:
       return (pat->not ^ mutt_is_list_recipient (pat->alladdr, h->env->to, h->env->cc));
@@ -1048,17 +1041,13 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
       return (pat->not ^ match_user (pat->alladdr, h->env->from, NULL));
     case M_COLLAPSED:
       return (pat->not ^ (h->collapsed && h->num_hidden > 1));
-#if defined (HAVE_PGP) || defined (HAVE_SMIME)
-   case M_CRYPT_SIGN:
-     return (pat->not ^ (h->security & SIGN));
-   case M_CRYPT_VERIFIED:
-     return (pat->not ^ (h->security & GOODSIGN));
-   case M_CRYPT_ENCRYPT:
-     return (pat->not ^ (h->security & ENCRYPT));
-#endif
 #ifdef HAVE_PGP
+   case M_PGP_SIGN:
+     return (pat->not ^ (h->pgp & PGPSIGN));
+   case M_PGP_ENCRYPT:
+     return (pat->not ^ (h->pgp & PGPENCRYPT));
    case M_PGP_KEY:
-     return (pat->not ^ (h->security & APPLICATION_PGP && h->security & PGPKEY));
+     return (pat->not ^ (h->pgp & PGPKEY));
 #endif
     case M_XLABEL:
       return (pat->not ^ (h->env->x_label && regexec (pat->rx, h->env->x_label, 0, NULL, 0) == 0));
@@ -1245,7 +1234,7 @@ int mutt_search_command (int cur, int op)
   {
     strfcpy (buf, LastSearch, sizeof (buf));
     if (mutt_get_field ((op == OP_SEARCH) ? _("Search for: ") :
-		      "Reverse search for: ", buf, sizeof (buf),
+		      _("Reverse search for: "), buf, sizeof (buf),
 		      M_CLEAR | M_PATTERN) != 0 || !buf[0])
       return (-1);
 
