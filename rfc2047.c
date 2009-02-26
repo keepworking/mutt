@@ -18,6 +18,7 @@
 
 #include "mutt.h"
 #include "mime.h"
+#include "charset.h"
 #include "rfc2047.h"
 
 #include <ctype.h>
@@ -244,7 +245,8 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
   char *pp = p;
   char *pd = d;
   int enc = 0, filter = 0, count = 0, c1, c2, c3, c4;
-
+  char *charset = NULL;
+  
   while ((pp = strtok (pp, "?")) != NULL)
   {
     count++;
@@ -252,7 +254,10 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
     {
       case 2:
 	if (strcasecmp (pp, NONULL(Charset)) != 0)
+        {
 	  filter = 1;
+	  charset = pp;
+	}
 	break;
       case 3:
 	if (toupper (*pp) == 'Q')
@@ -319,17 +324,24 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
     }
     pp = 0;
   }
-  safe_free ((void **) &p);
+  
   if (filter)
   {
-    pd = d;
-    while (*pd)
+    if(mutt_is_utf8(charset))
     {
-      if (!IsPrint (*pd))
-	*pd = '?';
-      pd++;
+      CHARSET *chs = mutt_get_charset(Charset);
+      mutt_decode_utf8_string(d, chs);
+    }
+    else if (mutt_display_string(d, mutt_get_translation(charset, Charset)) == -1)
+    {
+      for(pd = d; *pd; pd++)
+      {
+        if (!IsPrint (*pd))
+	  *pd = '?';
+      }
     }
   }
+  safe_free ((void **) &p);
   return (0);
 }
 
