@@ -60,7 +60,7 @@ mutt_copy_hdr (FILE *in, FILE *out, long off_start, long off_end, int flags,
   buf[0] = '\n';
   buf[1] = 0;
 
-  if ((flags & (CH_REORDER | CH_WEED | CH_MIME | CH_DECODE | CH_PREFIX)) == 0)
+  if ((flags & (CH_REORDER | CH_WEED | CH_MIME | CH_DECODE | CH_PREFIX | CH_WEED_DELIVERED)) == 0)
   {
     /* Without these flags to complicate things
      * we can do a more efficient line to line copying
@@ -148,6 +148,9 @@ mutt_copy_hdr (FILE *in, FILE *out, long off_start, long off_end, int flags,
       if ((flags & CH_WEED) && 
 	  mutt_matches_ignore (buf, Ignore) &&
 	  !mutt_matches_ignore (buf, UnIgnore))
+	continue;
+      if ((flags & CH_WEED_DELIVERED) &&
+	  mutt_strncasecmp ("Delivered-To:", buf, 13) == 0)
 	continue;
       if ((flags & (CH_UPDATE | CH_XMIT | CH_NOSTATUS)) &&
 	  (mutt_strncasecmp ("Status:", buf, 7) == 0 ||
@@ -392,20 +395,20 @@ static int count_delete_lines (FILE *fp, BODY *b, long *length, size_t datelen)
 }
 
 /* make a copy of a message
- 
-   fpout	where to write output
-   fpin		where to get input
-   hdr		header of message being copied
-   body		structure of message being copied
-   flags
-	M_CM_NOHEADER	don't copy header
- 	M_CM_PREFIX	quote header and body
- 	M_CM_DECODE	decode message body to text/plain
- 	M_CM_DISPLAY	displaying output to the user
-	M_CM_UPDATE	update structures in memory after syncing
-	M_CM_DECODE_PGP	used for decoding PGP messages
-        M_CM_CHARCONV	perform character set conversion
-   chflags	flags to mutt_copy_header()
+ * 
+ * fpout	where to write output
+ * fpin		where to get input
+ * hdr		header of message being copied
+ * body		structure of message being copied
+ * flags
+ * 	M_CM_NOHEADER	don't copy header
+ * 	M_CM_PREFIX	quote header and body
+ *	M_CM_DECODE	decode message body to text/plain
+ *	M_CM_DISPLAY	displaying output to the user
+ *	M_CM_UPDATE	update structures in memory after syncing
+ *	M_CM_DECODE_PGP	used for decoding PGP messages
+ *	M_CM_CHARCONV	perform character set conversion 
+ * chflags	flags to mutt_copy_header()
  */
 
 int
@@ -501,7 +504,7 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
       s.flags |= M_WEED;
     if (flags & M_CM_CHARCONV)
       s.flags |= M_CHARCONV;
-
+    
 #ifdef _PGPPATH
     if (flags & M_CM_VERIFY)
       s.flags |= M_VERIFY;
@@ -596,10 +599,8 @@ _mutt_append_message (CONTEXT *dest, FILE *fpin, CONTEXT *src, HEADER *hdr,
     chflags |= CH_FROM;
   chflags |= (dest->magic == M_MAILDIR ? CH_NOSTATUS : CH_UPDATE);
   r = _mutt_copy_message (msg->fp, fpin, hdr, body, flags, chflags);
-  if (mx_commit_message (msg, dest) != 0)
-    r = -1;
-
-  mx_close_message (&msg);
+  if (mx_close_message (&msg) != 0)
+    return (-1);
   return r;
 }
 
