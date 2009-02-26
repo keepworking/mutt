@@ -1,4 +1,3 @@
-/* $Id$ */
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -128,6 +127,7 @@ struct option_t MuttVars[] = {
   { "imap_pass", 	DT_STR,  R_NONE, UL &ImapPass, UL 0 },
   { "imap_checkinterval", 	DT_NUM,	 R_NONE, UL &ImapCheckTime, 0 },
 #endif
+  { "implicit_autoview", DT_BOOL,R_NONE, OPTIMPLICITAUTOVIEW, 0},
   { "in_reply_to",	DT_STR,	 R_NONE, UL &InReplyTo, UL "%i; from %n on %{!%a, %b %d, %Y at %I:%M:%S%p %Z}" },
   { "include",		DT_QUAD, R_NONE, OPT_INCLUDE, M_ASKYES },
   { "indent_string",	DT_STR,	 R_NONE, UL &Prefix, UL "> " },
@@ -147,7 +147,7 @@ struct option_t MuttVars[] = {
   { "menu_scroll",	DT_BOOL, R_NONE, OPTMENUSCROLL, 0 },
   { "meta_key",		DT_BOOL, R_NONE, OPTMETAKEY, 0 },
   { "mh_purge",		DT_BOOL, R_NONE, OPTMHPURGE, 0 },
-  { "mime_forward",	DT_QUAD, R_NONE, OPT_MIMEFWD, 0 },
+  { "mime_forward",	DT_QUAD, R_NONE, OPT_MIMEFWD, M_NO },
   { "mime_forward_decode", DT_BOOL, R_NONE, OPTMIMEFORWDECODE, 0 },
   { "mime_fwd",		DT_SYN,  R_NONE, UL "mime_forward", 0 },
   { "move",		DT_QUAD, R_NONE, OPT_MOVE, M_ASKNO },
@@ -269,7 +269,6 @@ struct option_t MuttVars[] = {
   { "use_8bitmime",	DT_BOOL, R_NONE, OPTUSE8BITMIME, 0 },
   { "use_domain",	DT_BOOL, R_NONE, OPTUSEDOMAIN, 1 },
   { "use_from",		DT_BOOL, R_NONE, OPTUSEFROM, 1 },
-  { "use_mailcap",	DT_QUAD, R_NONE, OPT_USEMAILCAP, 1 },
   { "visual",		DT_PATH, R_NONE, UL &Visual, 0 },
   { "wait_key",		DT_BOOL, R_NONE, OPTWAITKEY, 1 },
   { "wrap_search",	DT_BOOL, R_NONE, OPTWRAPSEARCH, 1 },
