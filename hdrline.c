@@ -26,6 +26,10 @@
 #include "pgp.h"
 #endif
 
+#ifdef HAVE_SMIME
+#include "smime.h"
+#endif
+
 
 
 #include <ctype.h>
@@ -415,13 +419,8 @@ hdr_format_str (char *dest,
       break;
 
     case 'E':
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
-	snprintf (dest, destlen, fmt, mutt_messages_in_thread(ctx, hdr, 0));
-      }
-      else if (mutt_messages_in_thread(ctx, hdr, 0) <= 1)
-	optional = 0;
+      snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+      snprintf (dest, destlen, fmt, mutt_messages_in_thread(ctx, hdr, 0));
       break;
 
     case 'f':
@@ -446,9 +445,21 @@ hdr_format_str (char *dest,
 
     case 'l':
       if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
-	snprintf (dest, destlen, fmt, (int) hdr->lines);
+      {        
+        if (hdr->lines >= 0) 
+        {
+          snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+          snprintf (dest, destlen, fmt, (int) hdr->lines);
+        }
+        else
+        {
+          int i;
+          int len = atoi (prefix);
+          for (i = 0; i < len && i < destlen - 1; i++)
+            dest[i] = '?';
+
+          dest[i] = '\0';
+        }
       }
       else
       {
@@ -623,15 +634,17 @@ hdr_format_str (char *dest,
     
       ch = ' ';
 
-#ifdef HAVE_PGP
-      if (hdr->pgp & PGPGOODSIGN)
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+      if (hdr->security & GOODSIGN)
         ch = 'S';
-      else if (hdr->pgp & PGPENCRYPT)
+      else if (hdr->security & ENCRYPT)
       	ch = 'P';
-      else if (hdr->pgp & PGPSIGN)
+      else if (hdr->security & SIGN)
         ch = 's';
-      else if (hdr->pgp & PGPKEY)
+#ifdef HAVE_PGP
+      else if (hdr->security & PGPKEY)
         ch = 'K';
+#endif
 #endif
 
       snprintf (buf2, sizeof (buf2),

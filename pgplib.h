@@ -19,10 +19,12 @@
 
 #ifdef HAVE_PGP
 
-#define PGPENCRYPT  (1 << 0)
-#define PGPSIGN     (1 << 1)
-#define PGPKEY      (1 << 2)
-#define PGPGOODSIGN (1 << 3)
+#define APPLICATION_PGP  (1 << 5)
+
+#define PGPENCRYPT  (APPLICATION_PGP | ENCRYPT)
+#define PGPSIGN     (APPLICATION_PGP | SIGN)
+#define PGPGOODSIGN (APPLICATION_PGP | GOODSIGN)
+#define PGPKEY      (APPLICATION_PGP | (1 << 3))
 
 #define KEYFLAG_CANSIGN 		(1 <<  0)
 #define KEYFLAG_CANENCRYPT 		(1 <<  1)
@@ -61,6 +63,13 @@ typedef struct pgp_keyinfo
   struct pgp_keyinfo *parent;
   struct pgp_signature *sigs;
   struct pgp_keyinfo *next;
+
+  short fp_len;			  /* length of fingerprint.
+				   * 20 for sha-1, 16 for md5.
+				   */
+  unsigned char fingerprint[20];  /* large enough to hold SHA-1 and RIPEMD160
+                                     hashes (20 bytes), MD5 hashes just use the
+                                     first 16 bytes */
 }
 pgp_key_t;
 
