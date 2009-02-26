@@ -215,8 +215,7 @@ void menu_redraw_index (MUTTMENU *menu)
 
 	if (i == menu->current)
 	{
-          attrset (menu->color (i));
-	  ADDCOLOR (MT_COLOR_INDICATOR);
+	  SETCOLOR (MT_COLOR_INDICATOR);
 	  addstr ("->");
           attrset (menu->color (i));
 	  addch (' ');
@@ -229,14 +228,14 @@ void menu_redraw_index (MUTTMENU *menu)
       }
       else
       {
-        attrset (menu->color (i));
-            
 	if (i == menu->current)
 	{
-	  ADDCOLOR (MT_COLOR_INDICATOR);
+	  SETCOLOR (MT_COLOR_INDICATOR);
 	  BKGDSET (MT_COLOR_INDICATOR);
 	}
-
+        else
+          attrset (menu->color (i));
+            
 	CLEARLINE (i - menu->top + menu->offset);
 	print_enriched_string (menu->color(i), (unsigned char *) buf, i != menu->current);
         SETCOLOR (MT_COLOR_NORMAL);
@@ -281,8 +280,7 @@ void menu_redraw_motion (MUTTMENU *menu)
 
     /* now draw it in the new location */
     move (menu->current + menu->offset - menu->top, 0);
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     addstr ("->");
     SETCOLOR (MT_COLOR_NORMAL);
   }
@@ -298,8 +296,7 @@ void menu_redraw_motion (MUTTMENU *menu)
     /* now draw the new one to reflect the change */
     menu_make_entry (buf, sizeof (buf), menu, menu->current);
     menu_pad_string (buf, sizeof (buf));
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     BKGDSET (MT_COLOR_INDICATOR);
     CLEARLINE (menu->current - menu->top + menu->offset);
     print_enriched_string (menu->color(menu->current), (unsigned char *) buf, 0);
@@ -322,8 +319,7 @@ void menu_redraw_current (MUTTMENU *menu)
     int attr = menu->color (menu->current);
     attrset (attr);
     clrtoeol ();
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     addstr ("->");
     attrset (attr);
     addch (' ');
@@ -333,8 +329,7 @@ void menu_redraw_current (MUTTMENU *menu)
   }
   else
   {
-    attrset (menu->color (menu->current));
-    ADDCOLOR (MT_COLOR_INDICATOR);
+    SETCOLOR (MT_COLOR_INDICATOR);
     BKGDSET (MT_COLOR_INDICATOR);
     clrtoeol ();
     print_enriched_string (menu->color(menu->current), (unsigned char *) buf, 0);

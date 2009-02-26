@@ -12,8 +12,10 @@ mutt_cv_version=`cat $srcdir/VERSION`
 
 AM_INIT_AUTOMAKE(mutt, $mutt_cv_version)
 
+ifdef([AC_LIBOBJ], , [define([AC_LIBOBJ], [LIB[]OBJS="$LIBOBJS $1.o"])])
 
-ALL_LINGUAS="de ru it es uk fr pl nl cs id sk ko el zh_TW zh_CN pt_BR eo gl sv da lt tr ja hu et ca"
+
+ALL_LINGUAS="de ru it es uk fr pl nl cs id sk ko el zh_TW zh_CN pt_BR eo gl sv da lt tr ja hu et ca bg"
 
 AC_CANONICAL_HOST
 
@@ -79,24 +81,6 @@ else
                 OPS="$OPS \$(srcdir)/OPS.PGP"
         fi
 
- 	AC_ARG_ENABLE(smime, [  --disable-smime              Disable SMIME support],
- 	[	if test x$enableval = xno ; then
- 			have_smime=no
- 		fi
- 	])
- 
- 	if test x$have_smime != xno ; then
- 		AC_DEFINE(HAVE_SMIME,1,[ Define if you want S/MIME support. ])
- 		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS smime.o "
- 		OPS="$OPS \$(srcdir)/OPS.SMIME"
-		SMIMEAUX_TARGET="smime_keys"
- 	fi
-  
- 	if test x$HAVE_SMIME != xno -o x$HAVE_PGP != xno ; then
- 		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS crypt.o "
- 		OPS="$OPS \$(srcdir)/OPS.CRYPT"
- 	fi
- 
         AC_ARG_WITH(mixmaster, [  --with-mixmaster[=PATH]    Include Mixmaster support],
                 [if test -x "$withval" ; then
                         MIXMASTER="$withval"
@@ -113,7 +97,6 @@ fi
 AC_SUBST(OPS)
 
 AC_SUBST(PGPAUX_TARGET)
-AC_SUBST(SMIMEAUX_TARGET)
 
 AC_DEFINE_UNQUOTED(SUBVERSION,"$SUBVERSION",[ Is this the international version? ])
 AC_SUBST(SUBVERSION)
@@ -312,7 +295,7 @@ SNPRINTFOBJS=""
 AC_CHECK_FUNCS(snprintf, , [mutt_cv_snprintf=yes])
 AC_CHECK_FUNCS(vsnprintf, , [mutt_cv_snprintf=yes])
 if test $mutt_cv_snprintf = yes; then
-        LIBOBJS="$LIBOBJS snprintf.o"
+        AC_LIBOBJ(snprintf)
 fi
 
 dnl SCO uses chsize() instead of ftruncate()
@@ -344,7 +327,7 @@ fi
 
 if test $mutt_cv_regex = yes; then
         AC_DEFINE(USE_GNU_REGEX,1,[ Define if you want to use the included regex.c. ])
-        LIBOBJS="$LIBOBJS regex.o"
+        AC_LIBOBJ(regex)
 fi
 
 
@@ -372,7 +355,7 @@ else
                                 mutt_cv_mailpath=/usr/mail
                         fi])
                 ])
-        if test $mutt_cv_mailpath = no; then
+        if test "$mutt_cv_mailpath" = no; then
                 AC_MSG_ERROR("Could not determine where new mail is stored.")
         fi
         AC_DEFINE_UNQUOTED(MAILPATH,"$mutt_cv_mailpath",[ Where new mail is spooled. ])
@@ -684,11 +667,26 @@ AC_SUBST(LIBIMAPDEPS)
 
 dnl -- iconv/gettext --
 
+AC_ARG_ENABLE(iconv, [  --disable-iconv           Disable iconv support],
+[       if test x$enableval = xno ; then
+                am_cv_func_iconv=no
+        fi
+])
+
 MUTT_AM_GNU_GETTEXT
+
 if test "$am_cv_func_iconv" != "yes"
 then
-  AC_MSG_ERROR([Unable to find an iconv function. See INSTALL for help])
-fi
+  AC_MSG_WARN([Configuring without iconv support. See INSTALL for details])
+else
+
+AC_CHECK_HEADERS(iconv.h,
+        [AC_MSG_CHECKING(whether iconv.h defines iconv_t)
+         AC_EGREP_HEADER([typedef.*iconv_t],iconv.h,
+                [AC_MSG_RESULT(yes)
+                 AC_DEFINE(HAVE_ICONV_T_DEF, 1,
+                        [Define if <iconv.h> defines iconv_t.])],
+                 AC_MSG_RESULT(no))])
 
 dnl (1) Some implementations of iconv won't convert from UTF-8 to UTF-8.
 dnl (2) In glibc-2.1.2 and earlier there is a bug that messes up ob and
@@ -754,6 +752,8 @@ if test "$mutt_cv_iconv_nontrans" = yes; then
 else
   AC_DEFINE(ICONV_NONTRANS, 0)
 fi
+
+fi # libiconv
 
 CPPFLAGS="$CPPFLAGS -I\$(top_srcdir)/intl"
 
