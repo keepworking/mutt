@@ -22,7 +22,6 @@
 #include "mutt_regex.h"
 #include "history.h"
 #include "keymap.h"
-#include "mbyte.h"
 
 
 #ifdef HAVE_PGP
@@ -648,8 +647,6 @@ static void mutt_restore_default (struct option_t *p)
     case DT_STR:
       if (p->init)
 	mutt_str_replace ((char **) p->data, (char *) p->init); 
-      else if (*((char **) p->data))
-        p->init = (unsigned long) safe_strdup (* ((char **) p->data));
       break;
     case DT_PATH:
       if (p->init)
@@ -660,20 +657,12 @@ static void mutt_restore_default (struct option_t *p)
 	mutt_expand_path (path, sizeof (path));
 	mutt_str_replace ((char **) p->data, path);
       }
-      else if (*((char **) p->data))
-        p->init = (unsigned long) safe_strdup (* ((char **) p->data));
       break;
     case DT_ADDR:
       if (p->init)
       {
 	rfc822_free_address ((ADDRESS **) p->data);
 	*((ADDRESS **) p->data) = rfc822_parse_adrlist (NULL, (char *) p->init);
-      }
-      else if (*((ADDRESS **) p->data))
-      {
-	char tmp[HUGE_STRING];
-	rfc822_write_address (tmp, sizeof (tmp), *((ADDRESS **) p->data));
-	p->init = (unsigned long) safe_strdup (tmp);
       }
       break;
     case DT_BOOL:
@@ -701,7 +690,6 @@ static void mutt_restore_default (struct option_t *p)
 	  regfree (pp->rx);
 	  FREE (&pp->rx);
 	}
-
 	if (p->init)
 	{
 	  char *s = (char *) p->init;
@@ -726,12 +714,9 @@ static void mutt_restore_default (struct option_t *p)
 	    FREE (&pp->rx);
 	  }
 	}
-	else if (pp->pattern)
-	  p->init = (unsigned long) safe_strdup (pp->pattern);
       }
       break;
   }
-
   if (p->flags & R_INDEX)
     set_option (OPTFORCEREDRAWINDEX);
   if (p->flags & R_PAGER)
@@ -897,7 +882,6 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
         else if (DTYPE (MuttVars[idx].type) == DT_STR)
         {
 	  *((char **) MuttVars[idx].data) = safe_strdup (tmp->data);
-	  mutt_set_charset (Charset);
         }
         else
         {
