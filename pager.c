@@ -85,8 +85,8 @@ struct q_class_t
 struct syntax_t
 {
   int color;
-  int first;
-  int last;
+  short first;
+  short last;
 };
 
 struct line_t
@@ -1659,13 +1659,13 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     mutt_clear_error ();
     mutt_curs_set (1);
 
-    if (Signals & S_INTERRUPT)
+    if (SigInt)
     {
       mutt_query_exit ();
       continue;
     }
 #if defined (USE_SLANG_CURSES) || defined (HAVE_RESIZETERM)
-    else if (Signals & S_SIGWINCH)
+    else if (SigWinch)
     {
       mutt_resize_screen ();
 
@@ -1710,7 +1710,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	ch = 0;
       }
 
-      Signals &= ~S_SIGWINCH;
+      SigWinch = 0;
       continue;
     }
 #endif
