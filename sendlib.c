@@ -554,6 +554,7 @@ static CONTENT *mutt_get_content_info (const char *fname)
 {
   CONTENT *info;
   FILE *fp;
+  CHARSET_MAP *cm;
   int ch, from=0, whitespace=0, dot=0, linelen=0;
 
   if ((fp = fopen (fname, "r")) == NULL)
@@ -561,6 +562,12 @@ static CONTENT *mutt_get_content_info (const char *fname)
     dprint (1, (debugfile, "mutt_get_content_info: %s: %s (errno %d).\n",
 		fname, strerror (errno), errno));
     return (NULL);
+  }
+
+  {
+    CHARSET *cs;
+
+    cm = (cs = mutt_get_charset(Charset)) ? cs->map : 0;
   }
 
   info = safe_calloc (1, sizeof (CONTENT));
@@ -635,7 +642,8 @@ static CONTENT *mutt_get_content_info (const char *fname)
       if (ch == ' ') whitespace++;
       info->ascii++;
     }
-
+    if (cm && mutt_unicode_char (cm, ch) & -128)
+      info->nonasc = 1;
     if (linelen > 1) dot = 0;
     if (ch != ' ' && ch != '\t') whitespace = 0;
   }
@@ -740,11 +748,15 @@ static int lookup_mime_type (char *d, const char *s)
 
 static char *set_text_charset (CONTENT *info)
 {
+  CHARSET *cs;
+
+  /* if charset is unknown assume low bytes are ascii compatible */
+
   if ((Charset == NULL || mutt_strcasecmp (Charset, "us-ascii") == 0)
       && info->hibin)
     return ("unknown-8bit");
 
-  if (info->hibin)
+  if (((cs = mutt_get_charset (Charset)) && cs->map) ? info->nonasc : info->hibin)
     return (Charset);
 
   return ("us-ascii");
@@ -1133,13 +1145,25 @@ BODY *mutt_remove_multipart (BODY *b)
 char *mutt_make_date (char *s, size_t len)
 {
   time_t t = time (NULL);
-  struct tm *l = localtime (&t);
-  time_t tz = mutt_local_tz (t);
+  struct tm *l = gmtime(&t);
+  int yday = l->tm_yday;
+  int tz = l->tm_hour * 60 + l->tm_min;
+
+  l = localtime(&t);
+  tz = l->tm_hour * 60 + l->tm_min - tz;
+  yday = l->tm_yday - yday;
+
+  if (yday != 0)
+  {
+    if (yday > 1 || yday < -1)
+      yday /= - abs (yday);
+
+    tz += yday * 24 * 60; /* GMT is next or previous day! */
+  }
 
   snprintf (s, len,  "Date: %s, %d %s %d %02d:%02d:%02d %+03d%02d\n",
-	    Weekdays[l->tm_wday], l->tm_mday, Months[l->tm_mon],
-	    l->tm_year + 1900, l->tm_hour, l->tm_min, l->tm_sec,
-	    tz / 3600, abs (tz) % 3600);
+	   Weekdays[l->tm_wday], l->tm_mday, Months[l->tm_mon], l->tm_year+1900,
+	   l->tm_hour, l->tm_min, l->tm_sec, tz/60, abs(tz) % 60);
   return (s);
 }
 

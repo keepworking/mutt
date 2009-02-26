@@ -23,6 +23,7 @@
 
 /* What is your domain name? */
 #undef DOMAIN
+@TOP@
 
 /* Mutt version info */
 #undef VERSION
@@ -96,6 +97,9 @@
 /* Does your curses library support color? */
 #undef HAVE_COLOR
 
+/* Are we using GNU rx? */
+#undef USE_GNU_RX
+
 /* Compiling with SLang instead of curses/ncurses? */
 #undef USE_SLANG_CURSES
 
@@ -133,8 +137,4 @@
 /* Define as 1 if you have gettext and don't want to use GNU gettext.  */
 #undef HAVE_GETTEXT
 
-/* Do we have stpcpy? */
 #undef HAVE_STPCPY
-
-/* Use the included regex.c? */
-#undef USE_GNU_REGEX
