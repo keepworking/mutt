@@ -32,14 +32,20 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 
-const char Notice[] = "\
-Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>\n\
+const char ReachingUs[] = N_("\
+To contact the developers, please mail to <mutt-dev@mutt.org>.\n");
+
+const char Notice[] = N_("\
+Copyright (C) 1996-8 Michael R. Elkins and others.\n\
 Mutt comes with ABSOLUTELY NO WARRANTY; for details type `mutt -vv'.\n\
 Mutt is free software, and you are welcome to redistribute it\n\
-under certain conditions; type `mutt -vv' for details.\n";
+under certain conditions; type `mutt -vv' for details.\n");
 
-const char Copyright[] = "\
+const char Copyright[] = N_("\
 Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>\n\
+Copyright (C) 1997-8 Thomas Roessler <roessler@guug.de>\n\
+Copyright (C) 1998   Werner Koch <wk@isil.d.shuttle.de>\n\
+Copyright (C) 1998   Ruslan Ermilov <ru@ucb.crimea.ua>\n\
 \n\
     This program is free software; you can redistribute it and/or modify\n\
     it under the terms of the GNU General Public License as published by\n\
@@ -53,7 +59,25 @@ Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>\n\
 \n\
     You should have received a copy of the GNU General Public License\n\
     along with this program; if not, write to the Free Software\n\
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.\n";
+    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.\n\
+");
+#ifdef _PGPPATH
+
+const char ShaCopyright[] = N_("\n\
+SHA1 implementation Copyright (C) 1995-7 Eric A. Young <eay@cryptsoft.com>\n\
+\n\
+    Redistribution and use in source and binary forms, with or without\n\
+    modification, are permitted under certain conditions.\n\
+\n\
+    The SHA1 implementation comes AS IS, and ANY EXPRESS OR IMPLIED\n\
+    WARRANTIES, including, but not limited to, the implied warranties of\n\
+    merchantability and fitness for a particular purpose ARE DISCLAIMED.\n\
+\n\
+    You should have received a copy of the full distribution terms\n\
+    along with this program; if not, write to the program's developers.\n\
+");
+#endif
+
 
 void mutt_exit (int code)
 {
@@ -63,8 +87,8 @@ void mutt_exit (int code)
 
 static void mutt_usage (void)
 {
-  printf ("Mutt %s (%s)\n", VERSION, ReleaseDate);
-  puts (
+  printf ("Mutt %s (%s)\n", MUTT_VERSION, ReleaseDate);
+  puts _(
 "usage: mutt [ -nRzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
        mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] <addr> [ ... ]\n\
        mutt [ -n ] [ -e <cmd> ] [ -F <file> ] -p\n\
@@ -98,7 +122,7 @@ static void show_version (void)
 {
   struct utsname uts;
 
-  printf ("Mutt %s (%s)\n", VERSION, ReleaseDate);
+  printf ("Mutt %s (%s)\n", MUTT_VERSION, ReleaseDate);
   puts (Notice);
 
   uname (&uts);
@@ -126,11 +150,6 @@ static void show_version (void)
 #endif
 
   puts (
-#ifdef HIDDEN_HOST
-	"+HIDDEN_HOST  "
-#else
-	"-HIDDEN_HOST  "
-#endif
 
 #ifdef HOMESPOOL
 	"+HOMESPOOL  "
@@ -203,7 +222,7 @@ static void show_version (void)
 	"+HAVE_PGP2  "
 #endif
 #ifdef HAVE_GPG
-	"+HAVE_GPG   "
+	"+HAVE_GPG  "
 #endif
 #endif
 
@@ -221,7 +240,13 @@ static void show_version (void)
 #else
 	"-"
 #endif
-	"EXACT_ADDRESS"
+	"EXACT_ADDRESS  "
+#ifdef ENABLE_NLS
+	"+"
+#else
+	"-"
+#endif
+	"ENABLE_NLS"
 	);
 
   printf ("SENDMAIL=\"%s\"\n", SENDMAIL);
@@ -245,13 +270,12 @@ static void show_version (void)
   printf ("_PGPV3PATH=\"%s\"\n", _PGPV3PATH);
 # endif
 # ifdef _PGPGPPATH
-  pritnf ("_PGPGPGPATH=\"%s\"\n", _PGPGPGPATH);
+  printf ("_PGPGPGPATH=\"%s\"\n", _PGPGPGPATH);
 # endif
 #endif
 
 
-
-  puts ("\nMail bug reports along with this output to <mutt-dev@mutt.org>.");
+  puts(ReachingUs);
 
   exit (0);
 }
@@ -270,7 +294,7 @@ static void start_curses (void)
 #endif
   if (initscr () == NULL)
   {
-    puts ("Error initializing terminal.");
+    puts _("Error initializing terminal.");
     exit (1);
   }
 #ifdef USE_SLANG_CURSES
@@ -321,6 +345,12 @@ int main (int argc, char **argv)
     exit(1);
   }
 
+#ifdef ENABLE_NLS
+  /* FIXME what about init.c:1439 ? */
+  setlocale (LC_ALL, "");
+  bindtextdomain (PACKAGE, MUTTLOCALEDIR);
+  textdomain (PACKAGE);
+#endif
 
   mutt_error = mutt_nocurses_error;
   SRAND (time (NULL));
@@ -360,9 +390,9 @@ int main (int argc, char **argv)
       case 'd':
 #ifdef DEBUG
 	debuglevel = atoi (optarg);
-	printf ("Debugging at level %d.\n", debuglevel);
+	printf (_("Debugging at level %d.\n"), debuglevel);
 #else
-	printf ("DEBUG was not defined during compilation.  Ignored.\n");
+	printf _("DEBUG was not defined during compilation.  Ignored.\n");
 #endif
 	break;
 
@@ -431,8 +461,12 @@ int main (int argc, char **argv)
       show_version ();
       break;
     default:
-      printf ("Mutt %s (%s)\n", VERSION, ReleaseDate);
+      printf ("Mutt %s (%s)\n", MUTT_VERSION, ReleaseDate);
       puts (Copyright);
+#ifdef _PGPPATH
+      puts(ShaCopyright);
+#endif
+      puts (ReachingUs);
       exit (0);
   }
 
@@ -496,7 +530,7 @@ int main (int argc, char **argv)
       {
 	if (!option (OPTNOCURSES))
 	  mutt_endwin (NULL);
-	fputs ("No recipients specified.\n", stderr);
+	fputs (_("No recipients specified.\n"), stderr);
 	exit (1);
       }
 
@@ -540,7 +574,7 @@ int main (int argc, char **argv)
 	    mutt_endwin (NULL);
 	  perror (tempfile);
 	  fclose (fin);
-	  free (tempfile);
+	  FREE (&tempfile);
 	  exit (1);
 	}
 
@@ -569,7 +603,7 @@ int main (int argc, char **argv)
 	{
 	  if (!option (OPTNOCURSES))
 	    mutt_endwin (NULL);
-	  fprintf (stderr, "%s: unable to attach file.\n", t->data);
+	  fprintf (stderr, _("%s: unable to attach file.\n"), t->data);
 	  mutt_free_list (&attach);
 	  exit (1);
 	}
@@ -589,7 +623,7 @@ int main (int argc, char **argv)
     {
       if (!mutt_buffy_check (0))
       {
-	mutt_endwin ("No mailbox with new mail.");
+	mutt_endwin _("No mailbox with new mail.");
 	exit (1);
       }
       folder[0] = 0;
@@ -623,7 +657,7 @@ int main (int argc, char **argv)
 
       if (st.st_size == 0)
       {
-	mutt_endwin ("Mailbox is empty.");
+	mutt_endwin _("Mailbox is empty.");
 	exit (1);
       }
     }
@@ -632,7 +666,7 @@ int main (int argc, char **argv)
 
     if ((Context = mx_open_mailbox (folder, ((flags & M_RO) || option (OPTREADONLY)) ? M_READONLY : 0, NULL)) != NULL)
     {
-      int close = mutt_index_menu (0);
+      int close = mutt_index_menu ();
 
       if (Context)
       {
