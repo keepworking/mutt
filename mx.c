@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -65,31 +66,28 @@
 
 #ifdef DL_STANDALONE
 
-static int invoke_dotlock(const char *path, int flags, int retry)
+static int invoke_dotlock (const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
+  char f[SHORT_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
-  char *f;
   
-  if(flags & DL_FL_RETRY)
-    snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
+  if (flags & DL_FL_RETRY)
+    snprintf (r, sizeof (r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
   
-  f = mutt_quote_filename(path);
+  mutt_quote_filename (f, sizeof (f), path);
   
-  snprintf(cmd, sizeof(cmd),
-	   "%s %s%s%s%s%s%s%s",
-	   DOTLOCK,
-	   flags & DL_FL_TRY ? "-t " : "",
-	   flags & DL_FL_UNLOCK ? "-u " : "",
-	   flags & DL_FL_USEPRIV ? "-p " : "",
-	   flags & DL_FL_FORCE ? "-f " : "",
-	   flags & DL_FL_UNLINK ? "-d " : "",
-	   flags & DL_FL_RETRY ? r : "",
-	   f);
+  snprintf (cmd, sizeof (cmd),
+	    "%s %s%s%s%s%s%s",
+	    NONULL (MuttDotlock),
+	    flags & DL_FL_TRY ? "-t " : "",
+	    flags & DL_FL_UNLOCK ? "-u " : "",
+	    flags & DL_FL_USEPRIV ? "-p " : "",
+	    flags & DL_FL_FORCE ? "-f " : "",
+	    flags & DL_FL_RETRY ? r : "",
+	    f);
   
-  FREE(&f);
-
-  return mutt_system(cmd);
+  return mutt_system (cmd);
 }
 
 #else 
@@ -252,7 +250,7 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
   return 0;
 }
 
-int mx_unlock_file (const char *path, int fd, int dot)
+int mx_unlock_file (const char *path, int fd)
 {
 #ifdef USE_FCNTL
   struct flock unlockit = { F_UNLCK, 0, 0, 0 };
@@ -268,8 +266,7 @@ int mx_unlock_file (const char *path, int fd, int dot)
 #endif
 
 #ifdef USE_DOTLOCK
-  if (dot)
-    undotlock_file (path);
+  undotlock_file (path);
 #endif
   
   return 0;
@@ -290,32 +287,6 @@ FILE *mx_open_file_lock (const char *path, const char *mode)
   }
 
   return (f);
-}
-
-void mx_unlink_empty (const char *path)
-{
-  int fd;
-#ifndef USE_DOTLOCK
-  char b;
-#endif
-
-  if ((fd = open (path, O_RDWR)) == -1)
-    return;
-  
-  if (mx_lock_file (path, fd, 1, 0, 1) == -1)
-  {
-    close (fd);
-    return;
-  }
-
-#ifdef USE_DOTLOCK
-  invoke_dotlock (path, DL_FL_UNLINK, 1);
-#else
-  if  (read (fd, &b, 1) != 1)
-    unlink (path);
-#endif
-
-  mx_unlock_file (path, fd, 0);
 }
 
 /* try to figure out what type of mailbox ``path'' is
@@ -735,7 +706,7 @@ static int sync_mailbox (CONTEXT *ctx)
   }
 
 #if 0
-  if (!ctx->quiet && rc == -1)
+  if (!ctx->quiet && !ctx->shutup && rc == -1)
     mutt_error ( _("Could not synchronize mailbox %s!"), ctx->path);
 #endif
   
@@ -816,7 +787,7 @@ int mx_close_mailbox (CONTEXT *ctx)
   }
 
 #ifdef USE_IMAP
-  /* IMAP servers managed the OLD flag themselves */
+  /* IMAP doesn't support an OLD flag */
   if (ctx->magic != M_IMAP)
 #endif
   if (option (OPTMARKOLD))
@@ -884,7 +855,7 @@ int mx_close_mailbox (CONTEXT *ctx)
   if (ctx->msgcount == ctx->deleted &&
       (ctx->magic == M_MMDF || ctx->magic == M_MBOX) &&
       !mutt_is_spool(ctx->path) && !option (OPTSAVEEMPTY))
-    mx_unlink_empty (ctx->path);
+    unlink (ctx->path);
 
   mx_fastclose_mailbox (ctx);
 
@@ -1062,6 +1033,7 @@ int imap_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
   if ((msg->fp = safe_fopen (tmp, "w")) == NULL)
     return (-1);
   msg->path = safe_strdup(tmp);
+  msg->ctx = dest;
   return 0;
 }
 #endif
