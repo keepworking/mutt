@@ -409,7 +409,7 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
     if (fp)
     {
       fname = safe_strdup (a->filename);
-      mutt_sanitize_filename (fname);
+      mutt_sanitize_filename (fname, 1);
     }
     else
       fname = a->filename;
@@ -707,9 +707,11 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
       
       memset (&s, 0, sizeof (s));
       if (flags == M_SAVE_APPEND)
-	s.fpout = safe_fopen (path, "a");
-      else
+	s.fpout = fopen (path, "a");
+      else if (flags == M_SAVE_OVERWRITE)
 	s.fpout = fopen (path, "w");
+      else
+	s.fpout = safe_fopen (path, "w");
       if (s.fpout == NULL)
       {
 	mutt_perror ("fopen");
@@ -768,12 +770,15 @@ int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
   HEADER *saved_hdr = NULL;
 
   memset (&s, 0, sizeof (s));
-  s.flags = M_CHARCONV | (displaying ? M_DISPLAY : 0);
+  s.flags = displaying ? M_DISPLAY : 0;
 
   if (flags == M_SAVE_APPEND)
-    s.fpout = safe_fopen (path, "a");
-  else
+    s.fpout = fopen (path, "a");
+  else if (flags == M_SAVE_OVERWRITE)
     s.fpout = fopen (path, "w");
+  else
+    s.fpout = safe_fopen (path, "w");
+
   if (s.fpout == NULL)
   {
     perror ("fopen");

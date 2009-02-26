@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1998 Ruslan Ermilov <ru@ucb.crimea.ua>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -25,47 +25,13 @@
 
 typedef int CHARSET_MAP[256];
 
-typedef struct descr
+typedef struct 
 {
-  char *symbol;
-  int repr;
-}
-CHARDESC;
-
-typedef struct
-{
-  char *charset;
-  char escape_char;
-  char comment_char;
-  short multbyte;
-  LIST *aliases;
-}
-CHARMAP;
-
-typedef struct
-{
-  size_t n_symb;
-  size_t u_symb;
-
-  short multbyte;
-  HASH *symb_to_repr;
-  CHARDESC **description;
-}
+  CHARSET_MAP *map;
+} 
 CHARSET;
 
-/* this one could be made a bit smaller with two levels
- * of nested unions and structs.  It's not worth the effort.
- */
-
-typedef struct decoder
-{
-  STATE *s;
-  short is_utf8;
-  CHARSET_MAP *map;
-  CHARSET *chs;
-  struct utf8_state *sfu;
-}
-DECODER;    
+#define mutt_unicode_char(cm,ch) (!cm ? -1 : (*cm)[ch])
 
 CHARSET *mutt_get_charset(const char *);
 CHARSET_MAP *mutt_get_translation(const char *, const char *);
@@ -77,10 +43,7 @@ int mutt_is_utf8(const char *);
 
 void mutt_decode_utf8_string(char *, CHARSET *);
 
-DECODER *mutt_open_decoder (STATE *, BODY *, int);
-void mutt_close_decoder (DECODER **);
-
-void mutt_decoder_putc (DECODER *, char);
+void state_fput_utf8(STATE *, char, CHARSET *);
 
 #endif
 
