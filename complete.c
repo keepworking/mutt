@@ -17,10 +17,6 @@
  */ 
 
 #include "mutt.h"
-#ifdef USE_IMAP
-#include "mailbox.h"
-#include "imap.h"
-#endif
 
 #include <dirent.h>
 #include <string.h>
@@ -33,39 +29,15 @@
  *
  * return 0 if ok, -1 if no matches
  */
-int mutt_complete (char *s, size_t slen)
+int mutt_complete (char *s)
 {
   char *p;
-  DIR *dirp = NULL;
+  DIR *dirp;
   struct dirent *de;
   int i ,init=0;
   size_t len;
   char dirpart[_POSIX_PATH_MAX], exp_dirpart[_POSIX_PATH_MAX];
   char filepart[_POSIX_PATH_MAX];
-#ifdef USE_IMAP
-  char imap_path[LONG_STRING];
-
-  dprint (2, (debugfile, "mutt_complete: completing %s\n", s));
-
-  /* we can use '/' as a delimiter, imap_complete rewrites it */
-  if (*s == '=' || *s == '+')
-  {
-    if (s[1])
-      snprintf (imap_path, sizeof(imap_path), "%s/%s", NONULL(Maildir),
-                s+1);
-    else
-      strfcpy (imap_path, NONULL(Maildir), sizeof(imap_path));
-  }
-  else
-  {
-    strfcpy (imap_path, s, sizeof(imap_path));
-  }
-
-  if (mx_is_imap (imap_path))
-  {
-    return imap_complete (s, slen, imap_path);
-  }
-#endif
   
   if (*s == '=' || *s == '+')
   {
