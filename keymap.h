@@ -19,6 +19,8 @@
 #ifndef KEYMAP_H
 #define KEYMAP_H
 
+#include "mapping.h"
+
 /* maximal length of a key binding sequence used for buffer in km_bindkey */
 #define MAX_SEQ 8
 
@@ -65,10 +67,6 @@ enum
   MENU_PGP,
 #endif
 
-#ifdef HAVE_SMIME
-  MENU_SMIME,
-#endif
-
 #ifdef MIXMASTER
   MENU_MIX,
 #endif
@@ -109,10 +107,6 @@ extern struct binding_t OpAlias[];
 #ifdef HAVE_PGP
 extern struct binding_t OpPgp[];
 #endif /* HAVE_PGP */
-
-#ifdef HAVE_SMIME
-extern struct binding_t OpSmime[];
-#endif /* HAVE_SMIME */
 
 #ifdef MIXMASTER
 extern struct binding_t OpMix[];
