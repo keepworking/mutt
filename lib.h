@@ -64,17 +64,21 @@
 # define STRING          256
 # define SHORT_STRING    128
 
+/*
+ * Create a format string to be used with scanf.
+ * To use it, write, for instance, MUTT_FORMAT(HUGE_STRING).
+ * 
+ * See K&R 2nd ed, p. 231 for an explanation.
+ */
+# define _MUTT_FORMAT_2(a,b)	"%" a  b
+# define _MUTT_FORMAT_1(a, b)	_MUTT_FORMAT_2(#a, b)
+# define MUTT_FORMAT(a)		_MUTT_FORMAT_1(a, "s")
+# define MUTT_FORMAT2(a,b)	_MUTT_FORMAT_1(a, b)
 
 # define FREE(x) safe_free((void **)x)
 # define NONULL(x) x?x:""
 # define ISSPACE(c) isspace((unsigned char)c)
 # define strfcpy(A,B,C) strncpy(A,B,C), *(A+(C)-1)=0
-
-# undef MAX
-# undef MIN
-# define MAX(a,b) ((a) < (b) ? (b) : (a))
-# define MIN(a,b) ((a) < (b) ? (a) : (b))
-
 
 #define FOREVER while (1)
 
@@ -114,6 +118,7 @@ int mutt_strcasecmp (const char *, const char *);
 int mutt_strcmp (const char *, const char *);
 int mutt_strncasecmp (const char *, const char *, size_t);
 int mutt_strncmp (const char *, const char *, size_t);
+int mutt_strcoll (const char *, const char *);
 int safe_open (const char *, int);
 int safe_symlink (const char *, const char *);
 int safe_rename (const char *, const char *);
