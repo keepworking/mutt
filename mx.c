@@ -30,6 +30,10 @@
 #include "pgp.h"
 #endif
 
+#ifdef HAVE_SMIME
+#include "smime.h"
+#endif
+
 #ifdef USE_IMAP
 #include "imap.h"
 #endif
@@ -1356,8 +1360,9 @@ int mx_check_mailbox (CONTEXT *ctx, int *index_hint, int lock)
 
 
       case M_MH:
-      case M_MAILDIR:
 	return (mh_check_mailbox (ctx, index_hint));
+      case M_MAILDIR:
+	return (maildir_check_mailbox (ctx, index_hint));
 
 #ifdef USE_IMAP
       case M_IMAP:
@@ -1570,10 +1575,10 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
 
 
 
-#ifdef HAVE_PGP
+#ifdef HAVE_PGP || defined(HAVE_SMIME)
     /* NOTE: this _must_ be done before the check for mailcap! */
-    h->pgp = pgp_query (h->content);
-#endif /* HAVE_PGP */
+    h->security = crypt_query (h->content);
+#endif /* HAVE_PGP || HAVE_SMIME */
 
     if (!ctx->pattern)
     {
