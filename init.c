@@ -22,7 +22,6 @@
 #include "mutt_regex.h"
 #include "history.h"
 #include "keymap.h"
-#include "mbyte.h"
 
 
 #ifdef HAVE_PGP
@@ -50,10 +49,6 @@
 #include <sys/utsname.h>
 #include <errno.h>
 #include <sys/wait.h>
-
-#ifdef HAVE_LANGINFO_CODESET
-#include <langinfo.h>
-#endif
 
 void toggle_quadoption (int opt)
 {
@@ -645,40 +640,6 @@ parse_sort (short *val, const char *s, const struct mapping_t *map, BUFFER *err)
   return 0;
 }
 
-static void mutt_set_default (struct option_t *p)
-{
-  switch (p->type & DT_MASK)
-  {
-    case DT_STR:
-      if (*((char **) p->data))
-        p->init = (unsigned long) safe_strdup (* ((char **) p->data));
-      break;
-    case DT_PATH:
-      if (*((char **) p->data))
-      {
-	char *cp = safe_strdup (*((char **) p->data));
-	mutt_pretty_mailbox (cp);
-        p->init = (unsigned long) cp;
-      }
-      break;
-    case DT_ADDR:
-      if (*((ADDRESS **) p->data))
-      {
-	char tmp[HUGE_STRING];
-	rfc822_write_address (tmp, sizeof (tmp), *((ADDRESS **) p->data));
-	p->init = (unsigned long) safe_strdup (tmp);
-      }
-      break;
-    case DT_RX:
-    {
-      REGEXP *pp = (REGEXP *) p->data;
-      if (pp->pattern)
-	p->init = (unsigned long) safe_strdup (pp->pattern);
-      break;
-    }
-  }
-}
-
 static void mutt_restore_default (struct option_t *p)
 {
   switch (p->type & DT_MASK)
@@ -729,7 +690,6 @@ static void mutt_restore_default (struct option_t *p)
 	  regfree (pp->rx);
 	  FREE (&pp->rx);
 	}
-
 	if (p->init)
 	{
 	  char *s = (char *) p->init;
@@ -757,7 +717,6 @@ static void mutt_restore_default (struct option_t *p)
       }
       break;
   }
-
   if (p->flags & R_INDEX)
     set_option (OPTFORCEREDRAWINDEX);
   if (p->flags & R_PAGER)
@@ -923,8 +882,6 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
         else if (DTYPE (MuttVars[idx].type) == DT_STR)
         {
 	  *((char **) MuttVars[idx].data) = safe_strdup (tmp->data);
-	  if (mutt_strcmp (MuttVars[idx].option, "charset") == 0)
-	    mutt_set_charset (Charset);
         }
         else
         {
@@ -1814,24 +1771,11 @@ void mutt_init (int skip_sys_rc, LIST *commands)
     FREE (&token.data);
   }
 
-#ifdef HAVE_LANGINFO_CODESET
-  Charset = safe_strdup (nl_langinfo (CODESET));
-#else
-  Charset = safe_strdup ("iso-8859-1");
-#endif
-
-  mutt_set_charset (Charset);
-  
-  
   /* Set standard defaults */
   for (i = 0; MuttVars[i].option; i++)
-  {
-    mutt_set_default (&MuttVars[i]);
     mutt_restore_default (&MuttVars[i]);
-  }
 
   CurrentMenu = MENU_MAIN;
-
 
 #ifndef LOCALES_HACK
   /* Do we have a locale definition? */
