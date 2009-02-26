@@ -299,13 +299,6 @@ int mutt_index_menu (void)
     menu->max = Context ? Context->vcount : 0;
     oldcount = Context ? Context->msgcount : 0;
 
-    /* check if we need to resort the index because just about
-     * any 'op' below could do mutt_enter_command(), either here or
-     * from any new menu launched, and change $sort/$sort_aux
-     */
-    if (option (OPTNEEDRESORT) && Context && Context->msgcount)
-      resort_index (menu);
-
     if (Context && !attach_msg)
     {
       int check;
@@ -372,7 +365,9 @@ int mutt_index_menu (void)
         }
 
 	/* if the mailbox was reopened, need to rethread from scratch */
+	set_option (OPTSORTCOLLAPSE);
 	mutt_sort_headers (Context, (check == M_REOPENED));
+	unset_option (OPTSORTCOLLAPSE);
 
 	/* uncollapse threads with new mail */
 	if ((Sort & SORT_MASK) == SORT_THREADS)
@@ -613,7 +608,7 @@ int mutt_index_menu (void)
       case OP_JUMP:
 
 	CHECK_MSGCOUNT;
-        if (isdigit (LastKey)) mutt_ungetch (LastKey, 0);
+	mutt_ungetch (LastKey, 0);
 	buf[0] = 0;
 	if (mutt_get_field (_("Jump to message: "), buf, sizeof (buf), 0) != 0
 	    || !buf[0])
@@ -787,7 +782,7 @@ int mutt_index_menu (void)
 	  /* calculate the number of messages _above_ the cursor,
 	   * so we can keep the cursor on the current message
 	   */ 
-	  for (j = 0; j <= menu->current; j++)
+	  for (j = 0; j < menu->current; j++)
 	  {
 	    if (Context->hdrs[Context->v2r[j]]->deleted)
 	      dcount++;
@@ -954,6 +949,11 @@ int mutt_index_menu (void)
 	{
 	  unset_option (OPTNEEDRESORT);
 	  break;
+	}
+
+	if (option (OPTNEEDRESORT) && Context && Context->msgcount)
+	{
+	  resort_index (menu);
 	}
 
 	menu->menu = MENU_PAGER;
@@ -1139,7 +1139,7 @@ int mutt_index_menu (void)
 	    }
 	  }
 
-	  if ((Sort & SORT_MASK) == SORT_THREADS && CUR->collapsed)
+	  if (CUR->collapsed)
 	  {
 	    if ((op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD) &&
 		UNREAD (CUR))
@@ -1476,6 +1476,10 @@ int mutt_index_menu (void)
 	CurrentMenu = MENU_MAIN;
 	mutt_enter_command ();
 	mutt_check_rescore (Context);
+	if (option (OPTNEEDRESORT) && Context && Context->msgcount)
+	{
+	  resort_index (menu);
+	}
 	if (option (OPTFORCEREDRAWINDEX))
 	  menu->redraw = REDRAW_FULL;
 	unset_option (OPTFORCEREDRAWINDEX);
