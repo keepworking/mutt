@@ -703,10 +703,8 @@ _mutt_parse_color (BUFFER *buf, BUFFER *s, BUFFER *err,
   
 #ifdef HAVE_COLOR
 # ifdef HAVE_USE_DEFAULT_COLORS
-  if (has_colors()
-    /* delay use_default_colors() until needed, since it initializes things */
-    && (fg == COLOR_DEFAULT || bg == COLOR_DEFAULT)
-    && use_default_colors () != OK)
+  if (has_colors() && use_default_colors () != OK 
+      && (fg == COLOR_DEFAULT || bg == COLOR_DEFAULT))
   {
     strfcpy (err->data, _("default colors not supported"), err->dsize);
     return (-1);
