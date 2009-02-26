@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -19,44 +20,50 @@
 #include "mutt.h"
 #include <string.h>
 
-/* returns the seconds east of UTC given `g' and its corresponding gmtime()
+/* returns the seconds west of UTC given `g' and its corresponding gmtime()
    representation */
-static time_t compute_tz (time_t g, struct tm *utc)
+static time_t mutt_compute_tz (time_t g, struct tm *utc)
 {
   struct tm *lt = localtime (&g);
   time_t t;
-  int yday;
 
-  t = (((lt->tm_hour - utc->tm_hour) * 60) + (lt->tm_min - utc->tm_min)) * 60;
-
-  if ((yday = (lt->tm_yday - utc->tm_yday)))
+  t = (((utc->tm_hour - lt->tm_hour) * 60) + (utc->tm_min - lt->tm_min)) * 60;
+  switch (utc->tm_yday - lt->tm_yday)
   {
-    /* This code is optimized to negative timezones (West of Greenwich) */
-    if (yday == -1 ||	/* UTC passed midnight before localtime */
-	yday > 1)	/* UTC passed new year before localtime */
-      t -= 24 * 60 * 60;
-    else
+    case 0:
+      break;
+
+    case 1:
+    case -364:
+    case -365:
       t += 24 * 60 * 60;
+      break;
+
+    case -1:
+    case 364:
+    case 365:
+      t -= 24 * 60 * 60;
+      break;
+
+    default:
+      mutt_error _("Please report this program error in the function mutt_mktime.");
   }
 
   return t;
 }
 
-/* Returns the local timezone in seconds east of UTC for the time t,
- * or for the current time if t is zero.
- */
-time_t mutt_local_tz (time_t t)
+time_t mutt_local_tz (void)
 {
   struct tm *ptm;
   struct tm utc;
+  time_t now;
 
-  if (!t)
-    t = time (NULL);
-  ptm = gmtime (&t);
+  now = time (NULL);
+  ptm = gmtime (&now);
   /* need to make a copy because gmtime/localtime return a pointer to
      static memory (grr!) */
   memcpy (&utc, ptm, sizeof (utc));
-  return (compute_tz (t, &utc));
+  return (mutt_compute_tz (now, &utc));
 }
 
 /* converts struct tm to time_t, but does not take the local timezone into
@@ -96,7 +103,7 @@ time_t mutt_mktime (struct tm *t, int local)
   g += t->tm_sec;
 
   if (local)
-    g -= compute_tz (g, t);
+    g += mutt_compute_tz (g, t);
 
   return (g);
 }

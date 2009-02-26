@@ -1,3 +1,4 @@
+static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -183,7 +184,9 @@ time_t is_from (const char *s, char *path, size_t pathlen)
   dprint (3,(debugfile, "is_from(): month=%d, day=%d, hr=%d, min=%d, sec=%d, yr=%d.\n",
 	     tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_year));
 
-  tm.tm_isdst = -1;
+  tm.tm_isdst = 0;
+  tm.tm_yday = 0;
+  tm.tm_wday = 0;
 
   return (mutt_mktime (&tm, 0));
 }
