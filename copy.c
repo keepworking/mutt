@@ -395,20 +395,20 @@ static int count_delete_lines (FILE *fp, BODY *b, long *length, size_t datelen)
 }
 
 /* make a copy of a message
- 
-   fpout	where to write output
-   fpin		where to get input
-   hdr		header of message being copied
-   body		structure of message being copied
-   flags
-	M_CM_NOHEADER	don't copy header
- 	M_CM_PREFIX	quote header and body
- 	M_CM_DECODE	decode message body to text/plain
- 	M_CM_DISPLAY	displaying output to the user
-	M_CM_UPDATE	update structures in memory after syncing
-	M_CM_DECODE_PGP	used for decoding PGP messages
-        M_CM_CHARCONV	perform character set conversion
-   chflags	flags to mutt_copy_header()
+ * 
+ * fpout	where to write output
+ * fpin		where to get input
+ * hdr		header of message being copied
+ * body		structure of message being copied
+ * flags
+ * 	M_CM_NOHEADER	don't copy header
+ * 	M_CM_PREFIX	quote header and body
+ *	M_CM_DECODE	decode message body to text/plain
+ *	M_CM_DISPLAY	displaying output to the user
+ *	M_CM_UPDATE	update structures in memory after syncing
+ *	M_CM_DECODE_PGP	used for decoding PGP messages
+ *	M_CM_CHARCONV	perform character set conversion 
+ * chflags	flags to mutt_copy_header()
  */
 
 int
@@ -417,7 +417,6 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
 {
   char prefix[SHORT_STRING];
   STATE s;
-  long new_offset = -1;
 
   if (flags & M_CM_PREFIX)
     _mutt_make_string (prefix, sizeof (prefix), NONULL (Prefix), Context, hdr, 0);
@@ -430,6 +429,7 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
     else if (hdr->attach_del && (chflags & CH_UPDATE_LEN))
     {
       int new_lines;
+      long new_offset;
       long new_length = body->length;
       char date[SHORT_STRING];
 
@@ -488,8 +488,6 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
     if (mutt_copy_header (fpin, hdr, fpout, chflags,
 			  (chflags & CH_PREFIX) ? prefix : NULL) == -1)
       return -1;
-
-    new_offset = ftell (fpout);
   }
 
   if (flags & M_CM_DECODE)
@@ -557,17 +555,9 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
 	}
       } 
     }
-    else if (mutt_copy_bytes (fpin, fpout, body->length) == -1)
-      return -1;
+    else
+      return mutt_copy_bytes (fpin, fpout, body->length);
   }
-
-  if ((flags & M_CM_UPDATE) && (flags & M_CM_NOHEADER) == 0 
-      && new_offset != -1)
-  {
-    body->offset = new_offset;
-    mutt_free_body (&body->parts);
-  }
-
   return 0;
 }
 

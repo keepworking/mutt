@@ -259,6 +259,7 @@ struct binding_t OpAttach[] = {
 struct binding_t OpCompose[] = {
   { "attach-file",	OP_COMPOSE_ATTACH_FILE,		"a" },
   { "attach-message",	OP_COMPOSE_ATTACH_MESSAGE,	"A" },
+  { "change-charset",	OP_COMPOSE_CHANGE_CHARSET,	NULL },
   { "edit-bcc",		OP_COMPOSE_EDIT_BCC,		"b" },
   { "edit-cc",		OP_COMPOSE_EDIT_CC,		"c" },
   { "copy-file",	OP_SAVE,			"C" },
@@ -284,7 +285,9 @@ struct binding_t OpCompose[] = {
   { "edit-to",		OP_COMPOSE_EDIT_TO,		"t" },
   { "edit-type",	OP_COMPOSE_EDIT_TYPE,		"\024" },
   { "write-fcc",	OP_COMPOSE_WRITE_MESSAGE,	"w" },
+  { "recode-attachment",OP_COMPOSE_RECODE,		NULL },
   { "toggle-unlink",	OP_COMPOSE_TOGGLE_UNLINK,	"u" },
+  { "toggle-recode",    OP_COMPOSE_TOGGLE_RECODE,	NULL },
   { "update-encoding",	OP_COMPOSE_UPDATE_ENCODING,	"U" },
   { "view-attach",	OP_VIEW_ATTACH,			M_ENTER_S },
   { "send-message",	OP_COMPOSE_SEND_MESSAGE,	"y" },
@@ -296,6 +299,10 @@ struct binding_t OpCompose[] = {
   { "pgp-menu",		OP_COMPOSE_PGP_MENU,		"p" 	},
 #endif
 
+#ifdef MIXMASTER
+  { "mix",		OP_COMPOSE_MIX,			"M" },
+#endif
+  
   { NULL,		0,				NULL }
 };
 
@@ -316,6 +323,11 @@ struct binding_t OpBrowser[] = {
   { "check-new",	OP_CHECK_NEW,		NULL },
   { "toggle-mailboxes", OP_TOGGLE_MAILBOXES, 	"\t" },
   { "view-file",	OP_BROWSER_VIEW_FILE,	" " },
+#ifdef USE_IMAP
+  { "subscribe",	OP_BROWSER_SUBSCRIBE,	"s" },
+  { "unsubscribe",	OP_BROWSER_UNSUBSCRIBE,	"u" },
+  { "toggle-subscribed", OP_BROWSER_TOGGLE_LSUB, "T" },
+#endif
   { NULL,		0,			NULL }
 };
 
@@ -356,3 +368,16 @@ struct binding_t OpPgp[] = {
   { NULL,		0,				NULL }
 };
 #endif /* _PGPPATH */
+
+
+#ifdef MIXMASTER
+struct binding_t OpMix[] = {
+  { "accept",		OP_MIX_USE,	M_ENTER_S },
+  { "append",		OP_MIX_APPEND,	"a"       },
+  { "insert",		OP_MIX_INSERT,	"i"       },
+  { "delete",		OP_MIX_DELETE,  "d"	  },
+  { "chain-prev",	OP_MIX_CHAIN_PREV, "<left>" },
+  { "chain-next",	OP_MIX_CHAIN_NEXT, "<right>" },
+  { NULL, 		0, 		NULL }
+};
+#endif /* MIXMASTER */
