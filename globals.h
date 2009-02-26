@@ -52,6 +52,12 @@ WHERE char *Locale;
 WHERE char *MailcapPath;
 WHERE char *Maildir;
 WHERE char *MsgFmt;
+
+#ifdef MIXMASTER
+WHERE char *Mixmaster;
+WHERE char *MixEntryFormat;
+#endif
+
 WHERE char *Muttrc INITVAL (NULL);
 WHERE char *Outbox;
 WHERE char *Pager;
@@ -68,6 +74,7 @@ WHERE char *Prefix;
 WHERE char *PrintCmd;
 WHERE char *QueryCmd;
 WHERE char *Realname;
+WHERE char *SendCharset;
 WHERE char *Sendmail;
 WHERE char *Shell;
 WHERE char *Signature;
@@ -110,8 +117,10 @@ WHERE short SendmailWait;
 WHERE short Timeout;
 WHERE short WriteInc;
 
-/* vector to store received signals */
-WHERE short Signals INITVAL (0);
+/* flags for received signals */
+WHERE volatile sig_atomic_t SigAlrm INITVAL (0);
+WHERE volatile sig_atomic_t SigInt INITVAL (0);
+WHERE volatile sig_atomic_t SigWinch INITVAL (0);
 
 WHERE int CurrentMenu;
 
