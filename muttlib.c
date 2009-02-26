@@ -28,10 +28,14 @@
 
 #ifdef USE_IMAP
 #include "imap.h"
-#endif
+ #endif
 
 #ifdef HAVE_PGP
 #include "pgp.h"
+#endif
+
+#ifdef HAVE_SMIME
+#include "smime.h"
 #endif
 
 #include <string.h>
@@ -134,7 +138,7 @@ int mutt_copy_body (FILE *fp, BODY **tgt, BODY *src)
   b->use_disp = use_disp;
   b->unlink = 1;
 
-  if (mutt_is_text_type (b->type, b->subtype))
+  if (mutt_is_text_part (b))
     b->noconv = 1;
 
   b->xtype = safe_strdup (b->xtype);
@@ -594,8 +598,13 @@ int mutt_needs_mailcap (BODY *m)
     case TYPEAPPLICATION:
       if(mutt_is_application_pgp(m))
 	return 0;
-      break;
 #endif /* HAVE_PGP */
+
+#ifdef HAVE_SMIME
+      if(mutt_is_application_smime(m))
+	return 0;
+      break;
+#endif /* HAVE_SMIME */
 
 
     case TYPEMULTIPART:
@@ -607,8 +616,16 @@ int mutt_needs_mailcap (BODY *m)
   return 1;
 }
 
-int mutt_is_text_type (int t, char *s)
+int mutt_is_text_part (BODY *b)
 {
+  int t = b->type;
+  char *s = b->subtype;
+  
+  
+#ifdef HAVE_PGP
+  if (mutt_is_application_pgp (b))
+    return 0;
+#endif
   if (t == TYPETEXT)
     return 1;
 
@@ -1189,29 +1206,29 @@ int mutt_save_confirm (const char *s, struct stat *st)
   return (ret);
 }
 
-void state_prefix_putc(char c, STATE *s)
+void state_prefix_putc (char c, STATE *s)
 {
   if (s->flags & M_PENDINGPREFIX)
   {
-    state_reset_prefix(s);
+    state_reset_prefix (s);
     if (s->prefix)
-      state_puts(s->prefix, s);
+      state_puts (s->prefix, s);
   }
 
-  state_putc(c, s);
+  state_putc (c, s);
 
-  if(c == '\n')
-    state_set_prefix(s);
+  if (c == '\n')
+    state_set_prefix (s);
 }
 
-int state_printf(STATE *s, const char *fmt, ...)
+int state_printf (STATE *s, const char *fmt, ...)
 {
   int rv;
   va_list ap;
 
   va_start (ap, fmt);
-  rv = vfprintf(s->fpout, fmt, ap);
-  va_end(ap);
+  rv = vfprintf (s->fpout, fmt, ap);
+  va_end (ap);
   
   return rv;
 }
