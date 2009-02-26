@@ -83,7 +83,7 @@ event_t mutt_getch (void)
   return (ch == ctrl ('G') ? err : ret);
 }
 
-int mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int complete)
+int _mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int complete, int multiple, char ***files, int *numfiles)
 {
   int ret;
   int len = mutt_strlen (field); /* in case field==buffer */
@@ -93,7 +93,7 @@ int mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int compl
     CLEARLINE (LINES-1);
     addstr (field);
     mutt_refresh ();
-    ret = mutt_enter_string ((unsigned char *) buf, buflen, LINES-1, len, complete);
+    ret = _mutt_enter_string ((unsigned char *) buf, buflen, LINES-1, len, complete, multiple, files, numfiles);
   }
   while (ret == 1);
   CLEARLINE (LINES-1);
@@ -124,7 +124,8 @@ void mutt_edit_file (const char *editor, const char *data)
   
   endwin ();
   mutt_expand_file_fmt (cmd, sizeof (cmd), editor, data);
-  mutt_system (cmd);
+  if (mutt_system (cmd) == -1)
+    mutt_error (_("Error running \"%s\"!"), cmd);
   keypad (stdscr, TRUE);
   clearok (stdscr, TRUE);
 }
@@ -317,15 +318,20 @@ int mutt_do_pager (const char *banner,
     
     endwin ();
     mutt_expand_file_fmt (cmd, sizeof(cmd), Pager, tempfile);
-    mutt_system (cmd);
+    if (mutt_system (cmd) == -1)
+    {
+      mutt_error (_("Error running \"%s\"!"), cmd);
+      rc = -1;
+    }
+    else
+      rc = 0;
     mutt_unlink (tempfile);
-    rc = 0;
   }
 
   return rc;
 }
 
-int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, int buffy)
+int _mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, int buffy, int multiple, char ***files, int *numfiles)
 {
   event_t ch;
 
@@ -346,7 +352,7 @@ int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, i
   {
     mutt_refresh ();
     buf[0] = 0;
-    mutt_select_file (buf, blen, 0);
+    _mutt_select_file (buf, blen, 0, multiple, files, numfiles);
     *redraw = REDRAW_FULL;
   }
   else
@@ -355,7 +361,7 @@ int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, i
 
     sprintf (pc, "%s: ", prompt);
     mutt_ungetch (ch.op ? 0 : ch.ch, ch.op ? ch.op : 0);
-    if (mutt_get_field (pc, buf, blen, (buffy ? M_EFILE : M_FILE) | M_CLEAR)
+    if (_mutt_get_field (pc, buf, blen, (buffy ? M_EFILE : M_FILE) | M_CLEAR, multiple, files, numfiles)
 	!= 0)
       buf[0] = 0;
     MAYBE_REDRAW (*redraw);
