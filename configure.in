@@ -1,9 +1,8 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_INIT(mutt.h)
-AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(mutt, 0.94.8)
-
-ALL_LINGUAS="de"
+AC_CONFIG_HEADER(config.h)
+VERSION=0.94.2
+SUBVERSION=''
 
 AC_CANONICAL_HOST
 
@@ -18,7 +17,6 @@ AC_MSG_RESULT($mutt_cv_prefix)
 AC_PROG_CC
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
-AC_ISC_POSIX
 
 case "$host" in
 *-*-hpux*)
@@ -63,14 +61,14 @@ if test -f $srcdir/pgp.c; then
 	fi
 
 	if test $PGP != no || test $PGPK != no ; then
-		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS pgp.o pgpinvoke.o pgpkey.o pgppubring.o sha1dgst.o gnupgparse.o"
+		LIBOBJS="$LIBOBJS pgp.o pgpinvoke.o pgpkey.o pgppubring.o sha1dgst.o gnupgparse.o"
 		OPS="$OPS \$(srcdir)/OPS.PGP"
 	fi
 fi
 AC_SUBST(OPS)
 
-AC_DEFINE_UNQUOTED(SUBVERSION, "$SUBVERSION")
-AC_SUBST(SUBVERSION)
+AC_DEFINE_UNQUOTED(VERSION, "$VERSION$SUBVERSION")
+AC_SUBST(VERSION)
 
 AC_PATH_PROG(ISPELL, ispell, no)
 if test $ISPELL != no; then
@@ -130,7 +128,7 @@ main ()
 	fi
 	AC_DEFINE(USE_SLANG_CURSES)
 	AC_DEFINE(HAVE_COLOR)
-	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS resize.o"
+	LIBOBJS="$LIBOBJS resize.o"
 	
 	dnl --- try to link a sample program to check if we're ok
 	
@@ -171,7 +169,7 @@ main ()
 
 	AC_CHECK_FUNC(start_color, [AC_DEFINE(HAVE_COLOR)])
 	AC_CHECK_FUNCS(typeahead bkgdset curs_set meta use_default_colors)
-	AC_CHECK_FUNCS(resizeterm, [MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS resize.o"])
+	AC_CHECK_FUNCS(resizeterm, [LIBOBJS="$LIBOBJS resize.o"])
 	])
 
 AC_HEADER_STDC
@@ -196,7 +194,7 @@ SNPRINTFOBJS=""
 AC_CHECK_FUNC(snprintf, [AC_DEFINE(HAVE_SNPRINTF)], [mutt_cv_snprintf=yes])
 AC_CHECK_FUNC(vsnprintf, [AC_DEFINE(HAVE_VSNPRINTF)], [mutt_cv_snprintf=yes])
 if test $mutt_cv_snprintf = yes; then
-	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS snprintf.o"
+	LIBOBJS="$LIBOBJS snprintf.o"
 	SNPRINTFOBJS="snprintf.o"
 fi
 AC_SUBST(SNPRINTFOBJS)
@@ -211,7 +209,6 @@ dnl AIX may not have fchdir()
 AC_CHECK_FUNCS(fchdir, [AC_DEFINE(HAVE_FCHDIR)], [mutt_cv_fchdir=no])
 
 
-dnl what about this macro? AM_WITH_REGEX
 mutt_cv_regex=yes
 AC_ARG_WITH(rx, [  --with-rx[=DIR]            Use GNU rx ],
 	[if test $withval != yes; then
@@ -232,7 +229,7 @@ if test $mutt_cv_regex = yes; then
 		LIBS="$LIBS ../rx-1.5/rx/librx.a"
 		CPPFLAGS="-I../rx-1.5/rx $CPPFLAGS"
 	else
-		MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS rx/librx.a"
+		LIBOBJS="$LIBOBJS rx/librx.a"
 		CPPFLAGS="-I\$(srcdir)/rx $CPPFLAGS"
 	fi
 	AC_DEFINE(USE_GNU_RX)
@@ -306,20 +303,27 @@ fi
 
 if test "x$mutt_cv_setgid" = "xyes" || test "x$mutt_cv_fchdir" = "xno"
 then
-	CPPFLAGS="$CPPFLAGS -DDL_STANDALONE -DDOTLOCK=\"\\\"\$(bindir)/mutt_dotlock\\\"\""
-	DOTLOCK_TARGET="mutt_dotlock"
+	CPPFLAGS="$CPPFLAGS -DDL_STANDALONE"
+	DOTLOCK_TARGET="dotlock"
+	DOTLOCK_INSTALL_TARGET="install.dotlock"
 else
-	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS dotlock.o"
+	LIBOBJS="$LIBOBJS dotlock.o"
 fi
 
 AC_SUBST(DOTLOCK_TARGET)
+AC_SUBST(DOTLOCK_INSTALL_TARGET)
+
 
 
 AC_ARG_WITH(libdir, [  --with-libdir=PATH       specify where to put arch dependent files],
 	[mutt_cv_libdir=$withval],
 	[ AC_CACHE_CHECK(where to put architecture-dependent files,
 		       mutt_cv_libdir,
-		[      mutt_cv_libdir="${mutt_cv_prefix}/lib/mutt" ])
+		[if test -d ${mutt_cv_prefix}/lib/misc; then
+			mutt_cv_libdir="${mutt_cv_prefix}/lib/misc"
+		else
+			mutt_cv_libdir="${mutt_cv_prefix}/lib"
+		fi])
 	])
 
 libdir=$mutt_cv_libdir
@@ -330,7 +334,11 @@ AC_ARG_WITH(sharedir, [  --with-sharedir=PATH       specify where to put arch in
 	[ AC_CACHE_CHECK(where to put architecture-independent data files,
 		       mutt_cv_sharedir,
 		[if test -d ${mutt_cv_prefix}/share; then
-			mutt_cv_sharedir="${mutt_cv_prefix}/share/mutt"
+			if test -d ${mutt_cv_prefix}/share/misc; then
+				mutt_cv_sharedir="${mutt_cv_prefix}/share/misc"
+			else
+				mutt_cv_sharedir="${mutt_cv_prefix}/share"
+			fi
 		else
 			mutt_cv_sharedir="$libdir"
 		fi])
@@ -338,7 +346,7 @@ AC_ARG_WITH(sharedir, [  --with-sharedir=PATH       specify where to put arch in
 
 sharedir=$mutt_cv_sharedir
 AC_SUBST(sharedir)
-AC_DEFINE_UNQUOTED(SHAREDIR, "$mutt_cv_sharedir")
+
 
 AC_ARG_WITH(docdir, [  --with-docdir=PATH       specify where to put the documentation],
 	[mutt_cv_docdir=$withval],
@@ -371,18 +379,20 @@ AC_ARG_WITH(domain, [  --with-domain=DOMAIN       Specify your DNS domain name ]
 		AC_DEFINE_UNQUOTED(DOMAIN, "$withval")
 	fi])
 
+AC_ARG_ENABLE(hidden-host, [  --enable-hidden-host       Only use the domain name for local addresses], AC_DEFINE(HIDDEN_HOST))
+
 AC_ARG_ENABLE(pop, [  --enable-pop               Enable POP3 support],
 [	AC_DEFINE(USE_POP)
 	AC_CHECK_LIB(socket, socket)
 	AC_CHECK_LIB(nsl, gethostbyname)
-	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS pop.o"
+	LIBOBJS="$LIBOBJS pop.o"
 ])
 
 AC_ARG_ENABLE(imap, [  --enable-imap              Enable IMAP support],
 [	AC_DEFINE(USE_IMAP)
 	AC_CHECK_LIB(socket, socket)
 	AC_CHECK_LIB(nsl, gethostbyname)
-	MUTT_LIB_OBJECTS="$MUTT_LIB_OBJECTS imap.o socket.o"
+	LIBOBJS="$LIBOBJS imap.o"
 ])
 
 AC_ARG_ENABLE(flock, [  --enable-flock             Use flock() to lock files],
@@ -433,11 +443,4 @@ AC_ARG_ENABLE(exact-address, [  --enable-exact-address     enable regeneration o
 		AC_DEFINE(EXACT_ADDRESS)
 	fi])
 
-AC_SUBST(MUTT_LIB_OBJECTS)
-
-AM_GNU_GETTEXT
-MUTTLOCALEDIR=$sharedir/locale
-AC_SUBST(MUTTLOCALEDIR)
-AC_DEFINE_UNQUOTED(MUTTLOCALEDIR, "$MUTTLOCALEDIR")
-
-AC_OUTPUT(Makefile intl/Makefile po/Makefile.in rx/Makefile Muttrc doc/Makefile doc/dotlock.man doc/mutt.man charsets/Makefile)
+AC_OUTPUT(Makefile rx/Makefile Muttrc doc/Makefile doc/dotlock.man doc/mutt.man)
