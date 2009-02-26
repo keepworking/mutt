@@ -129,16 +129,14 @@ around while editing are very similar to those of Emacs.
 ^D or <Delete>  delete-char     delete the char under the cursor
 ^E or <End>     eol             move to the end of the line
 ^F or <Right>   forward-char    move forward one char
-<Tab>           complete        complete filename or alias
 ^K              kill-eol        delete to the end of the line
-^T              complete-query  complete address with query
 ^U              kill-line       delete entire line
-^V              quote-char      quote the next typed key
 ^W              kill-word       kill the word in front of the cursor
 <Up>            history-up      recall previous string from history
 <Down>          history-down    recall next string from history
 <BackSpace>     backspace       kill the char in front of the cursor
 ^G              n/a             abort
+<Tab>           n/a             complete filename (only when prompting for a file)
 <Return>        n/a             finish editing
 </verb></tscreen>
 
@@ -177,10 +175,8 @@ o               change the current sort method
 O               reverse sort the mailbox
 q               save changes and exit
 s               save-message
-T               tag messages matching a pattern
 t               toggle the tag on a message
 ESC t           toggle tag on entire message thread
-U               undelete messages matching a pattern
 u               undelete-message
 v               view-attachments
 x               abort changes and exit
@@ -191,7 +187,8 @@ $               save changes to mailbox
 /               search
 ESC /           search-reverse
 ^L              clear and redraw the screen
-^T              untag messages matching a pattern
+^T              tag messages matching a pattern
+^U              undelete messages matching a pattern
 </verb></tscreen>
 
 <sect3>Status Flags
@@ -245,15 +242,10 @@ featureful.
 <Return>        go down one line
 <Space>         display the next page (or next message if at the end of a message)
 -               go back to the previous page
-n               search for next match
-S               skip beyond quoted text
-T               toggle display of quoted text
+n               display the next message
 ?               show keybindings
 /               search for a regular expression (pattern)
-ESC /           search backwards for a regular expression
 \               toggle search pattern coloring
-^               jump to the top of the message
-$               jump to the bottom of the message
 </verb></tscreen>
 
 In addition, many of the functions from the <em/index/ are available in
@@ -471,9 +463,7 @@ A	attach-message		attach message(s) to the message
 ESC k   attach-key              attach a PGP public key
 d       edit-description        edit description on attachment
 D       detach-file             detach a file
-t       edit-to                 edit the To field
-ESC f   edit-from               edit the From field
-r       edit-reply-to           edit the Reply-To field
+T       edit-to                 edit the To field
 c       edit-cc                 edit the Cc field
 b       edit-bcc                edit the Bcc field
 y       send-message            send the message
@@ -1171,7 +1161,7 @@ tools are another common reason for updated access times.
 the command is executed, so if these names contain <ref id="shortcuts"
 name="shortcut characters"> (such as ``='' and ``!''), any variable
 definition that affect these characters (like <ref id="folder"
-name="&dollar;folder"> and <ref id="spoolfile" name="&dollar;spool">)
+name="&dollar;folder"> and <ref id="spoolfile" name="&dollar;spoolfile">)
 should be executed before the <tt/mailboxes/ command.
 
 <sect1>User defined headers<label id="my_hdr">
@@ -1620,6 +1610,7 @@ messages:
 ~U              unread messages
 ~v		message is part of a collapsed thread.
 ~x EXPR         messages which contain EXPR in the `References' field
+~y EXPR         messages which contain EXPR in the `X-Label' field
 ~z [MIN]-[MAX]  messages with a size in the range MIN to MAX *)
 </verb></tscreen>
 
@@ -1878,7 +1869,7 @@ These shortcuts can be used anywhere you are prompted for a file or mailbox
 path.
 
 <itemize>
-<item>! -- refers to your <ref id="spoolfile" name="&dollar;spool"> (incoming) mailbox
+<item>! -- refers to your <ref id="spoolfile" name="&dollar;spoolfile"> (incoming) mailbox
 <item>&gt; -- refers to your <ref id="mbox" name="&dollar;mbox"> file
 <item>&lt; -- refers to your <ref id="record" name="&dollar;record"> file
 <item>- or !! -- refers to the file you've last visited
@@ -1953,6 +1944,16 @@ prompted as to whether or not you would like to use the address given in
 the ``Reply-To'' field, or reply directly to the address given in the
 ``From'' field.  When unset, the ``Reply-To'' field will be used when
 present.
+
+The ``X-Label:'' header field can be used to further identify mailing
+lists or list subject matter (or just to annotate messages
+individually).  The <ref id="index_format"
+name="&dollar;index&lowbar;format"> variable's ``&percnt;y'' and
+``&percnt;Y'' escapes can be used to expand ``X-Label:'' fields in the
+index, and Mutt's pattern-matcher can match regular expressions to
+``X-Label:'' fields with the ``~y'' selector.  ``X-Label:'' is not a
+standard message header field, but it can easily be inserted by procmail
+and other mail filtering agents.
 
 Lastly, Mutt has the ability to <ref id="sort" name="sort"> the mailbox into
 <ref id="threads" name="threads">.  A thread is a group of messages which all relate to the same
