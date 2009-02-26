@@ -409,7 +409,7 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
     if (fp)
     {
       fname = safe_strdup (a->filename);
-      mutt_sanitize_filename (fname, 1);
+      mutt_sanitize_filename (fname);
     }
     else
       fname = a->filename;
