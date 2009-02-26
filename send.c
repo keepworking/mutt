@@ -315,8 +315,7 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
 {
   char buffer[STRING];
   int chflags = CH_DECODE, cmflags = 0;
-
-
+  
 
 #ifdef _PGPPATH
   if ((cur->pgp & PGPENCRYPT) && option (OPTFORWDECODE))
@@ -337,7 +336,10 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
   {
     cmflags |= M_CM_DECODE;
     if (option (OPTFORWWEEDHEADER))
+    {
       chflags |= CH_WEED;
+      cmflags |= M_CM_WEED;
+    }
   }
   if (option (OPTFORWQUOTE))
     cmflags |= M_CM_PREFIX;
@@ -797,7 +799,13 @@ static int send_message (HEADER *msg)
   if ((tempfp = safe_fopen (tempfile, "w")) == NULL)
     return (-1);
 
-  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0);
+#ifdef MIXMASTER
+  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, msg->chain ? 1 : 0);
+#endif
+#ifndef MIXMASTER
+  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, 0);
+#endif
+  
   fputc ('\n', tempfp); /* tie off the header. */
 
   if ((mutt_write_mime_body (msg->content, tempfp) == -1))
@@ -813,6 +821,11 @@ static int send_message (HEADER *msg)
     unlink (tempfile);
     return (-1);
   }
+
+#ifdef MIXMASTER
+  if (msg->chain)
+    return mix_send_message (msg->chain, tempfile);
+#endif
 
   i = mutt_invoke_sendmail (msg->env->to, msg->env->cc, msg->env->bcc,
 		       tempfile, (msg->content->encoding == ENC8BIT));
