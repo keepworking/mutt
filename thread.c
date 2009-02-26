@@ -1,3 +1,4 @@
+
 /*
  * WORK IN PROGRESS ALERT: Daniel Eisenbud <daniel@math.berkeley.edu>
  * is currently working on this code.  Contact him before working on it!
@@ -27,40 +28,18 @@
 #include <string.h>
 #include <ctype.h>
 
-/* returns 1 if `a' is a descendant (child) of thread `b' */
-static int is_descendant (HEADER *a, HEADER *b)
-{
-  /* find the top parent of the thread */
-  while (a->parent)
-    a = a->parent;
-  return (a == b);
-}
-
 /* This function makes use of the fact that Mutt stores message references in
- * reverse order (i.e., last to first).  This is optiminal since we would like
- * to find the most recent message to which "cur" refers itself.  
- */
-
+   reverse order (i.e., last to first).  This is optiminal since we would like
+   to find the most recent message to which "cur" refers itself.  */
 static HEADER *find_reference (HEADER *cur, CONTEXT *ctx)
 {
   LIST *refs = cur->env->references;
-  HEADER *ptr;
+  void *ptr;
 
   for (; refs; refs = refs->next)
-  {
-    /* ups, this message is in a reference loop. bad. */
-    if (cur->env->message_id && !strcmp (cur->env->message_id, refs->data))
-      continue;
-    
     if ((ptr = hash_find (ctx->id_hash, refs->data)))
-    {
-      if (is_descendant (ptr, cur))
-	continue;
-
       return ptr;
-    }
-  }
-  
+
   return NULL;
 }
 
@@ -101,9 +80,7 @@ static int need_display_subject (CONTEXT *ctx, HEADER *tree)
 }
 
 /* determines whether a later sibling or the child of a later 
- * sibling is displayed.  
- */
-
+   sibling is displayed.  */
 static int is_next_displayed (CONTEXT *ctx, HEADER *tree)
 {
   int depth = 0;
@@ -154,8 +131,7 @@ void mutt_linearize_tree (CONTEXT *ctx, int linearize)
   HEADER **array = ctx->hdrs + (Sort & SORT_REVERSE ? ctx->msgcount - 1 : 0);
 
   /* A NULL tree should never be passed here, but may occur if there is
-   * a cycle.  
-   */
+     a cycle.  */
   if (!tree)
     return;
 
@@ -297,12 +273,18 @@ static void insert_message (HEADER **tree, HEADER *msg, sort_t *sortFunc)
   msg->next = NULL;
 }
 
+/* returns 1 if `a' is a descendant (child) of thread `b' */
+static int is_descendant (HEADER *a, HEADER *b)
+{
+  /* find the top parent of the thread */
+  while (a->parent)
+    a = a->parent;
+  return (a == b);
+}
 
 /* find the best possible match for a parent mesage based upon subject.
- * if there are multiple matches, the one which was sent the latest, but
- * before the current message, is used. 
- */
-
+   if there are multiple matches, the one which was sent the latest, but
+   before the current message, is used. */
 static HEADER *find_subject (CONTEXT *ctx, HEADER *cur)
 {
   struct hash_elem *ptr;
