@@ -155,9 +155,6 @@ void mutt_free_header (HEADER **h)
   mutt_free_body (&(*h)->content);
   safe_free ((void **) &(*h)->tree);
   safe_free ((void **) &(*h)->path);
-#ifdef MIXMASTER
-  mutt_free_list (&(*h)->chain);
-#endif
   safe_free ((void **) h);
 }
 
@@ -482,6 +479,7 @@ void mutt_free_envelope (ENVELOPE **p)
   rfc822_free_address (&(*p)->mail_followup_to);
   safe_free ((void **) &(*p)->subject);
   safe_free ((void **) &(*p)->message_id);
+  safe_free ((void **) &(*p)->supersedes);
   safe_free ((void **) &(*p)->date);
   mutt_free_list (&(*p)->references);
   mutt_free_list (&(*p)->userhdrs);
