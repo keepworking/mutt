@@ -12,7 +12,7 @@
 #undef MUTTLOCALEDIR
 
 /* Enable debugging info */
-#undef DEBUG
+#define DEBUG
 
 /* What is your domain name? */
 #undef DOMAIN
@@ -97,6 +97,9 @@
 
 /* The "buffy_size" feature */
 #undef BUFFY_SIZE
+
+/* The Sun mailtool attachments support */
+#undef SUN_ATTACHMENT 
 
 /* The result of isprint() is unreliable? */
 #undef LOCALES_HACK
