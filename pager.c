@@ -69,21 +69,13 @@
 #define CHECK_READONLY	if (Context->readonly) \
 			{ \
 				mutt_flushinp (); \
-				mutt_error _("Mailbox is read-only.");	\
+				mutt_error ("Mailbox is read-only.");	\
 				break; \
 			}
-
-#define CHECK_ATTACH if(option(OPTATTACHMSG)) \
-		     {\
-			mutt_flushinp (); \
-			mutt_error ("Function not permitted in attach-message mode."); \
-			break; \
-		     }
 
 struct q_class_t
 {
   int length;
-  int index;
   int color;
   char *prefix;
   struct q_class_t *next, *prev;
@@ -311,51 +303,6 @@ append_line (struct line_t *lineInfo, int n, int cnt)
 }
 
 static void
-new_class_color (struct q_class_t *class, int *q_level)
-{
-  class->index = (*q_level)++;
-  class->color = ColorQuote[class->index % ColorQuoteUsed];
-}
-
-static void
-shift_class_colors (struct q_class_t *QuoteList, struct q_class_t *new_class,
-		      int index, int *q_level)
-{
-  struct q_class_t * q_list;
-
-  q_list = QuoteList;
-  new_class->index = -1;
-
-  while (q_list)
-  {
-    if (q_list->index >= index)
-    {
-      q_list->index++;
-      q_list->color = ColorQuote[q_list->index % ColorQuoteUsed];
-    }
-    if (q_list->down)
-      q_list = q_list->down;
-    else if (q_list->next)
-      q_list = q_list->next;
-    else
-    {
-      while (!q_list->next)
-      {
-	q_list = q_list->up;
-	if (q_list == NULL)
-	  break;
-      }
-      if (q_list)
-	q_list = q_list->next;
-    }
-  }
-
-  new_class->index = index;
-  new_class->color = ColorQuote[index % ColorQuoteUsed];
-  (*q_level)++;
-}
-
-static void
 cleanup_quote (struct q_class_t **QuoteList)
 {
   struct q_class_t *ptr;
@@ -365,8 +312,7 @@ cleanup_quote (struct q_class_t **QuoteList)
     if ((*QuoteList)->down)
       cleanup_quote (&((*QuoteList)->down));
     ptr = (*QuoteList)->next;
-    if ((*QuoteList)->prefix)
-      safe_free ((void **) &(*QuoteList)->prefix);
+    safe_free ((void **) &(*QuoteList)->prefix);
     safe_free ((void **) QuoteList);
     *QuoteList = ptr;
   }
@@ -379,23 +325,9 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 		int length, int *force_redraw, int *q_level)
 {
   struct q_class_t *q_list = *QuoteList;
-  struct q_class_t *class = NULL, *tmp = NULL, *ptr, *save;
+  struct q_class_t *class = NULL, *tmp = NULL, *ptr;
   char *tail_qptr;
   int offset, tail_lng;
-  int index = -1;
-
-  if (ColorQuoteUsed <= 1)
-  {
-    /* not much point in classifying quotes... */
-
-    if (*QuoteList == NULL)
-    {
-      class = (struct q_class_t *) safe_calloc (1, sizeof (struct q_class_t));
-      class->color = ColorQuote[0];
-      *QuoteList = class;
-    }
-    return (*QuoteList);
-  }
 
   /* Did I mention how much I like emulating Lisp in C? */
 
@@ -404,14 +336,13 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
   {
     if (length <= q_list->length)
     {
-      /* case 1: check the top level nodes */
-
       if (strncmp (qptr, q_list->prefix, length) == 0)
       {
+	/* same prefix: return the current class */
 	if (length == q_list->length)
-	  return q_list;	/* same prefix: return the current class */
+	  return q_list;
 
-	/* found shorter prefix */
+	/* found shorter common prefix */
 	if (tmp == NULL)
 	{
 	  /* add a node above q_list */
@@ -419,6 +350,11 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	  tmp->prefix = (char *) safe_calloc (1, length + 1);
 	  strncpy (tmp->prefix, qptr, length);
 	  tmp->length = length;
+	  if (*q_level >= ColorQuoteUsed)
+	    *q_level = 1;
+	  else
+	    (*q_level)++;
+	  tmp->color = ColorQuote[(*q_level) - 1];
 
 	  /* replace q_list by tmp in the top level list */
 	  if (q_list->next)
@@ -436,7 +372,7 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	  tmp->down = q_list;
 	  q_list->up = tmp;
 
-	  /* q_list has no siblings for now */
+	  /* q_list has no siblings */
 	  q_list->next = NULL;
 	  q_list->prev = NULL;
 
@@ -444,23 +380,16 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	  if (q_list == *QuoteList)
 	    *QuoteList = tmp;
 
-	  index = q_list->index;
-
 	  /* tmp should be the return class too */
 	  class = tmp;
 
-	  /* next class to test; if tmp is a shorter prefix for another
-	   * node, that node can only be in the top level list, so don't
-	   * go down after this point
-	   */
+	  /* next class to test */
 	  q_list = tmp->next;
 	}
 	else
 	{
-	  /* found another branch for which tmp is a shorter prefix */
-
 	  /* save the next sibling for later */
-	  save = q_list->next;
+	  ptr = q_list->next;
 
 	  /* unlink q_list from the top level list */
 	  if (q_list->next)
@@ -469,22 +398,17 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	    q_list->prev->next = q_list->next;
 
 	  /* at this point, we have a tmp->down; link q_list to it */
-	  ptr = tmp->down;
-	  /* sibling order is important here, q_list should be linked last */
-	  while (ptr->next)
-	    ptr = ptr->next;
-	  ptr->next = q_list;
-	  q_list->next = NULL;
-	  q_list->prev = ptr;
+	  q_list->next = tmp->down;
+	  tmp->down->prev = q_list;
+	  q_list->prev = NULL;
+	  tmp->down = q_list;
 	  q_list->up = tmp;
 
-	  index = q_list->index;
-
-	  /* next class to test; as above, we shouldn't go down */
-	  q_list = save;
+	  /* next class to test */
+	  q_list = ptr;
 	}
 
-	/* we found a shorter prefix, so certain quotes have changed classes */
+	/* in both cases q_list points now to the next top-level node */
 	*force_redraw = 1;
 	continue;
       }
@@ -497,13 +421,10 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
     }
     else
     {
-      /* case 2: try subclassing the current top level node */
-      
-      /* tmp != NULL means we already found a shorter prefix at case 1 */
+      /* longer than the top level prefix: try subclassing it */
       if (tmp == NULL && strncmp (qptr, q_list->prefix, q_list->length) == 0)
       {
-	/* ok, it's a subclass somewhere on this branch */
-
+	/* ok, we may link it as a subclass */
 	ptr = q_list;
 	offset = q_list->length;
 
@@ -530,6 +451,11 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 		tmp->prefix = (char *) safe_calloc (1, length + 1);
 		strncpy (tmp->prefix, qptr, length);
 		tmp->length = length;
+		if (*q_level >= ColorQuoteUsed)
+		  *q_level = 1;
+		else
+		  (*q_level)++;
+		tmp->color = ColorQuote[(*q_level) - 1];
 			
 		/* replace q_list by tmp */
 		if (q_list->next)
@@ -554,8 +480,6 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 		q_list->next = NULL;
 		q_list->prev = NULL;
                               
-		index = q_list->index;
-
 		/* tmp should be the return class too */
 		class = tmp;
 
@@ -564,10 +488,8 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	      }
 	      else
 	      {
-		/* found another branch for which tmp is a shorter prefix */
-
 		/* save the next sibling for later */
-		save = q_list->next;
+		ptr = q_list->next;
 
 		/* unlink q_list from the top level list */
 		if (q_list->next)
@@ -576,21 +498,16 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 		  q_list->prev->next = q_list->next;
 
 		/* at this point, we have a tmp->down; link q_list to it */
-		ptr = tmp->down;
-		while (ptr->next)
-		  ptr = ptr->next;
-		ptr->next = q_list;
-		q_list->next = NULL;
-		q_list->prev = ptr;
+		q_list->next = tmp->down;
+		tmp->down->prev = q_list;
+		q_list->prev = NULL;
+		tmp->down = q_list;
 		q_list->up = tmp;
 
-		index = q_list->index;
-
 		/* next class to test */
-		q_list = save;
+		q_list = ptr;
 	      }
 
-	      /* we found a shorter prefix, so we need a redraw */
 	      *force_redraw = 1;
 	      continue;
 	    }
@@ -625,13 +542,18 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	  }
 	}
 
-	/* still not found so far: add it as a sibling to the current node */
+	/* if it's still not found so far we mai add it as a sibling */
 	if (class == NULL)
 	{
 	  tmp = (struct q_class_t *) safe_calloc (1, sizeof (struct q_class_t));
 	  tmp->prefix = (char *) safe_calloc (1, length + 1);
 	  strncpy (tmp->prefix, qptr, length);
 	  tmp->length = length;
+	  if (*q_level >= ColorQuoteUsed)
+	    *q_level = 1;
+	  else
+	    (*q_level)++;
+	  tmp->color = ColorQuote[(*q_level) - 1];
 
 	  if (ptr->down)
 	  {
@@ -640,18 +562,11 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 	  }
 	  ptr->down = tmp;
 	  tmp->up = ptr;
-
-	  new_class_color (tmp, q_level);
-
+	  
 	  return tmp;
 	}
 	else
-	{
-	  if (index != -1)
-	    shift_class_colors (*QuoteList, tmp, index, q_level);
-
 	  return class;
-	}
       }
       else
       {
@@ -669,7 +584,11 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
     class->prefix = (char *) safe_calloc (1, length + 1);
     strncpy (class->prefix, qptr, length);
     class->length = length;
-    new_class_color (class, q_level);
+    if (*q_level >= ColorQuoteUsed)
+      *q_level = 1;
+    else
+      (*q_level)++;
+    class->color = ColorQuote[(*q_level) - 1];
 
     if (*QuoteList)
     {
@@ -679,19 +598,16 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
     *QuoteList = class;
   }
 
-  if (index != -1)
-    shift_class_colors (*QuoteList, tmp, index, q_level);
-
   return class;
 }
 
 static void
-resolve_types (char *buf, struct line_t *lineInfo, int n, int last,
+resolve_types (const char *buf, struct line_t *lineInfo, int n, int last,
 		struct q_class_t **QuoteList, int *q_level, int *force_redraw,
 		int q_classify)
 {
   COLOR_LINE *color_line;
-  regmatch_t pmatch[1], smatch[1];
+  regmatch_t pmatch[1];
   int found, offset, null_rx, i;
 
   if (n == 0 || ISHEADER (lineInfo[n-1].type))
@@ -743,43 +659,14 @@ resolve_types (char *buf, struct line_t *lineInfo, int n, int last,
   }
   else if (check_sig (buf, lineInfo, n - 1) == 0)
     lineInfo[n].type = MT_COLOR_SIGNATURE;
-  else if (regexec ((regex_t *) QuoteRegexp.rx, buf, 1, pmatch, 0) == 0)
+  else if (regexec ((regex_t *) QuoteRegexp.rx, buf, 1, pmatch, 0) == 0 &&
+	    strncmp (buf, ">From ", 6))
   {
-    if (regexec ((regex_t *) Smileys.rx, buf, 1, smatch, 0) == 0)
-    {
-      if (smatch[0].rm_so > 0)
-      {
-	char c;
-
-	/* hack to avoid making an extra copy of buf */
-	c = buf[smatch[0].rm_so];
-	buf[smatch[0].rm_so] = 0;
-
-	if (regexec ((regex_t *) QuoteRegexp.rx, buf, 1, pmatch, 0) == 0)
-	{
-	  if (q_classify && lineInfo[n].quote == NULL)
-	    lineInfo[n].quote = classify_quote (QuoteList,
-				  buf + pmatch[0].rm_so,
-				  pmatch[0].rm_eo - pmatch[0].rm_so,
-				  force_redraw, q_level);
-	  lineInfo[n].type = MT_COLOR_QUOTED;
-	}
-	else
-	  lineInfo[n].type = MT_COLOR_NORMAL;
-
-	buf[smatch[0].rm_so] = c;
-      }
-      else
-	lineInfo[n].type = MT_COLOR_NORMAL;
-    }
-    else
-    {
-      if (q_classify && lineInfo[n].quote == NULL)
-	lineInfo[n].quote = classify_quote (QuoteList, buf + pmatch[0].rm_so,
-			      pmatch[0].rm_eo - pmatch[0].rm_so,
-			      force_redraw, q_level);
-      lineInfo[n].type = MT_COLOR_QUOTED;
-    }
+    if (q_classify && lineInfo[n].quote == NULL)
+      lineInfo[n].quote = classify_quote (QuoteList, buf + pmatch[0].rm_so,
+			     pmatch[0].rm_eo - pmatch[0].rm_so,
+			     force_redraw, q_level);
+     lineInfo[n].type = MT_COLOR_QUOTED;
   }
   else
     lineInfo[n].type = MT_COLOR_NORMAL;
@@ -1225,23 +1112,24 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     {
       if (buf[ch+2] == c)
       {
-	special = (c == '_' && last_special == A_UNDERLINE)
-	  ? A_UNDERLINE : A_BOLD;
+	special = A_BOLD;
+	last_special = 1;
 	ch += 2;
       }
       else if (buf[ch] == '_' || buf[ch+2] == '_')
       {
 	special = A_UNDERLINE;
+	last_special = 1;
 	ch += 2;
 	c = (buf[ch] == '_') ? buf[ch-2] : buf[ch];
       }
       else
       {
 	special = 0; /* overstrike: nothing to do! */
+	last_special = 0;
 	ch += 2;
 	c = buf[ch];
       }
-      last_special = special;
     }
 
     /* Handle ANSI sequences */
@@ -1354,29 +1242,14 @@ upNLines (int nlines, struct line_t *info, int cur, int hiding)
   return cur;
 }
 
-static struct mapping_t PagerHelp[] = {
-  { N_("Exit"),	OP_PAGER_EXIT },
-  { N_("PrevPg"),	OP_PREV_PAGE },
-  { N_("NextPg"), OP_NEXT_PAGE },
-  { NULL,	0 }
-};
-static struct mapping_t PagerHelpExtra[] = {
-  { N_("View Attachm."),	OP_VIEW_ATTACHMENTS },
-  { N_("Del"),	OP_DELETE },
-  { N_("Reply"),	OP_REPLY },
-  { N_("Next"),	OP_MAIN_NEXT_UNDELETED },
-  { NULL,	0 }
-};
-
-
-
 /* This pager is actually not so simple as it once was.  It now operates in
    two modes: one for viewing messages and the other for viewing help.  These
    can be distinguished by whether or not ``hdr'' is NULL.  The ``hdr'' arg
    is there so that we can do operations on the current message without the
    need to pop back out to the main-menu.  */
 int 
-mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
+mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra,
+            const char *attach_msg_status /* invoked while attaching a message */)
 {
   static char searchbuf[STRING];
   char buffer[LONG_STRING];
@@ -1407,6 +1280,20 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
   int indicator = indexlen / 3; 	/* the indicator line of the PI */
   int old_PagerIndexLines;		/* some people want to resize it
   					 * while inside the pager... */
+
+  static struct mapping_t PagerHelp[] = {
+    { "Exit",	OP_PAGER_EXIT },
+    { "PrevPg",	OP_PREV_PAGE },
+    { "NextPg  ", OP_NEXT_PAGE },
+    { NULL,	0 }
+  };
+  static struct mapping_t PagerHelpExtra[] = {
+    { "Attach",	OP_VIEW_ATTACHMENTS },
+    { "Del",	OP_DELETE },
+    { "Reply",	OP_REPLY },
+    { "Next  ",	OP_MAIN_NEXT_UNDELETED },
+    { NULL,	0 }
+  };
 
   do_color = do_color ? M_SHOWCOLOR : M_SHOWFLAT;
 
@@ -1446,13 +1333,11 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
   if (IsHeader (extra))
   {
     mutt_compile_help (buffer, sizeof (buffer), MENU_PAGER, PagerHelpExtra);
-    strcat (helpstr, "  ");
     strcat (helpstr, buffer);
   }
   if (!InHelp)
   {
-    mutt_make_help (buffer, sizeof (buffer), _("Help"), MENU_PAGER, OP_HELP);
-    strcat (helpstr, "  ");
+    mutt_make_help (buffer, sizeof (buffer), "Help", MENU_PAGER, OP_HELP);
     strcat (helpstr, buffer);
   }
 
@@ -1599,7 +1484,10 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
       menu_redraw_current (index);
 
       /* print out the index status bar */
-      menu_status_line (buffer, sizeof (buffer), index, NONULL(Status));
+      if (*attach_msg_status)
+	 snprintf (buffer, sizeof (buffer), M_MODEFMT, attach_msg_status);
+      else
+	menu_status_line (buffer, sizeof (buffer), index, NONULL(Status));
  
       move (indexoffset + (option (OPTSTATUSONTOP) ? 0 : (indexlen - 1)), 0);
       SETCOLOR (MT_COLOR_STATUS);
@@ -1678,7 +1566,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	else if (option (OPTPAGERSTOP))
 	{
 	  /* emulate "less -q" and don't go on to the next message. */
-	  mutt_error _("Bottom of message is shown.");
+	  mutt_error ("Bottom of message is shown.");
 	}
 	else
 	{
@@ -1694,7 +1582,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	  topline = upNLines (bodylen-PagerContext, lineInfo, topline, hideQuoted);
 	}
 	else
-	  mutt_error _("Top of message is shown.");
+	  mutt_error ("Top of message is shown.");
 	break;
 
       case OP_NEXT_LINE:
@@ -1709,14 +1597,14 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	  }
 	}
 	else
-	  mutt_error _("Bottom of message is shown.");
+	  mutt_error ("Bottom of message is shown.");
 	break;
 
       case OP_PREV_LINE:
 	if (topline)
 	  topline = upNLines (1, lineInfo, topline, hideQuoted);
 	else
-	  mutt_error _("Top of message is shown.");
+	  mutt_error ("Top of message is shown.");
 	break;
 
       case OP_PAGER_TOP:
@@ -1727,7 +1615,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	if (topline)
 	  topline = upNLines (bodylen/2, lineInfo, topline, hideQuoted);
 	else
-	  mutt_error _("Top of message is shown.");
+	  mutt_error ("Top of message is shown.");
 	break;
 
       case OP_HALF_DOWN:
@@ -1738,7 +1626,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	else if (option (OPTPAGERSTOP))
 	{
 	  /* emulate "less -q" and don't go on to the next message. */
-	  mutt_error _("Bottom of message is shown.");
+	  mutt_error ("Bottom of message is shown.");
 	}
 	else
 	{
@@ -1766,7 +1654,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	    if (i < lastLine)
 	      topline = i;
 	    else
-	      mutt_error _("Not found.");
+	      mutt_error ("Not found.");
 	  }
 	  else
 	  {
@@ -1782,7 +1670,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	    if (i >= 0)
 	      topline = i;
 	    else
-	      mutt_error _("Not found.");
+	      mutt_error ("Not found.");
 	  }
 
 	  if (lineInfo[topline].search_cnt > 0)
@@ -1800,9 +1688,9 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	else if (ch == OP_SEARCH_REVERSE)
 	  SearchBack = 1;
 
-	if (mutt_get_field ((SearchBack ? _("Reverse search: ") :
-			  _("Search: ")), searchbuf, sizeof (searchbuf),
-			  M_CLEAR) != 0 || !searchbuf[0])
+	if (mutt_get_field ((SearchBack ? "Reverse search: " : "Search: "), 
+			  searchbuf, sizeof (searchbuf), M_CLEAR) != 0 || 
+			  !searchbuf[0])
 	  break;
 
 	if (SearchCompiled)
@@ -1869,7 +1757,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	  if (lineInfo[topline].search_cnt == 0)
 	  {
 	    SearchFlag = 0;
-	    mutt_error _("Not found.");
+	    mutt_error ("Not found.");
 	  }
 	  else
 	    SearchFlag = M_SEARCH;
@@ -1895,7 +1783,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	  InHelp = 0;
 	}
 	else
-	  mutt_error _("Help is currently being shown.");
+	  mutt_error ("Help is currently being shown.");
 	break;
 
       case OP_PAGER_HIDE_QUOTED:
@@ -1924,7 +1812,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
 	  if (dretval < 0)
 	  {
-	    mutt_error _("No more quoted text.");
+	    mutt_error ("No more quoted text.");
 	    break;
 	  }
 
@@ -1937,7 +1825,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
 	  if (dretval < 0)
 	  {
-	    mutt_error _("No more unquoted text after quoted text.");
+	    mutt_error ("No more unquoted text after quoted text.");
 	    break;	  
 	  }
 	  topline = new_topline;
@@ -1957,7 +1845,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	  topline = upNLines (bodylen, lineInfo, lastLine, hideQuoted);
 	}
 	else
-	  mutt_error _("Bottom of message is shown.");
+	  mutt_error ("Bottom of message is shown.");
 	break;
 
       case OP_REDRAW:
@@ -1976,8 +1864,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       case OP_BOUNCE_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
-        ci_bounce_message (extra->hdr, &redraw);
+	ci_bounce_message (extra->hdr, &redraw);
 	break;
 
       case OP_CREATE_ALIAS:
@@ -2032,7 +1919,6 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	old_markers = option (OPTMARKERS);
 	old_PagerIndexLines = PagerIndexLines;
 
-	CurrentMenu = MENU_PAGER;
 	mutt_enter_command ();
 
 	if (option (OPTNEEDRESORT))
@@ -2124,7 +2010,6 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	  mutt_pipe_attachment_list (extra->fp, 0, extra->bdy, 0);
 	else
 	  mutt_pipe_message (extra->hdr);
-	MAYBE_REDRAW (redraw);
 	break;
 
       case OP_PRINT:
@@ -2134,49 +2019,40 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       case OP_MAIL:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;      
 	ci_send_message (0, NULL, NULL, NULL, NULL);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_REPLY:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;      
 	ci_send_message (SENDREPLY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_RECALL_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDPOSTPONED, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_GROUP_REPLY:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDREPLY | SENDGROUPREPLY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_LIST_REPLY:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDREPLY | SENDLISTREPLY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_FORWARD_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDFORWARD, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
-#ifdef _PGPPATH      
-      case OP_DECRYPT_SAVE:
-#endif
       case OP_SAVE:
 	if (IsAttach (extra))
 	{
@@ -2187,26 +2063,11 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
       case OP_COPY_MESSAGE:
       case OP_DECODE_SAVE:
       case OP_DECODE_COPY:
-#ifdef _PGPPATH
-      case OP_DECRYPT_COPY:
-#endif
 	CHECK_MODE(IsHeader (extra));
 	if (mutt_save_message (extra->hdr,
-#ifdef _PGPPATH
-			       (ch == OP_DECRYPT_SAVE) ||
-#endif			       
-			       (ch == OP_SAVE) || (ch == OP_DECODE_SAVE),
-			       (ch == OP_DECODE_SAVE) || (ch == OP_DECODE_COPY),
-#ifdef _PGPPATH
-			       (ch == OP_DECRYPT_SAVE) || (ch == OP_DECRYPT_COPY),
-#else
-			       0,
-#endif
-			       &redraw) == 0 && (ch == OP_SAVE || ch == OP_DECODE_SAVE
-#ifdef _PGPPATH
-						 || ch == OP_DECRYPT_SAVE
-#endif
-						 ))
+			       (ch == OP_SAVE || ch == OP_DECODE_SAVE),
+			       (ch == OP_DECODE_SAVE || ch == OP_DECODE_COPY),
+			       &redraw) == 0 && (ch == OP_SAVE || ch == OP_DECODE_SAVE))
 	{
 	  if (option (OPTRESOLVE))
 	  {
@@ -2309,7 +2170,6 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       case OP_MAIL_KEY:
 	CHECK_MODE(IsHeader(extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDKEY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
