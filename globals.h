@@ -118,7 +118,6 @@ WHERE LIST *AutoViewList INITVAL(0);
 WHERE LIST *AlternativeOrderList INITVAL(0);
 WHERE LIST *HeaderOrderList INITVAL(0);
 WHERE LIST *Ignore INITVAL(0);
-WHERE LIST *MimeLookupList INITVAL(0);
 WHERE LIST *UnIgnore INITVAL(0);
 WHERE LIST *MailLists INITVAL(0);
 WHERE LIST *SubscribedLists INITVAL(0);
@@ -196,8 +195,5 @@ extern const char *Months[];
 #include "sort.h"
 #ifdef HAVE_PGP
 #include "pgp.h"
-#endif
-#ifdef HAVE_SMIME
-#include "smime.h"
 #endif
 #endif /* MAIN_C */

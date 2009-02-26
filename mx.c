@@ -30,10 +30,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 #ifdef USE_IMAP
 #include "imap.h"
 #endif
@@ -750,8 +746,6 @@ void mx_fastclose_mailbox (CONTEXT *ctx)
   if (ctx->magic == M_POP)
     pop_close_mailbox (ctx);
 #endif /* USE_POP */
-  if (ctx->subj_hash)
-    hash_destroy (&ctx->subj_hash, NULL);
   if (ctx->id_hash)
     hash_destroy (&ctx->id_hash, NULL);
   mutt_clear_threads (ctx);
@@ -1095,8 +1089,6 @@ void mx_update_tables(CONTEXT *ctx, int committing)
 		      ctx->hdrs[i]->content->offset -
 		      ctx->hdrs[i]->content->hdr_offset);
       /* remove message from the hash tables */
-      if (ctx->subj_hash && ctx->hdrs[i]->env->real_subj)
-	hash_delete (ctx->subj_hash, ctx->hdrs[i]->env->real_subj, ctx->hdrs[i], NULL);
       if (ctx->id_hash && ctx->hdrs[i]->env->message_id)
 	hash_delete (ctx->id_hash, ctx->hdrs[i]->env->message_id, ctx->hdrs[i], NULL);
       mutt_free_header (&ctx->hdrs[i]);
@@ -1360,9 +1352,8 @@ int mx_check_mailbox (CONTEXT *ctx, int *index_hint, int lock)
 
 
       case M_MH:
-	return (mh_check_mailbox (ctx, index_hint));
       case M_MAILDIR:
-	return (maildir_check_mailbox (ctx, index_hint));
+	return (mh_check_mailbox (ctx, index_hint));
 
 #ifdef USE_IMAP
       case M_IMAP:
@@ -1575,10 +1566,10 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     /* NOTE: this _must_ be done before the check for mailcap! */
-    h->security = crypt_query (h->content);
-#endif /* HAVE_PGP || HAVE_SMIME */
+    h->pgp = pgp_query (h->content);
+#endif /* HAVE_PGP */
 
     if (!ctx->pattern)
     {
@@ -1610,8 +1601,6 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
     /* add this message to the hash tables */
     if (ctx->id_hash && h->env->message_id)
       hash_insert (ctx->id_hash, h->env->message_id, h, 0);
-    if (ctx->subj_hash && h->env->real_subj)
-      hash_insert (ctx->subj_hash, h->env->real_subj, h, 1);
 
     if (option (OPTSCORE)) 
       mutt_score_message (ctx, h, 0);
