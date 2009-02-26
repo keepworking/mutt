@@ -28,10 +28,6 @@
 #include "pgp.h"
 #endif /* HAVE_PGP */
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif /* HAVE_SMIME */
-
 
 
 #include <string.h>
@@ -940,9 +936,11 @@ void mutt_parse_mime_message (CONTEXT *ctx, HEADER *cur)
   {
     mutt_parse_part (msg->fp, cur->content);
 
-#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
-    cur->security = crypt_query (cur->content);
-#endif
+
+#ifdef HAVE_PGP
+    cur->pgp = pgp_query (cur->content);
+#endif /* HAVE_PGP */
+
 
     mx_close_message (&msg);
   }
@@ -1065,14 +1063,6 @@ int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short
     {
       if (hdr)
 	hdr->lines = atoi (p);
-
-      /* 
-       * HACK - mutt has, for a very short time, produced negative
-       * Lines header values.  Ignore them. 
-       */
-      if (hdr->lines < 0)
-	hdr->lines = 0;
-
       matched = 1;
     }
     break;
