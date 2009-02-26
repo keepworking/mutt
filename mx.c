@@ -54,8 +54,14 @@
 #include <utime.h>
 #endif
 
+/* HP-UX and ConvexOS don't have this macro */
+#ifndef S_ISLNK
+#define S_ISLNK(x) (((x) & S_IFMT) == S_IFLNK ? 1 : 0)
+#endif
 
-#define mutt_is_spool(s)  (strcmp (NONULL(Spoolfile), s) == 0)
+#define mutt_is_spool(s)  (strcmp (Spoolfile, s) == 0)
+
+#define MAXLOCKATTEMPT 5
 
 #ifdef USE_DOTLOCK
 /* parameters: 
@@ -63,18 +69,19 @@
  * retry - should retry if unable to lock?
  */
 
-#ifdef DL_STANDALONE
+#define DL_FL_TRY	(1 << 0)
+#define DL_FL_UNLOCK	(1 << 1)
+#define DL_FL_USEPRIV	(1 << 2)
+#define DL_FL_FORCE	(1 << 3)
+#define DL_FL_RETRY	(1 << 4)
 
 static int invoke_dotlock(const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
-  char *f;
   
   if(flags & DL_FL_RETRY)
     snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
-  
-  f = mutt_quote_filename(path);
   
   snprintf(cmd, sizeof(cmd),
 	   "%s %s%s%s%s%s%s",
@@ -84,18 +91,10 @@ static int invoke_dotlock(const char *path, int flags, int retry)
 	   flags & DL_FL_USEPRIV ? "-p " : "",
 	   flags & DL_FL_FORCE ? "-f " : "",
 	   flags & DL_FL_RETRY ? r : "",
-	   f);
-  
-  FREE(&f);
+	   path);
 
   return mutt_system(cmd);
 }
-
-#else 
-
-#define invoke_dotlock dotlock_invoke
-
-#endif
 
 static int dotlock_file (const char *path, int retry)
 {
@@ -105,20 +104,17 @@ static int dotlock_file (const char *path, int retry)
   if(retry) retry = 1;
 
 retry_lock:
-  mutt_clear_error();
+  mutt_message("Trying to lock %s...", path);
   if((r = invoke_dotlock(path, flags, retry)) == DL_EX_EXIST)
   {
-    char msg[LONG_STRING];
-
-    snprintf(msg, sizeof(msg), "Lock count exceeded, remove lock for %s?",
-	     path);
-    if(retry && mutt_yesorno(msg, 1) == 1)
+    if(retry && mutt_yesorno("Lock count exceeded, remove lock?", 1) == 1)
     {
       flags |= DL_FL_FORCE;
       retry--;
       goto retry_lock;
     }
   }
+  mutt_clear_error();
   return (r == DL_EX_OK ? 0 : -1);
 }
 
@@ -171,7 +167,7 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
       prev_sb = sb;
 
     /* only unlock file if it is unchanged */
-    if (prev_sb.st_size == sb.st_size && ++count >= (timeout?MAXLOCKATTEMPT:0))
+    if (prev_sb.st_size == sb.st_size && ++count >= timeout?MAXLOCKATTEMPT:0)
     {
       if (timeout)
 	mutt_error ("Timeout exceeded while attempting fcntl lock!");
@@ -205,7 +201,7 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
       prev_sb=sb;
 
     /* only unlock file if it is unchanged */
-    if (prev_sb.st_size == sb.st_size && ++count >= (timeout?MAXLOCKATTEMPT:0))
+    if (prev_sb.st_size == sb.st_size && ++count >= timeout?MAXLOCKATTEMPT:0)
     {
       if (timeout)
 	mutt_error ("Timeout exceeded while attempting flock lock!");
@@ -293,7 +289,7 @@ FILE *mx_open_file_lock (const char *path, const char *mode)
 
 #ifdef USE_IMAP
 
-int mx_is_imap(const char *p)
+static int mx_is_imap(const char *p)
 {
   return p && (*p == '{');
 }
@@ -316,6 +312,7 @@ int mx_get_magic (const char *path)
   {
     dprint (1, (debugfile, "mx_get_magic(): unable to stat %s: %s (errno %d).\n",
 		path, strerror (errno), errno));
+    mutt_perror (path);
     return (-1);
   }
 
@@ -536,7 +533,6 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
   ctx->path = safe_strdup (path);
 
   ctx->msgnotreadyet = -1;
-  ctx->collapsed = 0;
   
   if (flags & M_QUIET)
     ctx->quiet = 1;
@@ -555,22 +551,19 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
     return ctx;
   }
 
-  ctx->magic = mx_get_magic (path);
-  
-  if(ctx->magic == 0)
-    mutt_error ("%s is not a mailbox.", path);
-
-  if(ctx->magic == -1)
-    mutt_perror(path);
-  
-  if(ctx->magic <= 0)
+  switch (ctx->magic = mx_get_magic (path))
   {
-    mx_fastclose_mailbox (ctx);
-    if (!pctx)
-      FREE (&ctx);
-    return (NULL);
+    case 0:
+      mutt_error ("%s is not a mailbox.", path);
+      /* fall through */
+
+    case -1:
+      mx_fastclose_mailbox (ctx);
+      if (!pctx)
+	free (ctx);
+      return (NULL);
   }
-  
+
   /* if the user has a `push' command in their .muttrc, or in a folder-hook,
    * it will cause the progress messages not to be displayed because
    * mutt_refresh() will think we are in the middle of a macro.  so set a
@@ -743,7 +736,7 @@ int mx_close_mailbox (CONTEXT *ctx)
     }
     else
     {
-      strfcpy (mbox, NONULL(Inbox), sizeof (mbox));
+      strfcpy (mbox, Inbox, sizeof (mbox));
       isSpool = mutt_is_spool (ctx->path) && !mutt_is_spool (mbox);
     }
     mutt_expand_path (mbox, sizeof (mbox));
@@ -821,7 +814,7 @@ int mx_close_mailbox (CONTEXT *ctx)
 
   if (ctx->msgcount == ctx->deleted &&
       (ctx->magic == M_MMDF || ctx->magic == M_MBOX) &&
-      !mutt_is_spool(ctx->path) && !option (OPTSAVEEMPTY))
+      strcmp (ctx->path, Spoolfile) != 0 && !option (OPTSAVEEMPTY))
     unlink (ctx->path);
 
   mx_fastclose_mailbox (ctx);
@@ -889,7 +882,7 @@ int mx_sync_mailbox (CONTEXT *ctx)
 
     if (ctx->msgcount == ctx->deleted &&
 	(ctx->magic == M_MBOX || ctx->magic == M_MMDF) &&
-	!mutt_is_spool(ctx->path) && !option (OPTSAVEEMPTY))
+	strcmp (ctx->path, Spoolfile) != 0 && !option (OPTSAVEEMPTY))
     {
       unlink (ctx->path);
       mx_fastclose_mailbox (ctx);
@@ -953,9 +946,7 @@ int mx_sync_mailbox (CONTEXT *ctx)
 #undef this_body
     ctx->msgcount = j;
 
-    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, 1); /* rethread from scratch */
-    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (rc);
@@ -1090,7 +1081,7 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
     if (dest->magic == M_MMDF)
       fputs (MMDF_SEP, msg->fp);
 
-    if ((msg->magic != M_MAILDIR) && ((msg->magic != M_MH) && msg->magic != M_IMAP) && 
+    if ((msg->magic != M_MAILDIR) && (msg->magic != M_IMAP) && 
 	(flags & M_ADD_FROM))
     {
       if (hdr)
@@ -1109,7 +1100,7 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
       else
 	t = time (NULL);
 
-      fprintf (msg->fp, "From %s %s", p ? p->mailbox : NONULL(Username), ctime (&t));
+      fprintf (msg->fp, "From %s %s", p ? p->mailbox : Username, ctime (&t));
     }
   }
   else
@@ -1345,7 +1336,8 @@ MESSAGE *mx_open_message (CONTEXT *ctx, int msgno)
 	  mutt_perror (path);
 	  dprint (1, (debugfile, "mx_open_message: fopen: %s: %s (errno %d).\n",
 		      path, strerror (errno), errno));
-	  FREE (&msg);
+	  free (msg);
+	  msg = NULL;
 	}
       }
       break;
@@ -1353,14 +1345,17 @@ MESSAGE *mx_open_message (CONTEXT *ctx, int msgno)
 #ifdef USE_IMAP
     case M_IMAP:
       if (imap_fetch_message (msg, ctx, msgno) != 0)
-	FREE (&msg);
+      {
+	free (msg);
+	msg = NULL;
+      }
       break;
 #endif /* USE_IMAP */
 
     default:
 
       dprint (1, (debugfile, "mx_open_message(): function not implemented for mailbox type %d.\n", ctx->magic));
-      FREE (&msg);
+      safe_free ((void **) &msg);
       break;
   }
   return (msg);
@@ -1407,7 +1402,8 @@ int mx_close_message (MESSAGE **msg)
       break;
   }
 
-  FREE (msg);
+  free (*msg);
+  *msg = NULL;
   return (r);
 }
 
