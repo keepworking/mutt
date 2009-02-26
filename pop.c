@@ -82,7 +82,7 @@ void mutt_fetchPopMail (void)
   struct hostent *he;
   char buffer[2048];
   char msgbuf[SHORT_STRING];
-  int s, i, delanswer, last = 0, msgs, bytes, err = 0;
+  int s, i, last = 0, msgs, bytes, err = 0;
   CONTEXT ctx;
   MESSAGE *msg = NULL;
 
@@ -133,7 +133,7 @@ void mutt_fetchPopMail (void)
   if (mutt_strncmp (buffer, "+OK", 3) != 0)
   {
     mutt_remove_trailing_ws (buffer);
-    mutt_error (buffer);
+    mutt_error ("%s", buffer);
     goto finish;
   }
 
@@ -146,7 +146,7 @@ void mutt_fetchPopMail (void)
   if (mutt_strncmp (buffer, "+OK", 3) != 0)
   {
     mutt_remove_trailing_ws (buffer);
-    mutt_error (buffer);
+    mutt_error ("%s", buffer);
     goto finish;
   }
   
@@ -163,7 +163,7 @@ void mutt_fetchPopMail (void)
     
     safe_free((void **) &PopPass); /* void the given password */
     mutt_remove_trailing_ws (buffer);
-    mutt_error (buffer[0] ? buffer : _("Server closed connection!"));
+    mutt_error ("%s", buffer[0] ? buffer : _("Server closed connection!"));
     goto finish;
   }
   
@@ -176,7 +176,7 @@ void mutt_fetchPopMail (void)
   if (mutt_strncmp (buffer, "+OK", 3) != 0)
   {
     mutt_remove_trailing_ws (buffer);
-    mutt_error (buffer);
+    mutt_error ("%s", buffer);
     goto finish;
   }
   
@@ -204,10 +204,7 @@ void mutt_fetchPopMail (void)
       /* ignore an error here and assume all messages are new */
       last = 0;
   }
-
-  if (msgs - last)
-    delanswer = query_quadoption(OPT_POPDELETE, _("Delete messages from server?"));
-
+  
   snprintf (msgbuf, sizeof (msgbuf),
 	    msgs > 1 ? _("Reading new messages (%d bytes)...") :
 		    _("Reading new message (%d bytes)..."), bytes);
@@ -227,7 +224,7 @@ void mutt_fetchPopMail (void)
     if (mutt_strncmp (buffer, "+OK", 3) != 0)
     {
       mutt_remove_trailing_ws (buffer);
-      mutt_error (buffer);
+      mutt_error ("%s", buffer);
       break;
     }
 
@@ -290,7 +287,7 @@ void mutt_fetchPopMail (void)
     if (err)
       break;
 
-    if (delanswer == M_YES)
+    if (option (OPTPOPDELETE))
     {
       /* delete the message on the server */
       snprintf (buffer, sizeof(buffer), "dele %d\r\n", i);
@@ -302,16 +299,16 @@ void mutt_fetchPopMail (void)
       {
 	err = 1;
         mutt_remove_trailing_ws (buffer);
-	mutt_error (buffer);
+	mutt_error ("%s", buffer);
 	break;
       }
     }
+    
+    if ( msgs > 1)
+      mutt_message (_("%s [%d of %d messages read]"), msgbuf, i, msgs);
+    else
+      mutt_message (_("%s [%d message read]"), msgbuf, msgs);
 
-	if ( msgs > 1)
-		mutt_message (_("%s [%d of %d messages read]"), msgbuf, i, msgs);
-	else
-		mutt_message (_("%s [%d message read]"), msgbuf, msgs);
-  
   }
 
   if (msg)
