@@ -246,6 +246,7 @@ enum
   OPT_VERIFYSIG, /* verify PGP signatures */
 #endif
 
+  OPT_USEMAILCAP,
   OPT_PRINT,
   OPT_INCLUDE,
   OPT_DELETE,
@@ -301,7 +302,6 @@ enum
   OPTHELP,
   OPTHIDDENHOST,
   OPTIGNORELISTREPLYTO,
-  OPTIMPLICITAUTOVIEW,
   OPTMARKERS,
   OPTMARKOLD,
   OPTMENUSCROLL,	/* scroll menu instead of implicit next-page */
@@ -463,6 +463,7 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
+  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
@@ -520,6 +521,7 @@ typedef struct header
 #endif
 
   unsigned int mime : 1;    /* has a Mime-Version header? */
+  unsigned int mailcap : 1; /* requires mailcap to display? */
   unsigned int flagged : 1; /* marked important? */
   unsigned int tagged : 1;
   unsigned int deleted : 1;
