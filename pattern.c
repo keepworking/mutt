@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-9 Michael R. Elkins <me@cs.hmc.edu>, and others
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -143,7 +143,6 @@ msg_search (CONTEXT *ctx, regex_t *rx, char *buf, size_t blen, int op, int msgno
       /* decode the header / body */
       memset (&s, 0, sizeof (s));
       s.fpin = msg->fp;
-      s.flags = M_CHARCONV;
       mutt_mktemp (tempfile);
       if ((s.fpout = safe_fopen (tempfile, "w+")) == NULL)
       {
@@ -1140,10 +1139,10 @@ int mutt_search_command (int cur, int op)
 	return i;
     }
 
-    if (SigInt)
+    if (Signals & S_INTERRUPT)
     {
       mutt_error _("Search interrupted.");
-      SigInt;
+      Signals &= ~S_INTERRUPT;
       return (-1);
     }
 
