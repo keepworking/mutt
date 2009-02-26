@@ -593,8 +593,7 @@ _mutt_append_message (CONTEXT *dest, FILE *fpin, CONTEXT *src, HEADER *hdr,
     chflags |= CH_FROM;
   chflags |= (dest->magic == M_MAILDIR ? CH_NOSTATUS : CH_UPDATE);
   r = _mutt_copy_message (msg->fp, fpin, hdr, body, flags, chflags);
-  if (mx_close_message (&msg) != 0)
-    return (-1);
+  mx_close_message (&msg);
   return r;
 }
 

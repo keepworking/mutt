@@ -108,7 +108,10 @@ const char *mutt_attach_fmt (
 	const char *elsestring,
 	unsigned long data,
 	format_flag flags);
+const char *mutt_stristr (const char *, const char *);
 
+
+char *mutt_charset_hook (const char *);
 char *mutt_expand_path (char *, size_t);
 char *mutt_find_hook (int, const char *);
 char *mutt_gen_msgid (void);
@@ -177,11 +180,12 @@ void mutt_remove_trailing_ws (char *);
 void mutt_query_exit (void);
 void mutt_query_menu (char *, size_t);
 void mutt_safe_path (char *s, size_t l, ADDRESS *a);
-void mutt_sanitize_filename (char *, short);
+void mutt_sanitize_filename (char *);
 void mutt_save_path (char *s, size_t l, ADDRESS *a);
 void mutt_score_message (HEADER *);
 void mutt_select_fcc (char *, size_t, HEADER *);
-void mutt_select_file (char *, size_t, int);
+#define mutt_select_file(A,B,C) _mutt_select_file(A,B,C,0,NULL,NULL)
+void _mutt_select_file (char *, size_t, int, int, char ***, int *);
 void mutt_send_hook (HEADER *);
 void mutt_set_flag (CONTEXT *, HEADER *, int, int);
 void mutt_set_followup_to (ENVELOPE *);
@@ -225,9 +229,12 @@ int mutt_decode_save_attachment (FILE *, BODY *, char *, int, int);
 int mutt_display_message (HEADER *h);
 int mutt_edit_attachment(BODY *);
 int mutt_prepare_edit_message(CONTEXT *, HEADER *, HEADER *);
-int mutt_enter_fname (const char *, char *, size_t, int *, int);
-int mutt_enter_string (unsigned char *, size_t, int, int, int);
-int mutt_get_field (char *, char *, size_t, int);
+#define mutt_enter_fname(A,B,C,D,E) _mutt_enter_fname(A,B,C,D,E,0,NULL,NULL)
+int _mutt_enter_fname (const char *, char *, size_t, int *, int, int, char ***, int *);
+#define mutt_enter_string(A,B,C,D,E) _mutt_enter_string(A,B,C,D,E,0,NULL,NULL)
+int _mutt_enter_string (unsigned char *, size_t, int, int, int, int, char ***, int *);
+#define mutt_get_field(A,B,C,D) _mutt_get_field(A,B,C,D,0,NULL,NULL)
+int _mutt_get_field (char *, char *, size_t, int, int, char ***, int *);
 int mutt_get_password (char *, char *, size_t);
 int mutt_get_postponed (CONTEXT *, HEADER *, HEADER **, char *, size_t);
 int mutt_get_tmp_attachment (BODY *);
@@ -277,7 +284,7 @@ int mutt_which_case (const char *);
 int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int, char *);
 int mutt_write_mime_body (BODY *, FILE *);
 int mutt_write_mime_header (BODY *, FILE *);
-int mutt_write_rfc822_header (FILE *, ENVELOPE *, BODY *, int);
+int mutt_write_rfc822_header (FILE *, ENVELOPE *, BODY *, int, int);
 int mutt_yesorno (const char *, int);
 void mutt_set_header_color(CONTEXT *, HEADER *);
 int mutt_save_confirm (const char  *, struct stat *);
@@ -432,3 +439,5 @@ int ioctl (int, int, ...);
 /* unsorted */
 void ci_bounce_message (HEADER *, int *);
 void ci_send_message (int, HEADER *, char *, CONTEXT *, HEADER *);
+
+
