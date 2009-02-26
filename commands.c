@@ -110,7 +110,7 @@ int mutt_display_message (HEADER *cur)
   int cmflags = M_CM_DECODE | M_CM_DISPLAY;
   FILE *fpout;
 
-  snprintf (buf, sizeof (buf), "%s/%s", TYPE (cur->content->type),
+  snprintf (buf, sizeof (buf), "%s/%s", TYPE (cur->content),
 	    cur->content->subtype);
 
   if (cur->mailcap && !mutt_is_autoview (buf))
@@ -293,7 +293,7 @@ int mutt_pipe_message (HEADER *h)
   pid_t thepid;
 
   buffer[0] = 0;
-  if (mutt_get_field ("Pipe to command: ", buffer, sizeof (buffer), 0) != 0 ||
+  if (mutt_get_field ("Pipe to command: ", buffer, sizeof (buffer), M_CMD) != 0 ||
       !buffer[0])
     return 0;
   mutt_expand_path (buffer, sizeof (buffer));
@@ -509,12 +509,55 @@ void mutt_display_address (ADDRESS *adr)
   mutt_message ("%s", buf);
 }
 
+static void set_copy_flags(HEADER *hdr, int decode, int decrypt, int *cmflags, int *chflags)
+{
+  *cmflags = 0;
+  *chflags = CH_UPDATE_LEN;
+  
+#ifdef _PGPPATH
+  if(!decode && decrypt && (hdr->pgp & PGPENCRYPT))
+  {
+    if(mutt_is_multipart_encrypted(hdr->content))
+    {
+      *chflags = CH_NONEWLINE | CH_XMIT | CH_MIME;
+      *cmflags = M_CM_DECODE_PGP;
+    }
+    else if(mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
+      decode = 1;
+  }
+#endif
+
+  if(decode)
+  {
+    *chflags = CH_MIME | CH_TXTPLAIN;
+    *cmflags = M_CM_DECODE;
+  }
+
+}
+
+static void _mutt_save_message (HEADER *h, CONTEXT *ctx, int delete, int decode, int decrypt)
+{
+  int cmflags, chflags;
+  
+  set_copy_flags(h, decode, decrypt, &cmflags, &chflags);
+
+  if (decode  || decrypt)
+    mutt_parse_mime_message (Context, h);
+
+  if (mutt_append_message (ctx, Context, h, cmflags, chflags) == 0 && delete)
+  {
+    mutt_set_flag (Context, h, M_DELETE, 1);
+    mutt_set_flag (Context, h, M_TAG, 0);
+  }
+}
+
 /* returns 0 if the copy/save was successful, or -1 on error/abort */
-int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
+int mutt_save_message (HEADER *h, int delete, int decode, int decrypt, int *redraw)
 {
   int i, need_buffy_cleanup;
-  int cmflags = decode ? M_CM_DECODE : 0;
-  int chflags = decode ? CH_XMIT | CH_MIME : CH_UPDATE_LEN;
+#ifdef _PGPPATH
+  int need_passphrase = 0;
+#endif
   char prompt[SHORT_STRING], buf[_POSIX_PATH_MAX];
   CONTEXT ctx;
   struct stat st;
@@ -528,10 +571,16 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
 
   snprintf (prompt, sizeof (prompt), "%s%s to mailbox",
 	    decode ? (delete ? "Decode-save" : "Decode-copy") :
-	    (delete ? "Save" : "Copy"), h ? "" : " tagged");
-
+	    (decrypt ? (delete ? "Decrypt-save" : "Decrypt-copy"):
+	     (delete ? "Save" : "Copy")), h ? "" : " tagged");
+  
   if (h)
+  {
+#ifdef _PGPPATH
+    need_passphrase = h->pgp & PGPENCRYPT;
+#endif
     mutt_default_save (buf, sizeof (buf), h);
+  }
   else
   {
     /* look for the first tagged message */
@@ -548,6 +597,9 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
     if (h)
     {
       mutt_default_save (buf, sizeof (buf), h);
+#ifdef _PGPPATH
+      need_passphrase |= h->pgp & PGPENCRYPT;
+#endif
       h = NULL;
     }
   }
@@ -566,7 +618,7 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
 
   if (!buf[0])
     return (-1);
-  
+ 
   /* This is an undocumented feature of ELM pointed out to me by Felix von
    * Leitner <leitner@prz.fu-berlin.de>
    */
@@ -584,36 +636,24 @@ int mutt_save_message (HEADER *h, int delete, int decode, int *redraw)
     return (-1);
   }
 
+#ifdef _PGPPATH
+  if(need_passphrase && (decode || decrypt) && !pgp_valid_passphrase())
+    return -1;
+#endif
+  
   mutt_message ("Copying to %s...", buf);
   
   if (mx_open_mailbox (buf, M_APPEND, &ctx) != NULL)
   {
     if (h)
-    {
-      if (decode)
-	mutt_parse_mime_message (Context, h);
-      if (mutt_append_message (&ctx, Context, h, cmflags, chflags) == 0 && delete)
-      {
-	mutt_set_flag (Context, h, M_DELETE, 1);
-	mutt_set_flag (Context, h, M_TAG, 0);
-      }
-    }
+      _mutt_save_message(h, &ctx, delete, decode, decrypt);
     else
     {
       for (i = 0; i < Context->vcount; i++)
       {
 	if (Context->hdrs[Context->v2r[i]]->tagged)
-	{
-	  h = Context->hdrs[Context->v2r[i]];
-	  if (decode)
-	    mutt_parse_mime_message (Context, h);
-	  mutt_append_message (&ctx, Context, h, cmflags, chflags);
-	  if (delete)
-	  {
-	    mutt_set_flag (Context, h, M_DELETE, 1);
-	    mutt_set_flag (Context, h, M_TAG, 0);
-	  }
-	}
+	  _mutt_save_message(Context->hdrs[Context->v2r[i]],
+			     &ctx, delete, decode, decrypt);
       }
     }
 
@@ -663,7 +703,7 @@ static void print_msg (FILE *fp, CONTEXT *ctx, HEADER *h)
 
 
   mutt_parse_mime_message (ctx, h);
-  mutt_copy_message (fp, ctx, h, M_CM_DECODE, CH_WEED | CH_DECODE);
+  mutt_copy_message (fp, ctx, h, M_CM_DECODE, CH_WEED | CH_DECODE | CH_REORDER);
 }
 
 void mutt_print_message (HEADER *h)
