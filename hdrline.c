@@ -18,7 +18,7 @@
 
 #include "mutt.h"
 #include "mutt_curses.h"
-#include "sort.h"
+
 
 
 #ifdef _PGPPATH
@@ -45,10 +45,6 @@ int mutt_is_mail_list (ADDRESS *addr)
   return 0;
 }
 
-/* Search for a mailing list in the list of addresses pointed to by adr.
- * If one is found, print pfx and the name of the list into buf, then
- * return 1.  Otherwise, simply return 0.
- */
 static int
 check_for_mailing_list (ADDRESS *adr, char *pfx, char *buf, int buflen)
 {
@@ -56,33 +52,13 @@ check_for_mailing_list (ADDRESS *adr, char *pfx, char *buf, int buflen)
   {
     if (mutt_is_mail_list (adr))
     {
-      if (pfx && buf && buflen)
-	snprintf (buf, buflen, "%s%s", pfx, mutt_get_name (adr));
-      return 1;
-    }
-  }
-  return 0;
-}
-
-/* Search for a mailing list in the list of addresses pointed to by adr.
- * If one is found, print the address of the list into buf, then return 1.
- * Otherwise, simply return 0.
- */
-static int
-check_for_mailing_list_addr (ADDRESS *adr, char *buf, int buflen)
-{
-  for (; adr; adr = adr->next)
-  {
-    if (mutt_is_mail_list (adr))
-    {
       if (buf && buflen)
-	snprintf (buf, buflen, "%s", adr->mailbox);
+	snprintf (buf, buflen, "%s%s", NONULL(pfx), mutt_get_name (adr));
       return 1;
     }
   }
   return 0;
 }
-
 
 static int first_mailing_list (char *buf, size_t buflen, ADDRESS *a)
 {
@@ -129,9 +105,9 @@ static void make_from_addr (ENVELOPE *hdr, char *buf, size_t len, int do_lists)
 
   if (do_lists || me)
   {
-    if (check_for_mailing_list_addr (hdr->to, buf, len))
+    if (check_for_mailing_list (hdr->to, NULL, buf, len))
       return;
-    if (check_for_mailing_list_addr (hdr->cc, buf, len))
+    if (check_for_mailing_list (hdr->cc, NULL, buf, len))
       return;
   }
 
@@ -224,10 +200,6 @@ hdr_format_str (char *dest,
   char fmt[SHORT_STRING], buf2[SHORT_STRING], ch, *p;
   int do_locales, i;
   int optional = (flags & M_FORMAT_OPTIONAL);
-  int threads = ((Sort & SORT_MASK) == SORT_THREADS);
-  int is_index = (flags & M_FORMAT_INDEX);
-#define NEW (threads && hdr->collapsed && hdr->num_hidden > 1 && mutt_thread_contains_unread (ctx, hdr) == 1)
-#define OLD (threads && hdr->collapsed && hdr->num_hidden > 1 && mutt_thread_contains_unread (ctx, hdr) == 2)
   size_t len;
 
   hdr = hfi->hdr;
@@ -312,7 +284,7 @@ hdr_format_str (char *dest,
 	    {
 	      if (len >= 5)
 	      {
-		sprintf (p, "%c%02u%02u", hdr->zoccident ? '-' : '+',
+		sprintf (p, "%c%02d%02d", hdr->zoccident ? '-' : '+',
 			 hdr->zhours, hdr->zminutes);
 		p += 5;
 		len -= 5;
@@ -442,30 +414,30 @@ hdr_format_str (char *dest,
 	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
 	snprintf (dest, destlen, fmt, buf2);
       }
-      else if (!check_for_mailing_list_addr (hdr->env->to, NULL, 0) &&
-	       !check_for_mailing_list_addr (hdr->env->cc, NULL, 0))
+      else if (!check_for_mailing_list (hdr->env->to, NULL, NULL, 0) &&
+	       !check_for_mailing_list (hdr->env->cc, NULL, NULL, 0))
       {
 	optional = 0;
       }
       break;
 
     case 's':
-      
-      snprintf (fmt, sizeof (fmt), "%s%%%ss", threads && is_index ? "   " : "", prefix);
-      if (threads && is_index && hdr->collapsed && hdr->num_hidden > 1)
-	snprintf (dest, destlen, "%2d %s", hdr->num_hidden, NONULL(hdr->env->subject));
-      else if (flags & M_FORMAT_TREE)
+      snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+      if (flags & M_FORMAT_TREE)
       {
 	if (flags & M_FORMAT_FORCESUBJ)
 	{
-	  snprintf (buf2, sizeof (buf2), "%s%s", hdr->tree, NONULL (hdr->env->subject));
+	  snprintf (buf2, sizeof (buf2), "%s%s", hdr->tree,
+		    hdr->env->subject ? hdr->env->subject : "");
 	  snprintf (dest, destlen, fmt, buf2);
 	}
 	else
 	  snprintf (dest, destlen, fmt, hdr->tree);
       }
       else
-	snprintf (dest, destlen, fmt, NONULL (hdr->env->subject));
+      {
+	snprintf (dest, destlen, fmt, hdr->env->subject ? hdr->env->subject : "");
+      }
       break;
 
     case 'S':
@@ -546,9 +518,9 @@ hdr_format_str (char *dest,
 	ch = ' ';
       snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
       snprintf (buf2, sizeof (buf2),
-		"%c%c%c", (NEW ? 'n' : (OLD ? 'o' : 
-		((hdr->read && (ctx && ctx->msgnotreadyet != hdr->msgno))
-		? (hdr->replied ? 'r' : ' ') : (hdr->old ? 'O' : 'N')))),
+		"%c%c%c",
+		(hdr->read && (ctx && ctx->msgnotreadyet != hdr->msgno))
+		? (hdr->replied ? 'r' : ' ') : (hdr->old ? 'O' : 'N'),
 		hdr->deleted ? 'D' : (hdr->attach_del ? 'd' : ch),
 		hdr->tagged ? '*' :
 		(hdr->flagged ? '!' :
@@ -567,8 +539,6 @@ hdr_format_str (char *dest,
     mutt_FormatString (dest, destlen, elsestring, hdr_format_str, (unsigned long) hfi, flags);
 
   return (src);
-#undef NEW
-#undef OLD
 }
 
 void
