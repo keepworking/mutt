@@ -131,12 +131,13 @@ static QUERY *run_query (char *s, int quiet)
   if (mutt_wait_filter (thepid))
   {
     dprint (1, (debugfile, "Error: %s\n", msg));
-    if (!quiet)  mutt_error ("%s", msg);
+    if (!quiet)
+      mutt_error (msg);
   }
   else
   {
     if (!quiet)
-      mutt_message ("%s", msg);
+      mutt_message (msg);
   }
   
   return first;
