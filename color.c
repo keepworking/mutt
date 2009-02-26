@@ -94,40 +94,6 @@ static struct mapping_t Fields[] =
 
 #define COLOR_QUOTE_INIT	8
 
-static COLOR_LINE *mutt_new_color_line (void)
-{
-  COLOR_LINE *p = safe_calloc (1, sizeof (COLOR_LINE));
-
-  p->fg = p->bg = -1;
-  
-  return (p);
-}
-
-static void mutt_free_color_line(COLOR_LINE **l, 
-				 int free_colors)
-{
-  COLOR_LINE *tmp;
- 
-  if(!l || !*l)
-    return;
-
-  tmp = *l;
-
-#ifdef HAVE_COLOR
-  if(free_colors && tmp->fg != -1 && tmp->bg != -1)
-    mutt_free_color(tmp->fg, tmp->bg);
-#endif
-
-  /* we should really introduce a container
-   * type for regular expressions.
-   */
-  
-  regfree(&tmp->rx);
-  mutt_pattern_free(&tmp->color_pattern);
-  safe_free((void **)&tmp->pattern);
-  safe_free((void **)l);
-}
-
 void ci_start_color (void)
 {
   memset (ColorDefs, A_NORMAL, sizeof (int) * MT_COLOR_MAX);
@@ -398,7 +364,13 @@ _mutt_parse_uncolor (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err,
 	  do_cache = 1;
 	last = tmp;
 	tmp = tmp->next;
-	mutt_free_color_line(&last, parse_uncolor);
+	mutt_pattern_free (&last->color_pattern);
+#ifdef HAVE_COLOR
+	if(parse_uncolor)
+	  mutt_free_color(last->fg,last->bg);
+#endif
+	safe_free ((void **) &last->pattern);
+	safe_free ((void **) &last);
       }
       ColorIndexList = NULL;
     }
@@ -416,7 +388,14 @@ _mutt_parse_uncolor (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err,
 	    last->next = tmp->next;
 	  else
 	    ColorIndexList = tmp->next;
-	  mutt_free_color_line(&tmp, parse_uncolor);
+	  mutt_pattern_free (&tmp->color_pattern);
+#ifdef HAVE_COLOR
+	  if(parse_uncolor)
+	  {
+	    mutt_free_color(tmp->fg,tmp->bg);
+	  }
+#endif
+	  safe_free ((void **) &tmp);
 	  break;
 	}
       }
@@ -433,6 +412,12 @@ _mutt_parse_uncolor (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err,
   return (0);
 }
 
+static COLOR_LINE *mutt_new_color_line (void)
+{
+  COLOR_LINE *p = safe_calloc (1, sizeof (COLOR_LINE));
+
+  return (p);
+}
 
 static int 
 add_pattern (COLOR_LINE **top, const char *s, int sensitive,
@@ -488,7 +473,8 @@ add_pattern (COLOR_LINE **top, const char *s, int sensitive,
     if ((r = REGCOMP (&tmp->rx, s, (sensitive ? mutt_which_case (s) : REG_ICASE))) != 0)
     {
       regerror (r, &tmp->rx, err->data, err->dsize);
-      mutt_free_color_line(&tmp, 1);
+      regfree (&tmp->rx);
+      safe_free ((void **) &tmp);
       return (-1);
     }
     tmp->next = *top;
@@ -507,7 +493,13 @@ add_pattern (COLOR_LINE **top, const char *s, int sensitive,
       mutt_check_simple (buf, sizeof (buf), NONULL(SimpleSearch));
       if((tmp->color_pattern = mutt_pattern_comp (buf, M_FULL_MSG, err)) == NULL)
       {
-	mutt_free_color_line(&tmp, 1);
+	regfree(&tmp->rx);
+#ifdef HAVE_COLOR
+	if(tmp->fg != -1 && tmp->bg != -1)
+	  mutt_free_color(tmp->fg, tmp->bg);
+#endif
+	safe_free((void **) &tmp->pattern);
+	safe_free((void **) &tmp);
 	return -1;
       }
     }

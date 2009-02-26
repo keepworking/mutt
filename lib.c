@@ -22,10 +22,6 @@
 #include "mailbox.h"
 #include "mx.h"
 
-#ifdef _PGPPATH
-#include "pgp.h"
-#endif
-
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
@@ -69,7 +65,6 @@ void mutt_free_body (BODY **p)
       unlink (b->filename);
     safe_free ((void **) &b->filename);
     safe_free ((void **) &b->content);
-    safe_free ((void **) &b->xtype);
     safe_free ((void **) &b->subtype);
     safe_free ((void **) &b->description);
     safe_free ((void **) &b->form_name);
@@ -400,10 +395,14 @@ int mutt_needs_mailcap (BODY *m)
 
 #ifdef _PGPPATH
     case TYPEAPPLICATION:
-      if(mutt_is_application_pgp(m))
+
+      if (!strcasecmp ("pgp", m->subtype) ||
+	  !strcasecmp ("pgp-signed", m->subtype) ||
+	  !strcasecmp ("x-pgp-message", m->subtype))
 	return 0;
       break;
 #endif /* _PGPPATH */
+
 
 
     case TYPEMULTIPART:
@@ -454,7 +453,6 @@ void mutt_free_envelope (ENVELOPE **p)
   rfc822_free_address (&(*p)->mail_followup_to);
   safe_free ((void **) &(*p)->subject);
   safe_free ((void **) &(*p)->message_id);
-  safe_free ((void **) &(*p)->date);
   mutt_free_list (&(*p)->references);
   mutt_free_list (&(*p)->userhdrs);
   safe_free ((void **) p);
@@ -514,7 +512,7 @@ void mutt_free_alias (ALIAS **p)
     *p = (*p)->next;
     safe_free ((void **) &t->name);
     rfc822_free_address (&t->addr);
-    safe_free ((void **) &t);
+    free (t);
   }
 }
 
@@ -591,24 +589,14 @@ int mutt_copy_stream (FILE *fin, FILE *fout)
   return 0;
 }
 
-void mutt_expand_file_fmt (char *dest, size_t destlen, const char *fmt, const char *src)
-{
-  char *_src = mutt_quote_filename(src);
-  
-  mutt_expand_fmt(dest, destlen, fmt, _src);
-  safe_free((void **) &_src);
-}
-
 void mutt_expand_fmt (char *dest, size_t destlen, const char *fmt, const char *src)
 {
   const char *p = fmt;
   const char *last = p;
   size_t len;
-  size_t slen;
+  size_t slen = strlen (src);
   int found = 0;
 
-  slen = strlen (src);
-  
   while ((p = strchr (p, '%')) != NULL)
   {
     if (p[1] == 's')
@@ -653,43 +641,7 @@ void mutt_expand_fmt (char *dest, size_t destlen, const char *fmt, const char *s
   if (found)
     strfcpy (dest, last, destlen);
   else
-    snprintf (dest, destlen, "%s %s", fmt, src);
-  
-}
-
-static int 
-compare_stat (struct stat *osb, struct stat *nsb)
-{
-  if (osb->st_dev != nsb->st_dev || osb->st_ino != nsb->st_ino ||
-      osb->st_rdev != nsb->st_rdev)
-  {
-    return -1;
-  }
-
-  return 0;
-}
-
-int safe_symlink(const char *oldpath, const char *newpath)
-{
-  struct stat osb, nsb;
-
-  if(!oldpath || !newpath)
-    return -1;
-  
-  if(unlink(newpath) == -1 && errno != ENOENT)
-    return -1;
-  
-  if(symlink(oldpath, newpath) == -1)
-    return -1;
-  
-  if(stat(oldpath, &osb) == -1 || stat(newpath, &nsb) == -1
-     || compare_stat(&osb, &nsb) == -1)
-  {
-    unlink(newpath);
-    return -1;
-  }
-  
-  return 0;
+    snprintf (dest, destlen, "%s '%s'", fmt, src);
 }
 
 int safe_open (const char *path, int flags)
@@ -702,7 +654,8 @@ int safe_open (const char *path, int flags)
 
   /* make sure the file is not symlink */
   if (lstat (path, &osb) < 0 || fstat (fd, &nsb) < 0 ||
-      compare_stat(&osb, &nsb) == -1)
+      osb.st_dev != nsb.st_dev || osb.st_ino != nsb.st_ino ||
+      osb.st_rdev != nsb.st_rdev)
   {
     dprint (1, (debugfile, "safe_open(): %s is a symlink!\n", path));
     close (fd);
@@ -834,8 +787,6 @@ static char safe_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz
 
 void mutt_sanitize_filename(char *f)
 {
-  if(!f) return;
-
   for(; *f; f++)
   {
     if(!strchr(safe_chars, *f))
@@ -863,7 +814,7 @@ char *mutt_read_line (char *s, size_t *size, FILE *fp, int *line)
   {
     if (fgets (s + offset, *size - offset, fp) == NULL)
     {
-      safe_free ((void **) &s);
+      free (s);
       return NULL;
     }
     if ((ch = strchr (s + offset, '\n')) != NULL)
@@ -920,11 +871,9 @@ void mutt_FormatString (char *dest,		/* output buffer */
 {
   char prefix[SHORT_STRING], buf[LONG_STRING], *cp, *wptr = dest, ch;
   char ifstring[SHORT_STRING], elsestring[SHORT_STRING];
-  size_t wlen, count, len;
+  size_t wlen = 0, count, len;
 
   destlen--; /* save room for the terminal \0 */
-  wlen = (flags & M_FORMAT_ARROWCURSOR && option (OPTARROWCURSOR)) ? 3 : 0;
-    
   while (*src && wlen < destlen)
   {
     if (*src == '%')
@@ -1045,7 +994,10 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	src = callback (buf, sizeof (buf), ch, src, prefix, ifstring, elsestring, data, flags);
 
 	if ((len = strlen (buf)) + wlen > destlen)
-	  len = (destlen - wlen > 0) ? (destlen - wlen) : 0;
+	{
+	  if ((len = destlen - wlen) < 0)
+	    len = 0;
+	}
 	memcpy (wptr, buf, len);
 	wptr += len;
 	wlen += len;
@@ -1116,7 +1068,7 @@ FILE *mutt_open_read (const char *path, pid_t *thepid)
     s[len - 1] = 0;
     endwin ();
     *thepid = mutt_create_filter (s, NULL, &f, NULL);
-    safe_free ((void **) &s);
+    free (s);
   }
   else
   {
@@ -1176,52 +1128,4 @@ int mutt_save_confirm (const char *s, struct stat *st)
 
   CLEARLINE (LINES-1);
   return (ret);
-}
-
-/* prepare a file name to survive the shell's quoting rules.
- * From the Unix programming FAQ by way of Liviu.
- */
-
-char *mutt_quote_filename(const char *f)
-{
-  char *d;
-  size_t i,l;
-
-  if(!f) return NULL;
-  
-  for(i = 0, l = 3; f[i]; i++, l++)
-  {
-    if(f[i] == '\'')
-      l += 3;
-  }
-  
-  d = safe_malloc(l);
-  
-  l = 0;
-  d[l++] = '\'';
-  
-  for(i = 0; f[i]; i++)
-  {
-    if(f[i] == '\'')
-    {
-      d[l++] = '\'';
-      d[l++] = '\\';
-      d[l++] = '\'';
-      d[l++] = '\'';
-    }
-    else
-      d[l++] = f[i];
-  }
-  
-  d[l++] = '\'';
-  d[l]   = '\0';
-  
-  return d;
-}
-
-void state_prefix_putc(char c, STATE *s)
-{
-  state_putc(c, s);
-  if(c == '\n' && s->prefix)
-    state_puts(s->prefix, s);
 }
