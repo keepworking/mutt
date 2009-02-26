@@ -32,20 +32,14 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 
-const char ReachingUs[] = "\
-To contact the developers, please mail to <mutt-dev@mutt.org>.\n";
-
 const char Notice[] = "\
-Copyright (C) 1996-8 Michael R. Elkins and others.\n\
+Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>\n\
 Mutt comes with ABSOLUTELY NO WARRANTY; for details type `mutt -vv'.\n\
 Mutt is free software, and you are welcome to redistribute it\n\
 under certain conditions; type `mutt -vv' for details.\n";
 
 const char Copyright[] = "\
 Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>\n\
-Copyright (C) 1997-8 Thomas Roessler <roessler@guug.de>\n\
-Copyright (C) 1998   Werner Koch <wk@isil.d.shuttle.de>\n\
-Copyright (C) 1998   Ruslan Ermilov <ru@ucb.crimea.ua>\n\
 \n\
     This program is free software; you can redistribute it and/or modify\n\
     it under the terms of the GNU General Public License as published by\n\
@@ -59,24 +53,7 @@ Copyright (C) 1998   Ruslan Ermilov <ru@ucb.crimea.ua>\n\
 \n\
     You should have received a copy of the GNU General Public License\n\
     along with this program; if not, write to the Free Software\n\
-    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.\n\
-"
-#ifdef _PGPPATH
-"\n\
-SHA1 implementation Copyright (C) 1995-7 Eric A. Young <eay@cryptsoft.com>\n\
-\n\
-    Redistribution and use in source and binary forms, with or without\n\
-    modification, are permitted under certain conditions.\n\
-\n\
-    The SHA1 implementation comes AS IS, and ANY EXPRESS OR IMPLIED\n\
-    WARRANTIES, including, but not limited to, the implied warranties of\n\
-    merchantability and fitness for a particular purpose ARE DISCLAIMED.\n\
-\n\
-    You should have received a copy of the full distribution terms\n\
-    along with this program; if not, write to the program's developers.\n\
-"
-#endif
-;
+    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.\n";
 
 void mutt_exit (int code)
 {
@@ -149,6 +126,11 @@ static void show_version (void)
 #endif
 
   puts (
+#ifdef HIDDEN_HOST
+	"+HIDDEN_HOST  "
+#else
+	"-HIDDEN_HOST  "
+#endif
 
 #ifdef HOMESPOOL
 	"+HOMESPOOL  "
@@ -263,12 +245,13 @@ static void show_version (void)
   printf ("_PGPV3PATH=\"%s\"\n", _PGPV3PATH);
 # endif
 # ifdef _PGPGPPATH
-  printf ("_PGPGPGPATH=\"%s\"\n", _PGPGPGPATH);
+  pritnf ("_PGPGPGPATH=\"%s\"\n", _PGPGPGPATH);
 # endif
 #endif
 
 
-  puts(ReachingUs);
+
+  puts ("\nMail bug reports along with this output to <mutt-dev@mutt.org>.");
 
   exit (0);
 }
@@ -450,7 +433,6 @@ int main (int argc, char **argv)
     default:
       printf ("Mutt %s (%s)\n", VERSION, ReleaseDate);
       puts (Copyright);
-      puts (ReachingUs);
       exit (0);
   }
 
@@ -558,7 +540,7 @@ int main (int argc, char **argv)
 	    mutt_endwin (NULL);
 	  perror (tempfile);
 	  fclose (fin);
-	  FREE (&tempfile);
+	  free (tempfile);
 	  exit (1);
 	}
 
@@ -650,7 +632,7 @@ int main (int argc, char **argv)
 
     if ((Context = mx_open_mailbox (folder, ((flags & M_RO) || option (OPTREADONLY)) ? M_READONLY : 0, NULL)) != NULL)
     {
-      int close = mutt_index_menu ();
+      int close = mutt_index_menu (0);
 
       if (Context)
       {
