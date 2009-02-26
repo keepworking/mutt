@@ -86,7 +86,6 @@ Flags[] =
   { 'T', M_TAG,			0,		NULL },
   { 't', M_TO,			0,		eat_regexp },
   { 'U', M_UNREAD,		0,		NULL },
-  { 'v', M_COLLAPSED,		0,		NULL },
   { 'x', M_REFERENCE,		0,		eat_regexp },
   { 'z', M_SIZE,		0,		eat_range },
   { 0 }
@@ -315,7 +314,6 @@ int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
   else
     pat->max = M_MAXRANGE;
 
-  SKIPWS (tmp);
   s->dptr = tmp;
   return 0;
 }
@@ -865,8 +863,6 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
       return (pat->not ^ match_user (pat->alladdr, h->env->to, h->env->cc));
     case M_PERSONAL_FROM:
       return (pat->not ^ match_user (pat->alladdr, h->env->from, NULL));
-    case M_COLLAPSED:
-      return (pat->not ^ (h->collapsed && h->num_hidden > 1));
 #ifdef _PGPPATH
    case M_PGP_SIGN:
      return (pat->not ^ (h->pgp & PGPSIGN));
@@ -967,11 +963,6 @@ int mutt_pattern_func (int op, char *prompt)
 
     for (i = 0; i < Context->msgcount; i++)
     {
-      /* new limit pattern implicitly uncollapses all threads */
-      Context->hdrs[i]->virtual = -1;
-      Context->hdrs[i]->limited = 0;
-      Context->hdrs[i]->collapsed = 0;
-      Context->hdrs[i]->num_hidden = 0;
       if (mutt_pattern_exec (pat, M_MATCH_FULL_ADDRESS, Context, Context->hdrs[i]))
       {
 	Context->hdrs[i]->virtual = Context->vcount;
@@ -980,6 +971,13 @@ int mutt_pattern_func (int op, char *prompt)
 	Context->vcount++;
 	Context->vsize+=THIS_BODY->length + THIS_BODY->offset -
 	  THIS_BODY->hdr_offset;
+      }
+      else
+      {
+	Context->hdrs[i]->virtual = -1;
+	Context->hdrs[i]->limited = 0;
+	Context->hdrs[i]->collapsed = 0;
+	Context->hdrs[i]->num_hidden = 0;
       }
     }
   }
@@ -992,15 +990,17 @@ int mutt_pattern_func (int op, char *prompt)
 	switch (op)
 	{
 	  case M_DELETE:
+	  mutt_set_flag (Context, Context->hdrs[Context->v2r[i]], M_DELETE, 1);
+	  break;
 	  case M_UNDELETE:
-	    mutt_set_flag (Context, Context->hdrs[Context->v2r[i]], M_DELETE, 
-			  (op == M_DELETE));
-	    break;
+	  mutt_set_flag (Context, Context->hdrs[Context->v2r[i]], M_DELETE, 0);
+	  break;
 	  case M_TAG:
+	  mutt_set_flag (Context, Context->hdrs[Context->v2r[i]], M_TAG, 1);
+	  break;
 	  case M_UNTAG:
-	    mutt_set_flag (Context, Context->hdrs[Context->v2r[i]], M_TAG, 
-			   (op == M_TAG));
-	    break;
+	  mutt_set_flag (Context, Context->hdrs[Context->v2r[i]], M_TAG, 0);
+	  break;
 	}
       }
     }
@@ -1012,19 +1012,24 @@ int mutt_pattern_func (int op, char *prompt)
 
   if (op == M_LIMIT)
   {
+    Context->collapsed = 0;
     safe_free ((void **) &Context->pattern);
     if (Context->limit_pattern) 
       mutt_pattern_free (&Context->limit_pattern);
     if (!Context->vcount)
     {
-      Context->vcount = Context->msgcount;
       mutt_error _("No messages matched criteria.");
       /* restore full display */
       for (i = 0; i < Context->msgcount; i++)
       {
 	Context->hdrs[i]->virtual = i;
+	Context->hdrs[i]->limited = 0;
+	Context->hdrs[i]->num_hidden = 0;
+	Context->hdrs[i]->collapsed = 0;
 	Context->v2r[i] = i;
       }
+
+      Context->vcount = Context->msgcount;
     }
     else if (mutt_strncmp (buf, "~A", 2) != 0)
     {
