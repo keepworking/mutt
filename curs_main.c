@@ -47,35 +47,30 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-static const char *No_mailbox_is_open = N_("No mailbox is open.");
-static const char *There_are_no_messages = N_("There are no messages.");
-static const char *Mailbox_is_read_only = N_("Mailbox is read-only.");
-static const char *Function_not_permitted_in_attach_message_mode = N_("Function not permitted in attach-message mode.");
-
 #define CHECK_MSGCOUNT if (!Context) \
 	{ \
 	  	mutt_flushinp (); \
-		mutt_error _(No_mailbox_is_open); \
+		mutt_error _("No mailbox is open."); \
 		break; \
 	} \
 	else if (!Context->msgcount) \
 	{ \
 	  	mutt_flushinp (); \
-		mutt_error _(There_are_no_messages); \
+		mutt_error _("There are no messages."); \
 		break; \
 	}
 
 #define CHECK_READONLY if (Context->readonly) \
 			{ \
 			  	mutt_flushinp (); \
-				mutt_error _(Mailbox_is_read_only); \
+				mutt_error _("Mailbox is read-only."); \
 				break; \
 			}
 
 #define CHECK_ATTACH if(option(OPTATTACHMSG)) \
 		     {\
 			mutt_flushinp (); \
-			mutt_error _(Function_not_permitted_in_attach_message_mode); \
+			mutt_error ("Function not permitted in attach-message mode."); \
 			break; \
 		     }
 
@@ -868,17 +863,17 @@ int mutt_index_menu (void)
 
       case OP_MAIN_CHANGE_FOLDER:
       
-	if (attach_msg)
+	if (attach_msg || option (OPTREADONLY))
 	  op = OP_MAIN_CHANGE_FOLDER_READONLY;
 
 	/* fallback to the readonly case */
 
       case OP_MAIN_CHANGE_FOLDER_READONLY:
 
-        if ((op == OP_MAIN_CHANGE_FOLDER_READONLY) || option (OPTREADONLY))
-          cp = _("Open mailbox in read-only mode");
-        else
+        if (op == OP_MAIN_CHANGE_FOLDER)
           cp = _("Open mailbox");
+        else
+          cp = _("Open mailbox in read-only mode");
 
 	buf[0] = '\0';
 	mutt_buffy (buf);
@@ -962,7 +957,7 @@ int mutt_index_menu (void)
 	}
 
 	menu->menu = MENU_PAGER;
- 	menu->oldcurrent = menu->current;
+/* 	menu->oldcurrent = menu->current;  */
 	continue;
 
       case OP_EXIT:
@@ -1144,7 +1139,7 @@ int mutt_index_menu (void)
 	    }
 	  }
 
-	  if ((Sort & SORT_MASK) == SORT_THREADS && CUR->collapsed)
+	  if (CUR->collapsed && (Sort & SORT_MASK) == SORT_THREADS)
 	  {
 	    if ((op == OP_MAIN_NEXT_UNREAD || op == OP_MAIN_PREV_UNREAD) &&
 		UNREAD (CUR))
@@ -1188,20 +1183,34 @@ int mutt_index_menu (void)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
-	mutt_set_flag (Context, CURHDR, M_FLAG, !CURHDR->flagged);
 
-	if (option (OPTRESOLVE))
-	{
-	  if ((menu->current = ci_next_undeleted (menu->current)) == -1)
+        if (tag)
+        {
+	  for (j = 0; j < Context->vcount; j++)
 	  {
-	    menu->current = menu->oldcurrent;
-	    menu->redraw = REDRAW_CURRENT;
+	    if (Context->hdrs[Context->v2r[j]]->tagged)
+	      mutt_set_flag (Context, Context->hdrs[Context->v2r[j]],
+			     M_FLAG, !Context->hdrs[Context->v2r[j]]->flagged);
+	  }
+
+	  menu->redraw |= REDRAW_INDEX;
+	}
+        else
+        {
+	  mutt_set_flag (Context, CURHDR, M_FLAG, !CURHDR->flagged);
+	  if (option (OPTRESOLVE))
+	  {
+	    if ((menu->current = ci_next_undeleted (menu->current)) == -1)
+	    {
+	      menu->current = menu->oldcurrent;
+	      menu->redraw = REDRAW_CURRENT;
+	    }
+	    else
+	      menu->redraw = REDRAW_MOTION_RESYNCH;
 	  }
 	  else
-	    menu->redraw = REDRAW_MOTION_RESYNCH;
+	    menu->redraw = REDRAW_CURRENT;
 	}
-	else
-	  menu->redraw = REDRAW_CURRENT;
 	menu->redraw |= REDRAW_STATUS;
 	break;
 
