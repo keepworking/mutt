@@ -134,8 +134,8 @@ char *mutt_gen_msgid (void);
 char *mutt_get_body_charset (char *, size_t, BODY *);
 char *mutt_get_name (ADDRESS *);
 char *mutt_get_parameter (const char *, PARAMETER *);
-#ifdef HAVE_PGP
-char *mutt_pgp_hook (ADDRESS *);
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+char *mutt_crypt_hook (ADDRESS *);
 #endif /* HAVE_PGP */
 char *mutt_make_date (char *, size_t);
 
@@ -190,6 +190,7 @@ void mutt_free_parameter (PARAMETER **);
 void mutt_generate_header (char *, size_t, HEADER *, int);
 void mutt_help (int);
 void mutt_draw_tree (CONTEXT *);
+void mutt_check_lookup_list (BODY *, char *, int);
 void mutt_make_attribution (CONTEXT *ctx, HEADER *cur, FILE *out);
 void mutt_make_forward_subject (ENVELOPE *env, CONTEXT *ctx, HEADER *cur);
 void mutt_make_help (char *, size_t, char *, int, int);
@@ -288,6 +289,7 @@ int mutt_is_list_recipient (int, ADDRESS *, ADDRESS *);
 int mutt_is_subscribed_list (ADDRESS *);
 int mutt_is_text_type (int, char *);
 int mutt_is_valid_mailbox (const char *);
+int mutt_lookup_mime_type (BODY *, const char *);
 int mutt_messages_in_thread (CONTEXT *, HEADER *, int);
 int mutt_multi_choice (char *prompt, char *letters);
 int mutt_needs_mailcap (BODY *);
@@ -312,6 +314,7 @@ int mutt_pattern_func (int, char *);
 int mutt_pipe_attachment (FILE *, BODY *, const char *, char *); 
 int mutt_print_attachment (FILE *, BODY *);
 int mutt_query_complete (char *, size_t);
+int mutt_query_variables (LIST *queries);
 int mutt_save_attachment (FILE *, BODY *, char *, int, HEADER *);
 void _mutt_save_message (HEADER *, CONTEXT *, int, int, int);
 int mutt_save_message (HEADER *, int, int, int, int *);
