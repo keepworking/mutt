@@ -38,9 +38,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef MIXMASTER
-#include "remailer.h"
-#endif
 
 
 static void append_signature (FILE *f)
@@ -337,7 +334,7 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
   fputs (" -----\n\n", out);
   if (option (OPTFORWDECODE))
   {
-    cmflags |= M_CM_DECODE | M_CM_CHARCONV;
+    cmflags |= M_CM_DECODE;
     if (option (OPTFORWWEEDHEADER))
     {
       chflags |= CH_WEED;
@@ -355,7 +352,7 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
 static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
 {
   char buffer[STRING];
-  int flags = M_CM_PREFIX | M_CM_DECODE | M_CM_CHARCONV;
+  int flags = M_CM_PREFIX | M_CM_DECODE;
 
 
 
@@ -796,19 +793,13 @@ static int send_message (HEADER *msg)
   char tempfile[_POSIX_PATH_MAX];
   FILE *tempfp;
   int i;
-  
+
   /* Write out the message in MIME form. */
   mutt_mktemp (tempfile);
   if ((tempfp = safe_fopen (tempfile, "w")) == NULL)
     return (-1);
 
-#ifdef MIXMASTER
-  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, msg->chain ? 1 : 0);
-#endif
-#ifndef MIXMASTER
-  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, 0);
-#endif
-  
+  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0);
   fputc ('\n', tempfp); /* tie off the header. */
 
   if ((mutt_write_mime_body (msg->content, tempfp) == -1))
@@ -825,14 +816,9 @@ static int send_message (HEADER *msg)
     return (-1);
   }
 
-#ifdef MIXMASTER
-  if (msg->chain)
-    return mix_send_message (msg->chain, tempfile);
-#endif
-
   i = mutt_invoke_sendmail (msg->env->to, msg->env->cc, msg->env->bcc,
 		       tempfile, (msg->content->encoding == ENC8BIT));
-  return (i);
+  return (i ? -1 : 0);
 }
 
 /* rfc2047 encode the content-descriptions */
@@ -1243,6 +1229,7 @@ main_loop:
   mutt_expand_path (fcc, sizeof (fcc));
   if (*fcc && mutt_strcmp ("/dev/null", fcc) != 0)
   {
+    struct stat st;
     BODY *tmpbody = msg->content;
 #ifdef _PGPPATH
     BODY *save_sig = NULL;
@@ -1327,7 +1314,7 @@ full_fcc:
   }
 #endif /* _PGPPATH */
 
-  if ((i = send_message (msg)) == -1)
+  if (send_message (msg) == -1)
   {
     if (!(flags & SENDBATCH))
     {
@@ -1340,8 +1327,9 @@ full_fcc:
       goto cleanup;
     }
   }
-  else if (!option (OPTNOCURSES) && ! (flags & SENDMAILX))
-    mutt_message (i == 0 ? _("Mail sent.") : _("Sending in background."));
+
+  if (!option (OPTNOCURSES) && ! (flags & SENDMAILX))
+    mutt_message _("Mail sent.");
 
   if (flags & SENDREPLY)
   {
