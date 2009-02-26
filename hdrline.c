@@ -26,10 +26,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 
 
 #include <ctype.h>
@@ -622,17 +618,15 @@ hdr_format_str (char *dest,
     
       ch = ' ';
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-      if (hdr->security & GOODSIGN)
-        ch = 'S';
-      else if (hdr->security & ENCRYPT)
-      	ch = 'P';
-      else if (hdr->security & SIGN)
-        ch = 's';
 #ifdef HAVE_PGP
-      else if (hdr->security & PGPKEY)
+      if (hdr->pgp & PGPGOODSIGN)
+        ch = 'S';
+      else if (hdr->pgp & PGPENCRYPT)
+      	ch = 'P';
+      else if (hdr->pgp & PGPSIGN)
+        ch = 's';
+      else if (hdr->pgp & PGPKEY)
         ch = 'K';
-#endif
 #endif
 
       snprintf (buf2, sizeof (buf2),
