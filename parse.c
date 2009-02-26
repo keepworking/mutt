@@ -1,4 +1,3 @@
-static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -891,7 +890,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs)
       {
 	/* MH somtimes has the From_ line in the middle of the header! */
 	if (hdr && !hdr->received)
-	  hdr->received = t + mutt_local_tz ();
+	  hdr->received = t - mutt_local_tz (t);
 	loc = ftell (f);
 	continue;
       }
