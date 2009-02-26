@@ -97,7 +97,7 @@ static void imap_make_sequence (char *buf, size_t buflen)
 
 static void imap_error (const char *where, const char *msg)
 {
-  mutt_error (_("imap_error(): unexpected response in %s: %s\n"), where, msg);
+  mutt_error ("imap_error(): unexpected response in %s: %s\n", where, msg);
 }
 
 /* date is of the form: DD-MMM-YYYY HH:MM:SS +ZZzz */
@@ -258,39 +258,6 @@ static int imap_parse_fetch (IMAP_HEADER_INFO *h, char *s)
   return 0;
 }
 
-static void imap_quote_string (char *dest, size_t slen, const char *src)
-{
-  char quote[] = "\"\\", *pt;
-  const char *s;
-  size_t len = slen;
-
-  pt = dest;
-  s  = src;
-
-  *pt++ = '"';
-  /* save room for trailing quote-char */
-  len -= 2;
-  
-  for (; *s && len; s++)
-  {
-    if (strchr (quote, *s))
-    {
-      len -= 2;
-      if (!len)
-	break;
-      *pt++ = '\\';
-      *pt++ = *s;
-    }
-    else
-    {
-      *pt++ = *s;
-      len--;
-    }
-  }
-  *pt++ = '"';
-  *pt = 0;
-}
-
 static int imap_read_bytes (FILE *fp, CONNECTION *conn, long bytes)
 {
   long pos;
@@ -350,7 +317,7 @@ static int imap_handle_untagged (CONTEXT *ctx, char *s)
 	/* something is wrong because the server reported fewer messages
 	 * than we previously saw
 	 */
-	mutt_error _("Fatal error.  Message count is out of sync!");
+	mutt_error ("Fatal error.  Message count is out of sync!");
 	CTX_DATA->status = IMAP_FATAL;
 	mx_fastclose_mailbox (ctx);
 	return (-1);
@@ -425,7 +392,7 @@ static int imap_read_headers (CONTEXT *ctx, int msgbegin, int msgend)
   h=h0;
   for (msgno=msgbegin; msgno <= msgend ; msgno++)
   {
-    snprintf (buf, sizeof (buf), _("Fetching message headers... [%d/%d]"), 
+    snprintf (buf, sizeof (buf), "Fetching message headers... [%d/%d]", 
       msgno + 1, msgend + 1);
     mutt_message (buf);
 
@@ -634,8 +601,8 @@ static int imap_open_connection (CONTEXT *ctx, CONNECTION *conn)
   struct sockaddr_in sin;
   struct hostent *he;
   char buf[LONG_STRING];
-  char user[SHORT_STRING], q_user[SHORT_STRING];
-  char pass[SHORT_STRING], q_pass[SHORT_STRING];
+  char user[SHORT_STRING];
+  char pass[SHORT_STRING];
   char seq[16];
 
   memset (&sin, 0, sizeof (sin));
@@ -659,7 +626,7 @@ static int imap_open_connection (CONTEXT *ctx, CONNECTION *conn)
     return (-1);
   }
 
-  mutt_message (_("Connecting to %s..."), conn->server);
+  mutt_message ("Connecting to %s...", conn->server);
 
   if (connect (conn->fd, (struct sockaddr *) &sin, sizeof (sin)) < 0)
   {
@@ -678,7 +645,7 @@ static int imap_open_connection (CONTEXT *ctx, CONNECTION *conn)
     if (!ImapUser)
     {
       strfcpy (user, NONULL(Username), sizeof (user));
-      if (mutt_get_field (_("IMAP Username: "), user, sizeof (user), 0) != 0 ||
+      if (mutt_get_field ("IMAP Username: ", user, sizeof (user), 0) != 0 ||
 	  !user[0])
       {
 	user[0] = 0;
@@ -691,7 +658,7 @@ static int imap_open_connection (CONTEXT *ctx, CONNECTION *conn)
     if (!ImapPass)
     {
       pass[0]=0;
-      snprintf (buf, sizeof (buf), _("Password for %s@%s: "), user, conn->server);
+      snprintf (buf, sizeof (buf), "Password for %s@%s: ", user, conn->server);
       if (mutt_get_field (buf, pass, sizeof (pass), M_PASS) != 0 ||
 	  !pass[0])
       {
@@ -701,17 +668,14 @@ static int imap_open_connection (CONTEXT *ctx, CONNECTION *conn)
     else
       strfcpy (pass, ImapPass, sizeof (pass));
 
-    imap_quote_string (q_user, sizeof (q_user), user);
-    imap_quote_string (q_pass, sizeof (q_pass), pass);
-
-    mutt_message _("Logging in...");
+    mutt_message ("Logging in...");
     imap_make_sequence (seq, sizeof (seq));
-    snprintf (buf, sizeof (buf), "%s LOGIN %s %s\r\n", seq, q_user, q_pass);
+    snprintf (buf, sizeof (buf), "%s LOGIN %s %s\r\n", seq, user, pass);
     if (imap_exec (buf, sizeof (buf), ctx, seq, buf, 0) != 0)
-    {
-      imap_error ("imap_open_connection()", buf);
-      return (-1);
-    }
+      {
+	imap_error ("imap_open_connection()", buf);
+	return (-1);
+      }
     /* If they have a successful login, we may as well cache the user/password. */
     if (!ImapUser)
       ImapUser = safe_strdup (user);
@@ -756,10 +720,9 @@ int imap_open_mailbox (CONTEXT *ctx)
       return (-1);
   conn->uses++;
 
-  mutt_message (_("Selecting %s..."), CTX_DATA->mailbox);
-  imap_quote_string(buf, sizeof(buf), CTX_DATA->mailbox);
+  mutt_message ("Selecting %s...", CTX_DATA->mailbox);
   imap_make_sequence (seq, sizeof (seq));
-  snprintf (bufout, sizeof (bufout), "%s SELECT %s\r\n", seq, buf);
+  snprintf (bufout, sizeof (bufout), "%s SELECT %s\r\n", seq, CTX_DATA->mailbox);
   mutt_socket_write (CTX_DATA->conn, bufout);
 
   do
@@ -801,15 +764,14 @@ int imap_open_mailbox (CONTEXT *ctx)
 static int imap_create_mailbox (CONTEXT *ctx)
 {
   char seq[8];
-  char buf[LONG_STRING], mbox[LONG_STRING];
+  char buf[LONG_STRING];
 
   imap_make_sequence (seq, sizeof (seq));
-  imap_quote_string (mbox, sizeof (mbox), CTX_DATA->mailbox);
-  snprintf (buf, sizeof (buf), "%s CREATE %s\r\n", seq, mbox);
+  snprintf (buf, sizeof (buf), "%s CREATE %s\r\n", seq, CTX_DATA->mailbox);
       
   if (imap_exec (buf, sizeof (buf), ctx, seq, buf, 0) != 0)
   {
-    imap_error ("imap_create_mailbox()", buf);
+    imap_error ("imap_sync_mailbox()", buf);
     return (-1);
   }
   return 0;
@@ -819,7 +781,7 @@ int imap_open_mailbox_append (CONTEXT *ctx)
 {
   CONNECTION *conn;
   char host[SHORT_STRING];
-  char buf[LONG_STRING], mbox[LONG_STRING];
+  char buf[LONG_STRING];
   char seq[16];
   char *pc;
 
@@ -843,15 +805,15 @@ int imap_open_mailbox_append (CONTEXT *ctx)
 
   /* check mailbox existance */
 
-  imap_quote_string (mbox, sizeof (mbox), CTX_DATA->mailbox);
   imap_make_sequence (seq, sizeof (seq));
-  snprintf (buf, sizeof (buf), "%s STATUS %s (UIDVALIDITY)\r\n", seq, mbox);
+  snprintf (buf, sizeof (buf), "%s STATUS %s (UIDVALIDITY)\r\n", seq, 
+      CTX_DATA->mailbox);
       
   if (imap_exec (buf, sizeof (buf), ctx, seq, buf, IMAP_OK_FAIL) != 0)
   {
     if (option (OPTCONFIRMCREATE))
     {
-      snprintf (buf, sizeof (buf), _("Create %s?"), CTX_DATA->mailbox);
+      snprintf (buf, sizeof (buf), "Create %s?", CTX_DATA->mailbox);
       if (mutt_yesorno (buf, 1) < 1)
 	return (-1);
       if (imap_create_mailbox (ctx) < 0)
@@ -895,7 +857,7 @@ int imap_fetch_message (MESSAGE *msg, CONTEXT *ctx, int msgno)
     }
   }
 
-  mutt_message _("Fetching message...");
+  mutt_message ("Fetching message...");
 
   cache->index = ctx->hdrs[msgno]->index;
   mutt_mktemp (path);
@@ -950,9 +912,7 @@ int imap_fetch_message (MESSAGE *msg, CONTEXT *ctx, int msgno)
 	     * header is. We must set it now, or mutt will not display
 	     * the message properly
 	     */
-	    ctx->hdrs[msgno]->content->offset = ftell(msg->fp);
-	    ctx->hdrs[msgno]->content->length = bytes - 
-	      ctx->hdrs[msgno]->content->offset;
+	    ctx->hdrs[msgno]->content->offset=ftell(msg->fp);
 	    onbody=1;
 	  }
 	}
@@ -964,10 +924,10 @@ int imap_fetch_message (MESSAGE *msg, CONTEXT *ctx, int msgno)
   while (strncmp (buf, seq, SEQLEN) != 0)
     ;
 
-  mutt_clear_error();
-  
   if (!imap_code (buf))
+  {
     return (-1);
+  }
 
   return 0;
 }
@@ -1003,7 +963,7 @@ int imap_append_message (CONTEXT *ctx, MESSAGE *msg)
   }
   rewind(fp);
   
-  mutt_message _("Sending APPEND command ...");
+  mutt_message ("Sending APPEND command ...");
   imap_make_sequence (seq, sizeof (seq));
   snprintf (buf, sizeof (buf), "%s APPEND %s {%d}\r\n", seq, 
       CTX_DATA->mailbox, len);
@@ -1041,7 +1001,7 @@ int imap_append_message (CONTEXT *ctx, MESSAGE *msg)
     return (-1);
   }
 
-  mutt_message _("Uploading message ...");
+  mutt_message ("Uploading message ...");
 
   for(last = EOF, len = 0; (c = fgetc(fp)) != EOF; last = c)
   {
@@ -1096,7 +1056,7 @@ int imap_close_connection (CONTEXT *ctx)
   /* if the server didn't shut down on us, close the connection gracefully */
   if (CTX_DATA->status != IMAP_BYE)
   {
-    mutt_message _("Closing connection to IMAP server...");
+    mutt_message ("Closing connection to IMAP server...");
     imap_make_sequence (seq, sizeof (seq));
     snprintf (buf, sizeof (buf), "%s LOGOUT\r\n", seq);
     mutt_socket_write (CTX_DATA->conn, buf);
@@ -1125,8 +1085,8 @@ int imap_sync_mailbox (CONTEXT *ctx)
   {
     if (ctx->hdrs[n]->deleted || ctx->hdrs[n]->changed)
     {
-      snprintf (tmp, sizeof (tmp), _("Saving message status flags... [%d/%d]"),
-	n+1, ctx->msgcount);
+      snprintf (tmp, sizeof (tmp), "Saving message status flags... [%d/%d]", n+1, 
+        ctx->msgcount);
       mutt_message (tmp);
       *tmp = 0;
       if (ctx->hdrs[n]->read)
@@ -1151,7 +1111,7 @@ int imap_sync_mailbox (CONTEXT *ctx)
     }
   }
 
-  mutt_message _("Expunging messages from server...");
+  mutt_message ("Expunging messages from server...");
   CTX_DATA->status = IMAP_EXPUNGE;
   imap_make_sequence (seq, sizeof (seq));
   snprintf (buf, sizeof (buf), "%s EXPUNGE\r\n", seq);
@@ -1202,7 +1162,7 @@ int imap_close_mailbox (CONTEXT *ctx)
   char buf[LONG_STRING];
 
   /* tell the server to commit changes */
-  mutt_message _("Closing mailbox...");
+  mutt_message ("Closing mailbox...");
   imap_make_sequence (seq, sizeof (seq));
   snprintf (buf, sizeof (buf), "%s CLOSE\r\n", seq);
   if (imap_exec (buf, sizeof (buf), ctx, seq, buf, 0) != 0)
@@ -1303,7 +1263,7 @@ int imap_buffy_check (char *path)
       }
       else
       {
-	mutt_error _("BUG! Untagged IMAP Response during BUFFY Check");
+	mutt_error ("BUG! Untagged IMAP Response during BUFFY Check");
       }
     }
   }

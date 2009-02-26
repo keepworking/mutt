@@ -86,58 +86,28 @@ static struct keymap_t *allocKeys (int len, keycode_t *keys)
   return (p);
 }
 
-static int parse_fkey(char *s)
-{
-  char *t;
-  int n = 0;
-
-  if(s[0] != '<' || tolower(s[1]) != 'f')
-    return -1;
-
-  for(t = s + 2; *t && isdigit((unsigned char) *t); t++)
-  {
-    n *= 10;
-    n += *t - '0';
-  }
-
-  if(*t != '>')
-    return -1;
-  else
-    return n;
-}
-
-static int parsekeys (char *str, keycode_t *d, int max)
+static int parsekeys (char *s, keycode_t *d, int max)
 {
   int n, len = max;
-  char buff[SHORT_STRING];
-  char c;
-  char *s, *t;
 
-  strfcpy(buff, str, sizeof(buff));
-  s = buff;
-  
   while (*s && len)
   {
-    *d = '\0';
-    if(*s == '<' && (t = strchr(s, '>')))
+    if ((n = mutt_getvaluebyname (s, KeyNames)) != -1)
     {
-      t++; c = *t; *t = '\0';
-      
-      if ((n = mutt_getvaluebyname (s, KeyNames)) != -1)
-      {
-	s = t;
-	*d = n;
-      }
-      else if ((n = parse_fkey(s)) > 0)
-      {
-	s = t;
-	*d = KEY_F (n);
-      }
-      
-      *t = c;
+      s += strlen (s);
+      *d = n;
     }
-
-    if(!*d)
+    else if (tolower (*s) == 'f' && isdigit ((unsigned char) s[1]))
+    {
+      n = 0;
+      for (s++; isdigit ((unsigned char) *s) ; s++)
+      {
+	n *= 10;
+	n += *s - '0';
+      }
+      *d = KEY_F(n);
+    }
+    else
     {
       *d = *s;
       s++;
@@ -219,37 +189,11 @@ void km_bindkey (char *s, int menu, int op)
   km_bind (s, menu, op, NULL, NULL);
 }
 
-static int get_op (struct binding_t *bindings, const char *start, size_t len)
-{
-  int i;
-
-  for (i = 0; bindings[i].name; i++)
-  {
-    if (!strncasecmp (start, bindings[i].name, len))
-      return bindings[i].op;
-  }
-
-  return OP_NULL;
-}
-
-static char *get_func (struct binding_t *bindings, int op)
-{
-  int i;
-
-  for (i = 0; bindings[i].name; i++)
-  {
-    if (bindings[i].op == op)
-      return bindings[i].name;
-  }
-
-  return NULL;
-}
-
 static void push_string (char *s)
 {
   char *pp, *p = s + strlen (s) - 1;
   size_t l;
-  int i, op = OP_NULL;
+  int i;
 
   while (p >= s)
   {
@@ -270,33 +214,13 @@ static void push_string (char *s)
 	if (KeyNames[i].name)
 	{
 	  /* found a match */
-	  mutt_ungetch (KeyNames[i].value, 0);
-	  p = pp - 1;
-	  continue;
-	}
-
-	/* See if it is a valid command
-	 * skip the '<' and the '>' when comparing */
-	for (i = 0; Menus[i].name; i++)
-	{
-	  struct binding_t *binding = km_get_table (Menus[i].value);
-	  if (binding)
-	  {
-	    op = get_op (binding, pp + 1, l - 2);
-	    if (op != OP_NULL)
-	      break;
-	  }
-	}
-
-	if (op != OP_NULL)
-	{
-	  mutt_ungetch (0, op);
+	  mutt_ungetch (KeyNames[i].value);
 	  p = pp - 1;
 	  continue;
 	}
       }
     }
-    mutt_ungetch (*p--, 0);
+    mutt_ungetch (*p--);
   }
 }
 
@@ -305,9 +229,9 @@ static int retry_generic (int menu, keycode_t *keys, int keyslen, int lastkey)
   if (menu != MENU_EDITOR && menu != MENU_GENERIC && menu != MENU_PAGER)
   {
     if (lastkey)
-      mutt_ungetch (lastkey, 0);
+      mutt_ungetch (lastkey);
     for (; keyslen; keyslen--)
-      mutt_ungetch (keys[keyslen - 1], 0);
+      mutt_ungetch (keys[keyslen - 1]);
     return (km_dokey (MENU_GENERIC));
   }
   if (menu != MENU_EDITOR)
@@ -325,69 +249,18 @@ static int retry_generic (int menu, keycode_t *keys, int keyslen, int lastkey)
  */
 int km_dokey (int menu)
 {
-  event_t tmp;
   struct keymap_t *map = Keymaps[menu];
   int pos = 0;
   int n = 0;
-  int i;
 
   if (!map)
     return (retry_generic (menu, NULL, 0, 0));
 
   FOREVER
   {
-    tmp = mutt_getch();
-    LastKey = tmp.ch;
-    if (LastKey == -1)
-      return -1;
+    if ((LastKey = mutt_getch ()) == ERR)
+      return (-1);
 
-    /* do we have an op already? */
-    if (tmp.op)
-    {
-      char *func = NULL;
-      struct binding_t *bindings;
-
-      /* is this a valid op for the current menu? */
-      bindings = km_get_table (CurrentMenu);
-      if ((func = get_func (bindings, tmp.op)))
-	return tmp.op;
-
-      if (menu == MENU_EDITOR && get_func (OpEditor, tmp.op))
-	return tmp.op;
-
-      if (menu != MENU_EDITOR && CurrentMenu != MENU_PAGER)
-      {
-	/* check generic menu */
-	bindings = OpGeneric; 
-	if ((func = get_func (bindings, tmp.op)))
-	  return tmp.op;
-      }
-
-      /* Sigh. Valid function but not in this context.
-       * Find the literal string and push it back */
-      for (i = 0; Menus[i].name; i++)
-      {
-	bindings = km_get_table (Menus[i].value);
-	if (bindings)
-	{
-	  func = get_func (bindings, tmp.op);
-	  if (func)
-	  {
-	    /* careful not to feed the <..> as one token. otherwise 
-	    * push_string() will push the bogus op right back! */
-	    mutt_ungetch ('>', 0);
-	    push_string (func);
-	    mutt_ungetch ('<', 0);
-	    break;
-	  }
-	}
-      }
-      /* continue to chew */
-      if (func)
-	continue;
-    }
-
-    /* Nope. Business as usual */
     while (LastKey > map->keys[pos])
     {
       if (pos > map->eq || !map->next)
@@ -400,15 +273,14 @@ int km_dokey (int menu)
 
     if (++pos == map->len)
     {
-
       if (map->op != OP_MACRO)
-	return map->op;
+	return (map->op);
 
       if (n++ == 10)
       {
 	mutt_flushinp ();
-	mutt_error _("Macro loop detected.");
-	return -1;
+	mutt_error ("Macro loop detected.");
+	return (-1);
       }
 
       push_string (map->macro);
@@ -602,9 +474,9 @@ void km_error_key (int menu)
   char buf[SHORT_STRING];
 
   if (km_expand_key (buf, sizeof (buf), km_find_func (menu, OP_HELP)))
-    mutt_error (_("Key is not bound.  Press '%s' for help."), buf);
+    mutt_error ("Key is not bound.  Press '%s' for help.", buf);
   else
-    mutt_error _("Key is not bound.  See the manual.");
+    mutt_error ("Key is not bound.  See the manual.");
 }
 
 int mutt_parse_push (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
@@ -614,7 +486,7 @@ int mutt_parse_push (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   mutt_extract_token (buf, s, M_TOKEN_CONDENSE);
   if (MoreArgs (s))
   {
-    strfcpy (err->data, _("push: too many arguments"), err->dsize);
+    strfcpy (err->data, "push: too many arguments", err->dsize);
     r = -1;
   }
   else
@@ -635,7 +507,7 @@ char *parse_keymap (int *menu, BUFFER *s, BUFFER *err)
   {
     if ((*menu = mutt_check_menu (buf.data)) == -1)
     {
-      snprintf (err->data, err->dsize, _("%s: no such menu"), buf.data);
+      snprintf (err->data, err->dsize, "%s: no such menu", buf.data);
     }
     else
     {
@@ -644,7 +516,7 @@ char *parse_keymap (int *menu, BUFFER *s, BUFFER *err)
 
       if (!*buf.data)
       {
-	strfcpy (err->data, _("null key sequence"), err->dsize);
+	strfcpy (err->data, "null key sequence", err->dsize);
       }
       else if (MoreArgs (s))
 	return (buf.data);
@@ -652,7 +524,7 @@ char *parse_keymap (int *menu, BUFFER *s, BUFFER *err)
   }
   else
   {
-    strfcpy (err->data, _("too few arguments"), err->dsize);
+    strfcpy (err->data, "too few arguments", err->dsize);
   }
   FREE (&buf.data);
   return (NULL);
@@ -722,7 +594,7 @@ int mutt_parse_bind (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   mutt_extract_token (buf, s, 0);
   if (MoreArgs (s))
   {
-    strfcpy (err->data, _("bind: too many arguments"), err->dsize);
+    strfcpy (err->data, "bind: too many arguments", err->dsize);
     r = -1;
   }
   else if (strcasecmp ("noop", buf->data) == 0)
@@ -737,7 +609,7 @@ int mutt_parse_bind (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
       bindings = km_get_table (menu);
       if (bindings && try_bind (key, menu, buf->data, bindings) != 0)
       {
-	snprintf (err->data, err->dsize, _("%s: no such function in map"), buf->data);
+	snprintf (err->data, err->dsize, "%s: no such function in map", buf->data);
 	r = -1;
       }
     }
@@ -760,7 +632,7 @@ int mutt_parse_macro (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   /* make sure the macro sequence is not an empty string */
   if (!*buf->data)
   {
-    strfcpy (err->data, _("macro: empty key sequence"), err->dsize);
+    strfcpy (err->data, "macro: empty key sequence", err->dsize);
   }
   else
   {
@@ -771,7 +643,7 @@ int mutt_parse_macro (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 
       if (MoreArgs (s))
       {
-	strfcpy (err->data, _("macro: too many arguments"), err->dsize);
+	strfcpy (err->data, "macro: too many arguments", err->dsize);
       }
       else
       {
@@ -789,46 +661,4 @@ int mutt_parse_macro (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   }
   FREE (&key);
   return (r);
-}
-
-/* exec command-name */
-int mutt_parse_exec (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
-{
-  int ops[128]; 
-  int nops = 0;
-  struct binding_t *bindings = NULL;
-  char *command;
-  
-  if (!MoreArgs (s))
-  {
-    strfcpy (err->data, _("exec: too few arguments"), err->dsize);
-    return (-1);
-  }
-
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    command = buf->data;
-
-    if ((bindings = km_get_table (CurrentMenu)) == NULL)
-      bindings = OpGeneric;
-    
-    ops[nops] = get_op (bindings, command, strlen(command));
-    if (ops[nops] == OP_NULL)
-      ops[nops] = get_op (OpGeneric, command, strlen(command));
-    
-    if (ops[nops] == OP_NULL)
-    {
-      mutt_flushinp ();
-      mutt_error (_("%s: no such command"), command);
-      return (-1);
-    }
-    nops++;
-  }
-  while(MoreArgs(s) && nops < sizeof(ops)/sizeof(ops[0]));
-  
-  while(nops)
-    mutt_ungetch(0, ops[--nops]);
-  
-  return 0;
 }
