@@ -23,7 +23,6 @@
 #include "mime.h"
 #include "mailbox.h"
 #include "copy.h"
-#include "pager.h"
 #include "charset.h"
 
 #include <string.h>
@@ -38,6 +37,8 @@
 
 #ifdef HAVE_SYSEXITS_H
 #include <sysexits.h>
+#else /* Make sure EX_OK is defined <philiph@pobox.com> */
+#define EX_OK 0
 #endif
 
 extern char RFC822Specials[];
@@ -50,51 +51,47 @@ static struct sysexits
 sysexits_h[] = 
 {
 #ifdef EX_USAGE
-  { 0xff & EX_USAGE, "Bad usage." },
+  { EX_USAGE, "The command was used incorrectly." },
 #endif
 #ifdef EX_DATAERR
-  { 0xff & EX_DATAERR, "Data format error." },
+  { EX_DATAERR, "The input data was incorrect." },
 #endif
 #ifdef EX_NOINPUT
-  { 0xff & EX_NOINPUT, "Cannot open input." },
+  { EX_NOINPUT, "No input." },
 #endif
 #ifdef EX_NOUSER
-  { 0xff & EX_NOUSER, "User unknown." },
+  { EX_NOUSER, "No such user." },
 #endif
 #ifdef EX_NOHOST
-  { 0xff & EX_NOHOST, "Host unknown." },
+  { EX_NOHOST, "Host not found." },
 #endif
 #ifdef EX_UNAVAILABLE
-  { 0xff & EX_UNAVAILABLE, "Service unavailable." },
+  { EX_UNAVAILABLE, "Service unavailable." },
 #endif
 #ifdef EX_SOFTWARE
-  { 0xff & EX_SOFTWARE, "Internal error." },
+  { EX_SOFTWARE, "Software error." },
 #endif
 #ifdef EX_OSERR
-  { 0xff & EX_OSERR, "Operating system error." },
+  { EX_OSERR, "Operating system error." },
 #endif
 #ifdef EX_OSFILE
-  { 0xff & EX_OSFILE, "System file missing." },
+  { EX_OSFILE, "System file is missing." },
 #endif
 #ifdef EX_CANTCREAT
-  { 0xff & EX_CANTCREAT, "Can't create output." },
+  { EX_CANTCREAT, "Can't create output." },
 #endif
 #ifdef EX_IOERR
-  { 0xff & EX_IOERR, "I/O error." },
+  { EX_IOERR, "I/O error." },
 #endif
 #ifdef EX_TEMPFAIL
-  { 0xff & EX_TEMPFAIL, "Deferred." },
+  { EX_TEMPFAIL, "Temporary failure." },
 #endif
 #ifdef EX_PROTOCOL
-  { 0xff & EX_PROTOCOL, "Remote protocol error." },
+  { EX_PROTOCOL, "Protocol error." },
 #endif
 #ifdef EX_NOPERM
-  { 0xff & EX_NOPERM, "Insufficient permission." },
+  { EX_NOPERM, "Permission denied." },
 #endif
-#ifdef EX_CONFIG
-  { 0xff & EX_NOPERM, "Local configuration error." },
-#endif
-  { S_ERR, "Exec error." },
   { -1, NULL}
 };
       
@@ -121,16 +118,13 @@ static char MsgIdPfx = 'A';
 
 static void transform_to_7bit (BODY *a, FILE *fpin);
 
-static void encode_quoted (FILE * fin, FILE *fout, int istext, CHARSET_MAP *map)
+static void encode_quoted (FILE * fin, FILE *fout, int istext)
 {
   int c, linelen = 0;
   char line[77], savechar;
 
   while ((c = fgetc (fin)) != EOF)
   {
-    if(istext && map)
-      c = mutt_display_char(c, map);
-
     /* Escape lines that begin with "the message separator". */
     if (linelen == 5 && !mutt_strncmp ("From ", line, 5))
     {
@@ -305,7 +299,7 @@ static void b64_putc(char c, FILE *fout)
 }
   
   
-static void encode_base64 (FILE * fin, FILE *fout, int istext, CHARSET_MAP *map)
+static void encode_base64 (FILE * fin, FILE *fout, int istext)
 {
   int ch, ch1 = EOF;
   
@@ -313,9 +307,6 @@ static void encode_base64 (FILE * fin, FILE *fout, int istext, CHARSET_MAP *map)
   
   while((ch = fgetc(fin)) != EOF)
   {
-    if(istext && map)
-      ch = mutt_display_char(ch, map);
-
     if(istext && ch == '\n' && ch1 != '\r')
       b64_putc('\r', fout);
     b64_putc(ch, fout);
@@ -325,22 +316,68 @@ static void encode_base64 (FILE * fin, FILE *fout, int istext, CHARSET_MAP *map)
   fputc('\n', fout);
 }
 
-static void encode_8bit(FILE *fin, FILE *fout, int istext, CHARSET_MAP *map)
-{
-  int ch;
+#ifdef PERMIT_DEPRECATED_UUENCODED_MESSAGES
 
-  if(!istext || !map)
+#define UUENC(c) ((c) ? ((c) & 077) + ' ' : '`')
+
+static void encode_uuenc (FILE * fin, FILE * fout)
+{
+  register int ch, linelen;
+  register unsigned char *p;
+  unsigned char line[80];
+
+  while ((linelen = fread(line, 1, 45, fin)))
   {
-    mutt_copy_stream(fin, fout);
-    return;
+    ch = UUENC(linelen);
+    fputc (ch, fout);
+
+    for (p = line; linelen>0; linelen -= 3, p += 3)
+    {
+      ch = *p >> 2;
+      ch = UUENC(ch);
+      fputc(ch, fout);
+
+      if (linelen>1)
+      {
+	ch = ((*p & 0x3) << 4) | (p[1] >> 4);
+	ch = UUENC(ch);
+	fputc(ch, fout);
+      }
+      else
+      {
+	ch = (*p & 0x3) << 4;
+	ch = UUENC(ch);
+	fputc(ch, fout);
+	break;
+      }
+
+      if (linelen>2)
+      {
+	ch = ((p[1] & 0xf) << 2) | (p[2] >> 6);
+	ch = UUENC(ch);
+	fputc(ch, fout);
+      }
+      else
+      {
+	ch = (p[1] & 0xf) << 2;
+	ch = UUENC(ch);
+	fputc(ch, fout);
+	break;
+      }
+
+      ch = p[2] & 0x3f;
+      ch = UUENC(ch);
+      fputc(ch, fout);
+    }
+
+    fputc('\n', fout);
   }
-  
-  while((ch = fgetc(fin)) != EOF)
-  {
-    fputc(mutt_display_char(ch, map), fout);
-  }
+  ch = UUENC('\0');
+  fputc(ch, fout);
+  fputc('\n', fout);
 }
-  
+
+#endif
 
 int mutt_write_mime_header (BODY *a, FILE *f)
 {
@@ -424,11 +461,12 @@ int mutt_write_mime_header (BODY *a, FILE *f)
 int mutt_write_mime_body (BODY *a, FILE *f)
 {
   char *p, boundary[SHORT_STRING];
-  char send_charset[SHORT_STRING];
   FILE *fpin;
   BODY *t;
-  CHARSET_MAP *map = NULL;
-  
+#ifdef PERMIT_DEPRECATED_UUENCODED_MESSAGES
+  char *r;
+#endif
+
   if (a->type == TYPEMULTIPART)
   {
     /* First, find the boundary to use */
@@ -473,19 +511,25 @@ int mutt_write_mime_body (BODY *a, FILE *f)
     return -1;
   }
 
-  if (a->type == TYPETEXT)
-    map = mutt_get_translation (Charset, mutt_get_send_charset (send_charset, sizeof(send_charset), a, 1));
-
   if (a->encoding == ENCQUOTEDPRINTABLE)
-    encode_quoted (fpin, f, mutt_is_text_type (a->type, a->subtype), 
-		   a->type == TYPETEXT && (!a->noconv) ? map : NULL);
+    encode_quoted (fpin, f, mutt_is_text_type (a->type, a->subtype));
   else if (a->encoding == ENCBASE64)
-    encode_base64 (fpin, f, mutt_is_text_type (a->type, a->subtype), 
-		   a->type == TYPETEXT && (!a->noconv) ? map : NULL);
+    encode_base64 (fpin, f, mutt_is_text_type (a->type, a->subtype));
+#ifdef PERMIT_DEPRECATED_UUENCODED_MESSAGES
+  else if (a->encoding == ENCUUENCODED)
+  {
+    /* Strip off the leading path... */
+    if ((r = strrchr (a->filename, '/')))
+      r++;
+    else
+      r = a->filename;
+    fprintf (f, "begin 600 %s\n", r);
+    encode_uuenc (fpin, f);
+    fprintf (f, "end\n");
+  }
+#endif
   else
-    encode_8bit (fpin, f, mutt_is_text_type (a->type, a->subtype),
-		      a->type == TYPETEXT && (!a->noconv) ? map : NULL);
-
+    mutt_copy_stream (fpin, f);
   fclose (fpin);
 
   return (ferror (f) ? -1 : 0);
@@ -507,19 +551,24 @@ void mutt_generate_boundary (PARAMETER **parm)
 }
 
 /* analyze the contents of a file to determine which MIME encoding to use */
-static CONTENT *mutt_get_content_info (const char *fname, BODY *b)
+static CONTENT *mutt_get_content_info (const char *fname)
 {
   CONTENT *info;
   FILE *fp;
+  CHARSET_MAP *cm;
   int ch, from=0, whitespace=0, dot=0, linelen=0;
 
-  if(b && !fname) fname = b->filename;
-  
   if ((fp = fopen (fname, "r")) == NULL)
   {
     dprint (1, (debugfile, "mutt_get_content_info: %s: %s (errno %d).\n",
 		fname, strerror (errno), errno));
     return (NULL);
+  }
+
+  {
+    CHARSET *cs;
+
+    cm = (cs = mutt_get_charset(Charset)) ? cs->map : 0;
   }
 
   info = safe_calloc (1, sizeof (CONTENT));
@@ -594,7 +643,8 @@ static CONTENT *mutt_get_content_info (const char *fname, BODY *b)
       if (ch == ' ') whitespace++;
       info->ascii++;
     }
-
+    if (cm && mutt_unicode_char (cm, ch) & -128)
+      info->nonasc = 1;
     if (linelen > 1) dot = 0;
     if (ch != ' ' && ch != '\t') whitespace = 0;
   }
@@ -695,6 +745,22 @@ static int lookup_mime_type (char *d, const char *s)
     }
   }
   return (cur_n);
+}
+
+static char *set_text_charset (CONTENT *info)
+{
+  CHARSET *cs;
+
+  /* if charset is unknown assume low bytes are ascii compatible */
+
+  if ((Charset == NULL || mutt_strcasecmp (Charset, "us-ascii") == 0)
+      && info->hibin)
+    return ("unknown-8bit");
+
+  if (((cs = mutt_get_charset (Charset)) && cs->map) ? info->nonasc : info->hibin)
+    return (Charset);
+
+  return ("us-ascii");
 }
 
 void mutt_message_to_7bit (BODY *a, FILE *fp)
@@ -819,25 +885,6 @@ static void transform_to_7bit (BODY *a, FILE *fpin)
   }
 }
 
-static const char *get_text_charset (BODY *b, CONTENT *info)
-{
-  char send_charset[SHORT_STRING];
-  char *chsname;
-
-  chsname = mutt_get_send_charset (send_charset, sizeof (send_charset), b, 1);
-  
-  /* if charset is unknown assume low bytes are ascii compatible */
-
-  if ((chsname == NULL || mutt_strcasecmp (chsname, "us-ascii") == 0)
-      && info->hibin)
-    return ("unknown-8bit");
-
-  if (info->hibin)
-    return (chsname);
-
-  return ("us-ascii");
-}
-
 /* determine which Content-Transfer-Encoding to use */
 static void mutt_set_encoding (BODY *b, CONTENT *info)
 {
@@ -850,7 +897,7 @@ static void mutt_set_encoding (BODY *b, CONTENT *info)
     else
       b->encoding = ENC7BIT;
   }
-  else if (b->type == TYPEMESSAGE)
+  else if (b->type == TYPEMESSAGE  || b->type == TYPEMULTIPART)
   {
     if (info->lobin || info->hibin)
     {
@@ -879,66 +926,19 @@ void mutt_stamp_attachment(BODY *a)
   a->stamp = time(NULL);
 }
 
-/* Get the character set which is to be used for sending */
-
-char *mutt_get_send_charset (char *d, size_t dlen, BODY *b, short f)
-{
-  char *p = NULL;
-
-  if (b && b->type != TYPETEXT)
-    return NULL;
-
-  if (b) 
-    p = mutt_get_parameter ("charset", b->parameter);
-
-  /* override the special "us-ascii" and "unknown-8bit" character sets */
-  if (!p || (f && (!mutt_strcasecmp (p, "us-ascii") || !mutt_strcasecmp (p, "unknown-8bit"))))
-  {
-    if (SendCharset && *SendCharset)
-      p = SendCharset;
-    else if (Charset)
-      p = Charset;
-  }
-
-  if (p)
-  {
-    strfcpy (d, NONULL(p), dlen);
-    return d;
-  }
-
-  /* something is seriously wrong. */
-  return NULL;
-}
-
-/* set a body structure's character set */
-
-void mutt_set_body_charset(BODY *b, const char *chs)
-{
-  char send_charset[SHORT_STRING];
-  
-  if(b->type != TYPETEXT)
-    return;
-
-  if(!chs && !(chs = mutt_get_send_charset(send_charset, sizeof(send_charset), NULL, 1)))
-    return;
-
-  mutt_set_parameter ("charset", chs, &b->parameter);
-}
-
-
 /* Assumes called from send mode where BODY->filename points to actual file */
 void mutt_update_encoding (BODY *a)
 {
   CONTENT *info;
 
-  if ((info = mutt_get_content_info (a->filename, a)) == NULL)
+  if ((info = mutt_get_content_info (a->filename)) == NULL)
     return;
 
   mutt_set_encoding (a, info);
   mutt_stamp_attachment(a);
   
   if (a->type == TYPETEXT)
-    mutt_set_body_charset(a, get_text_charset(a, info));
+    mutt_set_parameter ("charset", set_text_charset (info), &a->parameter);
 
 #ifdef _PGPPATH
   /* save the info in case this message is signed.  we will want to do Q-P
@@ -991,26 +991,26 @@ BODY *mutt_make_message_attach (CONTEXT *ctx, HEADER *hdr, int attach_msg)
   if (!attach_msg && option (OPTMIMEFORWDECODE))
   {
     chflags |= CH_MIME | CH_TXTPLAIN;
-    cmflags = M_CM_DECODE | M_CM_CHARCONV;
+    cmflags = M_CM_DECODE;
 #ifdef _PGPPATH
     pgp &= ~PGPENCRYPT;
 #endif
   }
 #ifdef _PGPPATH
   else
-    if (option (OPTFORWDECRYPT)
+    if(option(OPTFORWDECRYPT)
        && (hdr->pgp & PGPENCRYPT))
   {
-    if (mutt_is_multipart_encrypted (hdr->content))
+    if(mutt_is_multipart_encrypted(hdr->content))
     {
       chflags |= CH_MIME | CH_NONEWLINE;
       cmflags = M_CM_DECODE_PGP;
       pgp &= ~PGPENCRYPT;
     }
-    else if (mutt_is_application_pgp (hdr->content) & PGPENCRYPT)
+    else if(mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
     {
       chflags |= CH_MIME | CH_TXTPLAIN;
-      cmflags = M_CM_DECODE | M_CM_CHARCONV;
+      cmflags = M_CM_DECODE;
       pgp &= ~PGPENCRYPT;
     }
   }
@@ -1043,7 +1043,7 @@ BODY *mutt_make_file_attach (const char *path)
   char buf[SHORT_STRING];
   int n;
   
-  if ((info = mutt_get_content_info (path, NULL)) == NULL)
+  if ((info = mutt_get_content_info (path)) == NULL)
     return NULL;
 
   att = mutt_new_body ();
@@ -1068,7 +1068,8 @@ BODY *mutt_make_file_attach (const char *path)
        */
       att->type = TYPETEXT;
       att->subtype = safe_strdup ("plain");
-      mutt_set_body_charset(att, get_text_charset(att, info));
+      
+      mutt_set_parameter("charset", set_text_charset(info), &att->parameter);
     }
     else
     {
@@ -1148,10 +1149,12 @@ char *mutt_make_date (char *s, size_t len)
   struct tm *l = localtime (&t);
   time_t tz = mutt_local_tz (t);
 
+  tz /= 60;
+
   snprintf (s, len,  "Date: %s, %d %s %d %02d:%02d:%02d %+03d%02d\n",
 	    Weekdays[l->tm_wday], l->tm_mday, Months[l->tm_mon],
 	    l->tm_year + 1900, l->tm_hour, l->tm_min, l->tm_sec,
-	    tz / 3600, abs (tz) % 3600);
+	    tz / 60, abs (tz) % 60);
   return (s);
 }
 
@@ -1237,27 +1240,21 @@ static void write_references (LIST *r, FILE *f)
  * mode == 1  => "lite" mode (used for edit_hdrs)
  * mode == 0  => normal mode.  write full header + MIME headers
  * mode == -1 => write just the envelope info (used for postponing messages)
- * 
- * privacy != 0 => will omit any headers which may identify the user.
- *               Output generated is suitable for being sent through
- * 		 anonymous remailer chains.
- * 
  */
 
-int mutt_write_rfc822_header (FILE *fp, ENVELOPE *env, BODY *attach, 
-			      int mode, int privacy)
+int mutt_write_rfc822_header (FILE *fp, ENVELOPE *env, BODY *attach, int mode)
 {
   char buffer[LONG_STRING];
   LIST *tmp = env->userhdrs;
 
-  if (option(OPTUSEHEADERDATE) && !privacy)
+  if (option(OPTUSEHEADERDATE))
   {
     if(env->date)
       fprintf(fp, "Date: %s\n", env->date);
     else
       fputs (mutt_make_date(buffer, sizeof(buffer)), fp);
   }
-  else if (mode == 0 && !privacy)
+  else if (mode == 0)
     fputs (mutt_make_date (buffer, sizeof(buffer)), fp);
 
 
@@ -1265,7 +1262,7 @@ int mutt_write_rfc822_header (FILE *fp, ENVELOPE *env, BODY *attach,
   /* OPTUSEFROM is not consulted here so that we can still write a From:
    * field if the user sets it with the `my_hdr' command
    */
-  if (env->from && !privacy)
+  if (env->from)
   {
     buffer[0] = 0;
     rfc822_write_address (buffer, sizeof (buffer), env->from);
@@ -1305,7 +1302,7 @@ int mutt_write_rfc822_header (FILE *fp, ENVELOPE *env, BODY *attach,
     fputs ("Subject: \n", fp);
 
   /* save message id if the user has set it */
-  if (env->message_id && !privacy)
+  if (env->message_id)
     fprintf (fp, "Message-ID: %s\n", env->message_id);
 
   if (env->reply_to)
@@ -1336,11 +1333,13 @@ int mutt_write_rfc822_header (FILE *fp, ENVELOPE *env, BODY *attach,
     mutt_write_mime_header (attach, fp);
   }
 
-  if (mode == 0 && !privacy && option (OPTXMAILER))
+#ifndef NO_XMAILER
+  if (mode == 0)
   {
     /* Add a vanity header */
     fprintf (fp, "X-Mailer: Mutt %s\n", MUTT_VERSION);
   }
+#endif
 
   /* Add any user defined headers */
   for (; tmp; tmp = tmp->next)
@@ -1419,7 +1418,7 @@ char *mutt_gen_msgid (void)
 
 static RETSIGTYPE alarm_handler (int sig)
 {
-  SigAlrm = 1;
+  Signals |= S_ALARM;
 }
 
 /* invoke sendmail in a subshell
@@ -1432,18 +1431,17 @@ static RETSIGTYPE alarm_handler (int sig)
 static int
 send_msg (const char *path, char **args, const char *msg, char **tempfile)
 {
-  sigset_t set;
-  int fd, st;
-  pid_t pid, ppid;
+  int fd, st, w = 0, err = 0;
+  pid_t pid;
+  struct sigaction act, oldint, oldquit, oldalrm;
 
-  mutt_block_signals_system ();
+  memset (&act, 0, sizeof (struct sigaction));
+  sigemptyset (&(act.sa_mask));
+  act.sa_handler = SIG_IGN;
+  sigaction (SIGINT, &act, &oldint);
+  sigaction (SIGQUIT, &act, &oldquit);
 
-  sigemptyset (&set);
-  /* we also don't want to be stopped right now */
-  sigaddset (&set, SIGTSTP);
-  sigprocmask (SIG_BLOCK, &set, NULL);
-
-  if (SendmailWait >= 0)
+  if (SendmailWait)
   {
     char tmp[_POSIX_PATH_MAX];
 
@@ -1453,124 +1451,135 @@ send_msg (const char *path, char **args, const char *msg, char **tempfile)
 
   if ((pid = fork ()) == 0)
   {
-    struct sigaction act, oldalrm;
-
-    /* save parent's ID before setsid() */
-    ppid = getppid ();
-
-    /* we want the delivery to continue even after the main process dies,
-     * so we put ourselves into another session right away
-     */
-    setsid ();
-  
-    /* next we close all open files */
-#if defined(OPEN_MAX)
-    for (fd = 0; fd < OPEN_MAX; fd++)
-      close (fd);
-#elif defined(_POSIX_OPEN_MAX)
-    for (fd = 0; fd < _POSIX_OPEN_MAX; fd++)
-      close (fd);
+    /* reset signals for the child */
+    act.sa_handler = SIG_DFL;
+    /* we need SA_RESTART for the open() below */
+#ifdef SA_RESTART
+    act.sa_flags = SA_NOCLDSTOP | SA_RESTART;
 #else
-    close (0);
-    close (1);
-    close (2);
+    act.sa_flags = SA_NOCLDSTOP;
 #endif
+    sigaction (SIGCHLD, &act, NULL);
+    act.sa_flags = 0;
+    sigaction (SIGINT, &act, NULL);
+    sigaction (SIGQUIT, &act, NULL);
 
-    /* now the second fork() */
+    /* if it is possible that we will deliver in the background, then we have
+       to detach the child from this process group or it will die when the
+       parent process exists, causing the mail to not get delivered.  The
+       problem here is that any error messages will get lost... */
+    if (SendmailWait)
+      setsid ();
     if ((pid = fork ()) == 0)
     {
-      /* "msg" will be opened as stdin */
-      if (open (msg, O_RDONLY, 0) < 0)
+      fd = open (msg, O_RDONLY, 0);
+      if (fd < 0)
+	_exit (127);
+      dup2 (fd, 0);
+      close (fd);
+      if (SendmailWait)
       {
-	unlink (msg);
-	_exit (S_ERR);
+	/* write stdout to a tempfile */
+	w = open (*tempfile, O_WRONLY | O_CREAT | O_EXCL, 0600);
+	if (w < 0)
+	  _exit (errno);
+	dup2 (w, 1);
+	close (w);
       }
-      unlink (msg);
-
-      if (SendmailWait >= 0)
-      {
-	/* *tempfile will be opened as stdout */
-	if (open (*tempfile, O_WRONLY | O_APPEND | O_CREAT | O_EXCL, 0600) < 0)
-	  _exit (S_ERR);
-	/* redirect stderr to *tempfile too */
-	if (dup (1) < 0)
-	  _exit (S_ERR);
-      }
-
+      sigaction (SIGCHLD, &act, NULL);
       execv (path, args);
-      _exit (S_ERR);
+      unlink (msg);
+      _exit (127);
     }
     else if (pid == -1)
     {
       unlink (msg);
-      safe_free ((void **) tempfile);
-      _exit (S_ERR);
+      _exit (errno);
     }
-
-    /* SendmailWait > 0: interrupt waitpid() after SendmailWait seconds
-     * SendmailWait = 0: wait forever
-     * SendmailWait < 0: don't wait
-     */
-    if (SendmailWait > 0)
-    {
-      SigAlrm = 0;
-      act.sa_handler = alarm_handler;
-#ifdef SA_INTERRUPT
-      /* need to make sure waitpid() is interrupted on SIGALRM */
-      act.sa_flags = SA_INTERRUPT;
-#else
-      act.sa_flags = 0;
-#endif
-      sigemptyset (&act.sa_mask);
-      sigaction (SIGALRM, &act, &oldalrm);
-      alarm (SendmailWait);
-    }
-    else if (SendmailWait < 0)
-      _exit (0xff & EX_OK);
 
     if (waitpid (pid, &st, 0) > 0)
     {
-      st = WIFEXITED (st) ? WEXITSTATUS (st) : S_ERR;
-      if (SendmailWait && st == (0xff & EX_OK))
-      {
+      st = WIFEXITED (st) ? WEXITSTATUS (st) : 127;
+      if (st == (EX_OK & 0xff) && SendmailWait)
 	unlink (*tempfile); /* no longer needed */
-	safe_free ((void **) tempfile);
-      }
     }
     else
     {
-      st = (SendmailWait > 0 && errno == EINTR && SigAlrm) ?
-	      S_BKG : S_ERR;
-      if (SendmailWait > 0)
-      {
+      st = 127;
+      if (SendmailWait)
 	unlink (*tempfile);
-	safe_free ((void **) tempfile);
-      }
     }
-
-    /* reset alarm; not really needed, but... */
-    alarm (0);
-    sigaction (SIGALRM, &oldalrm, NULL);
-
-    if (kill (ppid, 0) == -1 && errno == ESRCH)
-    {
-      /* the parent is already dead */
-      unlink (*tempfile);
-      safe_free ((void **) tempfile);
-    }
-
+    unlink (msg);
     _exit (st);
   }
-
-  sigprocmask (SIG_UNBLOCK, &set, NULL);
-
-  if (pid != -1 && waitpid (pid, &st, 0) > 0)
-    st = WIFEXITED (st) ? WEXITSTATUS (st) : S_ERR; /* return child status */
+  /* SendmailWait > 0: SIGALRM will interrupt wait() after alrm seconds
+     SendmailWait = 0: wait forever
+     SendmailWait < 0: don't wait */
+  if (SendmailWait > 0)
+  {
+    Signals &= ~S_ALARM;
+    act.sa_handler = alarm_handler;
+#ifdef SA_INTERRUPT
+    /* need to make sure the waitpid() is interrupted on SIGALRM */
+    act.sa_flags = SA_INTERRUPT;
+#else
+    act.sa_flags = 0;
+#endif
+    sigaction (SIGALRM, &act, &oldalrm);
+    alarm (SendmailWait);
+  }
+  if (SendmailWait >= 0)
+  {
+    w = waitpid (pid, &st, 0);
+    err = errno; /* save error since it might be clobbered by another
+		    system call before we check the value */
+    dprint (1, (debugfile, "send_msg(): waitpid returned %d (%s)\n", w,
+	    (w < 0 ? strerror (errno) : "OK")));
+  }
+  if (SendmailWait > 0)
+  {
+    alarm (0);
+    sigaction (SIGALRM, &oldalrm, NULL);
+  }
+  if (SendmailWait < 0 || ((Signals & S_ALARM) && w < 0 && err == EINTR))
+  {
+    /* add to list of children pids to reap */
+    mutt_add_child_pid (pid);
+    /* since there is no way for the user to be notified of error in this case,
+       remove the temp file now */
+    unlink (*tempfile);
+    FREE (tempfile);
+#ifdef DEBUG
+    if (Signals & S_ALARM)
+      dprint (1, (debugfile, "send_msg(): received SIGALRM\n"));
+    dprint (1, (debugfile, "send_msg(): putting sendmail in the background\n"));
+#endif
+    st = EX_OK & 0xff;
+  }
+  else if (w < 0)
+  {
+    /* if err==EINTR, alarm interrupt, child status unknown,
+       otherwise, there was an error invoking the child */
+    st = (err == EINTR) ? (EX_OK & 0xff) : 127;
+  }
   else
-    st = S_ERR;	/* error */
-
-  mutt_unblock_signals_system (1);
-
+  {
+#ifdef DEBUG
+    if (WIFEXITED (st))
+    {
+      dprint (1, (debugfile, "send_msg(): child exited %d\n", WEXITSTATUS (st)));
+    }
+    else
+    {
+      dprint (1, (debugfile, "send_msg(): child did not exit\n"));
+    }
+#endif /* DEBUG */
+    st = WIFEXITED (st) ? WEXITSTATUS (st) : -1; /* return child status */
+  }
+  sigaction (SIGINT, &oldint, NULL);
+  sigaction (SIGQUIT, &oldquit, NULL);
+  /* restore errno so that the caller can build an error message */
+  errno = err;
   return (st);
 }
 
@@ -1668,37 +1677,26 @@ mutt_invoke_sendmail (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc, /* recips */
   
   args[argslen++] = NULL;
 
+  if (!option (OPTNOCURSES))
+    endwin ();
   if ((i = send_msg (path, args, msg, &childout)) != (EX_OK & 0xff))
   {
-    if (i != S_BKG)
-    {
-      const char *e = strsysexit (i);
+    const char *e = strsysexit(i);
 
-      e = strsysexit (i);
-      mutt_error (_("Error sending message, child exited %d (%s)."), i, NONULL (e));
-      if (childout)
-      {
-	struct stat st;
-	
-	if (stat (childout, &st) == 0 && st.st_size > 0)
-	  mutt_do_pager (_("Output of the delivery process"), childout, 0, NULL);
-      }
+    fprintf (stderr, _("Error sending message, child exited %d (%s).\n"), i, NONULL (e));
+    if (childout)
+      fprintf (stderr, _("Saved output of child process to %s.\n"), childout);
+    if (!option (OPTNOCURSES))
+    {
+      mutt_any_key_to_continue (NULL);
+      mutt_error _("Error sending message.");
     }
   }
-  else
-    unlink (childout);
-
   FREE (&childout);
   FREE (&path);
   FREE (&s);
   FREE (&args);
 
-  if (i == (EX_OK & 0xff))
-    i = 0;
-  else if (i == S_BKG)
-    i = 1;
-  else
-    i = -1;
   return (i);
 }
 
@@ -1917,7 +1915,7 @@ int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int post, 
   /* post == 1 => postpone message. Set mode = -1 in mutt_write_rfc822_header()
    * post == 0 => Normal mode. Set mode = 0 in mutt_write_rfc822_header() 
    * */
-  mutt_write_rfc822_header (msg->fp, hdr->env, hdr->content, post ? -post : 0, 0);
+  mutt_write_rfc822_header (msg->fp, hdr->env, hdr->content, post ? -post : 0);
 
   /* (postponment) if this was a reply of some sort, <msgid> contians the
    * Message-ID: of message replied to.  Save it using a special X-Mutt-
@@ -1941,7 +1939,7 @@ int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int post, 
   /* (postponment) if the mail is to be signed or encrypted, save this info */
   if (post && (hdr->pgp & (PGPENCRYPT | PGPSIGN)))
   {
-    fputs ("X-Mutt-PGP: ", msg->fp);
+    fputs ("Pgp: ", msg->fp);
     if (hdr->pgp & PGPENCRYPT) 
       fputc ('E', msg->fp);
     if (hdr->pgp & PGPSIGN)
@@ -1956,22 +1954,7 @@ int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int post, 
   }
 #endif /* _PGPPATH */
 
-#ifdef MIXMASTER
-  /* (postponement) if the mail is to be sent through a mixmaster 
-   * chain, save that information
-   */
-  
-  if (post && hdr->chain && hdr->chain)
-  {
-    LIST *p;
 
-    fputs ("X-Mutt-Mix:", msg->fp);
-    for (p = hdr->chain; p; p = p->next)
-      fprintf (msg->fp, " %s", (char *) p->data);
-    
-    fputc ('\n', msg->fp);
-  }
-#endif    
 
   if (tempfp)
   {
