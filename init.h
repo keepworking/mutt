@@ -36,6 +36,7 @@
 #define DT_SUBTYPE_MASK	0xf0
 #define DT_SORT_ALIAS	0x10
 #define DT_SORT_BROWSER 0x20
+#define DT_SORT_KEYS	0x40
 
 /* flags to parse_set() */
 #define M_SET_INV	(1<<0)	/* default is to invert all vars */
@@ -70,14 +71,14 @@ struct option_t MuttVars[] = {
   { "abort_nosubject",	DT_QUAD, R_NONE, OPT_SUBJECT, M_ASKYES },
   { "abort_unmodified",	DT_QUAD, R_NONE, OPT_ABORT, M_YES },
   { "alias_file",	DT_PATH, R_NONE, UL &AliasFile, UL "~/.muttrc" },
-  { "alias_format",	DT_STR,  R_NONE, UL &AliasFmt, UL "%2n %t %-10a   %r" },
+  { "alias_format",	DT_STR,  R_NONE, UL &AliasFmt, UL "%4n %t %-10a   %r" },
   { "allow_8bit",	DT_BOOL, R_NONE, OPTALLOW8BIT, 1 },
   { "alternates",	DT_RX,	 R_BOTH, UL &Alternates, 0 },
   { "arrow_cursor",	DT_BOOL, R_BOTH, OPTARROWCURSOR, 0 },
   { "ascii_chars",	DT_BOOL, R_BOTH, OPTASCIICHARS, 0 },
   { "askbcc",		DT_BOOL, R_NONE, OPTASKBCC, 0 },
   { "askcc",		DT_BOOL, R_NONE, OPTASKCC, 0 },
-  { "attach_format",	DT_STR,  R_NONE, UL &AttachFormat, UL "%u%D%t%2n %T%.40d%> [%.7m/%.10M, %.6e, %s] " },
+  { "attach_format",	DT_STR,  R_NONE, UL &AttachFormat, UL "%u%D%t%4n %T%.40d%> [%.7m/%.10M, %.6e%?C?, %C?, %s] " },
   { "attach_split",	DT_BOOL, R_NONE, OPTATTACHSPLIT, 1 },
   { "attach_sep",	DT_STR,	 R_NONE, UL &AttachSep, UL "\n" },
   { "attribution",	DT_STR,	 R_NONE, UL &Attribution, UL "On %d, %n wrote:" },
@@ -96,11 +97,15 @@ struct option_t MuttVars[] = {
   { "date_format",	DT_STR,	 R_BOTH, UL &DateFmt, UL "!%a, %b %d, %Y at %I:%M:%S%p %Z" },
   { "default_hook",	DT_STR,	 R_NONE, UL &DefaultHook, UL "~f %s !~P | (~P ~C %s)" },
   { "delete",		DT_QUAD, R_NONE, OPT_DELETE, M_ASKYES },
+#if defined(DL_STANDALONE) && defined(USE_DOTLOCK)
+  { "dotlock_program",  DT_PATH, R_NONE, UL &MuttDotlock, UL BINDIR "/mutt_dotlock" },
+#endif
   { "dsn_notify",	DT_STR,	 R_NONE, UL &DsnNotify, UL "" },
   { "dsn_return",	DT_STR,	 R_NONE, UL &DsnReturn, UL "" },
   { "edit_headers",	DT_BOOL, R_NONE, OPTEDITHDRS, 0 },
   { "edit_hdrs",	DT_SYN,  R_NONE, UL "edit_headers", 0 },
   { "editor",		DT_PATH, R_NONE, UL &Editor, 0 },
+  { "encode_from",	DT_BOOL, R_NONE, OPTENCODEFROM, 0 },
   { "escape",		DT_STR,	 R_NONE, UL &EscChar, UL "~" },
   { "fast_reply",	DT_BOOL, R_NONE, OPTFASTREPLY, 0 },
   { "fcc_attach",	DT_BOOL, R_NONE, OPTFCCATTACH, 1 },
@@ -108,10 +113,10 @@ struct option_t MuttVars[] = {
   { "folder_format",	DT_STR,	 R_NONE, UL &FolderFormat, UL "%N %F %2l %-8.8u %-8.8g %8s %d %f" },
   { "followup_to",	DT_BOOL, R_NONE, OPTFOLLOWUPTO, 1 },
   { "force_name",	DT_BOOL, R_NONE, OPTFORCENAME, 0 },
+  { "forward_attachment", DT_BOOL, R_NONE, OPTFORWATTACH, 0 },
+  { "forw_attachment",  DT_SYN, R_NONE, UL "forward_attachment", 0 },
   { "forward_decode",	DT_BOOL, R_NONE, OPTFORWDECODE, 1 },
   { "forw_decode",	DT_SYN,  R_NONE, UL "forward_decode", 0 },
-  { "forward_weed",	DT_BOOL, R_NONE, OPTFORWWEEDHEADER, 1 },
-  { "forw_weed",	DT_SYN,  R_NONE, UL "forward_weed", 0 }, 
   { "forward_format",	DT_STR,	 R_NONE, UL &ForwFmt, UL "[%a: %s]" },
   { "forw_format",	DT_SYN,  R_NONE, UL "forward_format", 0 },
   { "forward_quote",	DT_BOOL, R_NONE, OPTFORWQUOTE, 0 },
@@ -122,12 +127,15 @@ struct option_t MuttVars[] = {
   { "help",		DT_BOOL, R_BOTH, OPTHELP, 1 },
   { "hidden_host",	DT_BOOL, R_NONE, OPTHIDDENHOST, 0 },
   { "history",		DT_NUM,	 R_NONE, UL &HistSize, 10 },
+  { "honor_followup_to", DT_QUAD, R_NONE, OPT_MFUPTO, M_YES },
   { "hostname",		DT_STR,	 R_NONE, UL &Fqdn, 0 },
 #ifdef USE_IMAP
   { "imap_checkinterval", 	DT_NUM,	 R_NONE, UL &ImapCheckTime, 0 },
+  { "imap_list_subscribed",	DT_BOOL, R_NONE, OPTIMAPLSUB, 0 },
   { "imap_user",	DT_STR,  R_NONE, UL &ImapUser, UL 0 },
   { "imap_pass", 	DT_STR,  R_NONE, UL &ImapPass, UL 0 },
-  { "imap_passive",	DT_BOOL, R_NONE, OPTIMAPPASSIVE, 1 },
+  { "imap_passive",		DT_BOOL, R_NONE, OPTIMAPPASSIVE, 1 },
+  { "imap_home_namespace",	DT_STR, R_NONE, UL &ImapHomeNamespace, UL 0},
 #endif
   { "implicit_autoview", DT_BOOL,R_NONE, OPTIMPLICITAUTOVIEW, 0},
   { "include",		DT_QUAD, R_NONE, OPT_INCLUDE, M_ASKYES },
@@ -139,7 +147,7 @@ struct option_t MuttVars[] = {
   { "locale",		DT_STR,  R_BOTH, UL &Locale, UL "C" },
   { "mail_check",	DT_NUM,  R_NONE, UL &BuffyTimeout, 5 },
   { "mailcap_path",	DT_STR,	 R_NONE, UL &MailcapPath, 0 },
-  { "mailcap_sanitize", DT_BOOL, R_NONE, OPTMAILCAPSANITIZE, 1 },
+  { "mailcap_sanitize",	DT_BOOL, R_NONE, OPTMAILCAPSANITIZE, 1 },
   { "mark_old",		DT_BOOL, R_BOTH, OPTMARKOLD, 1 },
   { "markers",		DT_BOOL, R_PAGER, OPTMARKERS, 1 },
   { "mask",		DT_RX,	 R_NONE, UL &Mask, UL "!^\\.[^.]" },
@@ -152,12 +160,20 @@ struct option_t MuttVars[] = {
   { "mime_forward",	DT_QUAD, R_NONE, OPT_MIMEFWD, M_NO },
   { "mime_forward_decode", DT_BOOL, R_NONE, OPTMIMEFORWDECODE, 0 },
   { "mime_fwd",		DT_SYN,  R_NONE, UL "mime_forward", 0 },
+
+
+#ifdef MIXMASTER
+  { "mix_entry_format", DT_STR,  R_NONE, UL &MixEntryFormat, UL "%4n %c %-16s %a" },
+  { "mixmaster",	DT_PATH, R_NONE, UL &Mixmaster, UL MIXMASTER },
+#endif
+
+
   { "move",		DT_QUAD, R_NONE, OPT_MOVE, M_ASKNO },
   { "message_format",	DT_STR,	 R_NONE, UL &MsgFmt, UL "%s" },
   { "msg_format",	DT_SYN,  R_NONE, UL "message_format", 0 },
   { "pager",		DT_PATH, R_NONE, UL &Pager, UL "builtin" },
   { "pager_context",	DT_NUM,	 R_NONE, UL &PagerContext, 0 },
-  { "pager_format",	DT_STR,	 R_PAGER, UL &PagerFmt, UL "-%S- %C/%m: %-20.20n   %s" },
+  { "pager_format",	DT_STR,	 R_PAGER, UL &PagerFmt, UL "-%Z- %C/%m: %-20.20n   %s" },
   { "pager_index_lines",DT_NUM,	 R_PAGER, UL &PagerIndexLines, 0 },
   { "pager_stop",	DT_BOOL, R_NONE, OPTPAGERSTOP, 0 },
 
@@ -167,52 +183,40 @@ struct option_t MuttVars[] = {
 
   { "pgp_autosign",	DT_BOOL, R_NONE, OPTPGPAUTOSIGN, 0 },
   { "pgp_autoencrypt",	DT_BOOL, R_NONE, OPTPGPAUTOENCRYPT, 0 },
+
+# if 0
   { "pgp_encryptself",	DT_BOOL, R_NONE, OPTPGPENCRYPTSELF, 1 },
+# endif
+
+  { "pgp_entry_format", DT_STR,  R_NONE, UL &PgpEntryFormat, UL "%4n %t%f %4l/0x%k %-4a %2c %u" },
   { "pgp_long_ids",	DT_BOOL, R_NONE, OPTPGPLONGIDS, 0 },
   { "pgp_replyencrypt",	DT_BOOL, R_NONE, OPTPGPREPLYENCRYPT, 0 },
   { "pgp_replysign",	DT_BOOL, R_NONE, OPTPGPREPLYSIGN, 0 },
+  { "pgp_replysignencrypted", DT_BOOL, R_NONE, OPTPGPREPLYSIGNENCRYPTED, 0 },
+  { "pgp_retainable_sigs", DT_BOOL, R_NONE, OPTPGPRETAINABLESIG, 0 },
+  { "pgp_show_unusable", DT_BOOL, R_NONE, OPTPGPSHOWUNUSABLE, 1 },
   { "pgp_sign_as",	DT_STR,	 R_NONE, UL &PgpSignAs, 0 },
   { "pgp_sign_micalg",	DT_STR,	 R_NONE, UL &PgpSignMicalg, UL "pgp-md5" },
   { "pgp_strict_enc",	DT_BOOL, R_NONE, OPTPGPSTRICTENC, 1 },
   { "pgp_timeout",	DT_NUM,	 R_NONE, UL &PgpTimeout, 300 },
   { "pgp_verify_sig",	DT_QUAD, R_NONE, OPT_VERIFYSIG, M_YES },
+  { "pgp_sort_keys",	DT_SORT|DT_SORT_KEYS, R_NONE, UL &PgpSortKeys, SORT_ADDRESS },
 
-  { "pgp_v2",		DT_PATH, R_NONE, UL &PgpV2, 0 },
-  { "pgp_v2_language",	DT_STR,	 R_NONE, UL &PgpV2Language, UL "en" },
-  { "pgp_v2_pubring",	DT_PATH, R_NONE, UL &PgpV2Pubring, 0 },
-  { "pgp_v2_secring",	DT_PATH, R_NONE, UL &PgpV2Secring, 0 },  
-
-  { "pgp_v5",		DT_PATH, R_NONE, UL &PgpV3, 0 },
-  { "pgp_v5_language",	DT_STR,	 R_NONE, UL &PgpV3Language, 0 },
-  { "pgp_v5_pubring",	DT_PATH, R_NONE, UL &PgpV3Pubring, 0 },
-  { "pgp_v5_secring",	DT_PATH, R_NONE, UL &PgpV3Secring, 0 },
-
-  { "pgp_v6",		DT_PATH, R_NONE, UL &PgpV6, 0 },
-  { "pgp_v6_language",	DT_STR,	 R_NONE, UL &PgpV6Language, 0 },
-  { "pgp_v6_pubring",	DT_PATH, R_NONE, UL &PgpV6Pubring, 0 },
-  { "pgp_v6_secring",	DT_PATH, R_NONE, UL &PgpV6Secring, 0 },
-
-  { "pgp_gpg",		DT_PATH, R_NONE, UL &PgpGpg, 0 },
+  /* XXX Default values! */
   
-# ifdef HAVE_PGP2
-  { "pgp_default_version",	DT_STR, R_NONE, UL &PgpDefaultVersion, UL "pgp2" },
-# else
-#  ifdef HAVE_PGP5
-  { "pgp_default_version",	DT_STR, R_NONE, UL &PgpDefaultVersion, UL "pgp5" },
-# else
-#   ifdef HAVE_PGP6
-  { "pgp_default_version",      DT_STR, R_NONE, UL &PgpDefaultVersion, UL "pgp6" },
-# else
-#   ifdef HAVE_GPG
-  { "pgp_default_version",	DT_STR,	R_NONE, UL &PgpDefaultVersion, UL "gpg" },
-#     endif
-#   endif
-#  endif
-# endif
-  { "pgp_receive_version", 	DT_STR,	R_NONE, UL &PgpReceiveVersion, UL "default" },
-  { "pgp_send_version",		DT_STR,	R_NONE, UL &PgpSendVersion, UL "default" },
-  { "pgp_key_version",		DT_STR, R_NONE, UL &PgpKeyVersion, UL "default" },
+  { "pgp_decode_command", 	DT_STR, R_NONE, UL &PgpDecodeCommand, 0},
+  { "pgp_verify_command", 	DT_STR, R_NONE, UL &PgpVerifyCommand, 0},
+  { "pgp_decrypt_command", 	DT_STR, R_NONE, UL &PgpDecryptCommand, 0},
+  { "pgp_sign_command",		DT_STR, R_NONE, UL &PgpSignCommand, 0},
+  { "pgp_encrypt_sign_command",	DT_STR, R_NONE, UL &PgpEncryptSignCommand, 0},
+  { "pgp_encrypt_only_command", DT_STR, R_NONE, UL &PgpEncryptOnlyCommand, 0},
+  { "pgp_import_command",	DT_STR, R_NONE, UL &PgpImportCommand, 0},
+  { "pgp_export_command", 	DT_STR, R_NONE, UL &PgpExportCommand, 0},
+  { "pgp_verify_key_command",	DT_STR, R_NONE, UL &PgpVerifyKeyCommand, 0},
+  { "pgp_list_secring_command",	DT_STR, R_NONE, UL &PgpListSecringCommand, 0},
+  { "pgp_list_pubring_command", DT_STR, R_NONE, UL &PgpListPubringCommand, 0},
 
+    
   { "forward_decrypt",	DT_BOOL, R_NONE, OPTFORWDECRYPT, 1 },
   { "forw_decrypt",	DT_SYN,  R_NONE, UL "forward_decrypt", 0 },
 #endif /* _PGPPATH */
@@ -253,6 +257,7 @@ struct option_t MuttVars[] = {
   { "save_address",	DT_BOOL, R_NONE, OPTSAVEADDRESS, 0 },
   { "save_empty",	DT_BOOL, R_NONE, OPTSAVEEMPTY, 1 },
   { "save_name",	DT_BOOL, R_NONE, OPTSAVENAME, 0 },
+  { "send_charset",	DT_STR,  R_NONE, UL &SendCharset, UL "" },
   { "sendmail",		DT_PATH, R_NONE, UL &Sendmail, UL SENDMAIL " -oem -oi" },
   { "sendmail_wait",	DT_NUM,  R_NONE, UL &SendmailWait, 0 },
   { "shell",		DT_PATH, R_NONE, UL &Shell, 0 },
@@ -280,8 +285,10 @@ struct option_t MuttVars[] = {
   { "use_8bitmime",	DT_BOOL, R_NONE, OPTUSE8BITMIME, 0 },
   { "use_domain",	DT_BOOL, R_NONE, OPTUSEDOMAIN, 1 },
   { "use_from",		DT_BOOL, R_NONE, OPTUSEFROM, 1 },
+  { "user_agent",	DT_BOOL, R_NONE, OPTXMAILER, 1},
   { "visual",		DT_PATH, R_NONE, UL &Visual, 0 },
   { "wait_key",		DT_BOOL, R_NONE, OPTWAITKEY, 1 },
+  { "weed",		DT_BOOL, R_NONE, OPTWEED, 1 },
   { "wrap_search",	DT_BOOL, R_NONE, OPTWRAPSEARCH, 1 },
   { "write_inc",	DT_NUM,	 R_NONE, UL &WriteInc, 10 },
   { "write_bcc",	DT_BOOL, R_NONE, OPTWRITEBCC, 1},
@@ -317,10 +324,22 @@ const struct mapping_t SortAliasMethods[] = {
   { NULL }
 };
 
+#ifdef _PGPPATH
+const struct mapping_t SortKeyMethods[] = {
+  { "address",	SORT_ADDRESS },
+  { "date",	SORT_DATE },
+  { "keyid",	SORT_KEYID },
+  { "trust",	SORT_TRUST },
+  { NULL }
+};
+#endif /* _PGPPATH */
+
+
 /* functions used to parse commands in a rc file */
 
 static int parse_list (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_unlist (BUFFER *, BUFFER *, unsigned long, BUFFER *);
+static int parse_unlists (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_alias (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_unalias (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_ignore (BUFFER *, BUFFER *, unsigned long, BUFFER *);
@@ -329,6 +348,7 @@ static int parse_source (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_set (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_my_hdr (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 static int parse_unmy_hdr (BUFFER *, BUFFER *, unsigned long, BUFFER *);
+static int parse_subscribe (BUFFER *, BUFFER *, unsigned long, BUFFER *);
 
 struct command_t
 {
@@ -342,6 +362,7 @@ struct command_t Commands[] = {
   { "auto_view",	parse_list,		UL &AutoViewList },
   { "alternative_order",	parse_list,	UL &AlternativeOrderList},
   { "bind",		mutt_parse_bind,	0 },
+  { "charset-hook",	mutt_parse_hook,	M_CHARSETHOOK },
 #ifdef HAVE_COLOR
   { "color",		mutt_parse_color,	0 },
   { "uncolor",		mutt_parse_uncolor,	0 },
@@ -368,15 +389,16 @@ struct command_t Commands[] = {
   { "send-hook",	mutt_parse_hook,	M_SENDHOOK },
   { "set",		parse_set,		0 },
   { "source",		parse_source,		0 },
+  { "subscribe",	parse_subscribe,	0 },
   { "toggle",		parse_set,		M_SET_INV },
   { "unalias",		parse_unalias,		0 },
   { "unhdr_order",	parse_unlist,		UL &HeaderOrderList },
   { "unignore",		parse_unignore,		0 },
-  { "unlists",		parse_unlist,		UL &MailLists },
+  { "unlists",		parse_unlists,		0 },
   { "unmono",		mutt_parse_unmono,	0 },
   { "unmy_hdr",		parse_unmy_hdr,		0 },
   { "unscore",		mutt_parse_unscore,	0 },
   { "unset",		parse_set,		M_SET_UNSET },
+  { "unsubscribe",	parse_unlist,		UL &SubscribedLists },
   { NULL }
 };
-
