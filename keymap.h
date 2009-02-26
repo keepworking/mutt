@@ -65,10 +65,6 @@ enum
   MENU_PGP,
 #endif
 
-#ifdef HAVE_SMIME
-  MENU_SMIME,
-#endif
-
 #ifdef MIXMASTER
   MENU_MIX,
 #endif
@@ -109,10 +105,6 @@ extern struct binding_t OpAlias[];
 #ifdef HAVE_PGP
 extern struct binding_t OpPgp[];
 #endif /* HAVE_PGP */
-
-#ifdef HAVE_SMIME
-extern struct binding_t OpSmime[];
-#endif /* HAVE_SMIME */
 
 #ifdef MIXMASTER
 extern struct binding_t OpMix[];
