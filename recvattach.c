@@ -139,9 +139,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
   return (idx);
 }
 
-/* %c = character set: convert?
- * %C = character set
- * %D = deleted flag
+/* %D = deleted flag
  * %d = description
  * %e = MIME content-transfer-encoding
  * %f = filename
@@ -164,38 +162,12 @@ const char *mutt_attach_fmt (char *dest,
 {
   char fmt[16];
   char tmp[SHORT_STRING];
-  char charset[SHORT_STRING];
   ATTACHPTR *aptr = (ATTACHPTR *) data;
   int optional = (flags & M_FORMAT_OPTIONAL);
   size_t l;
   
   switch (op)
   {
-    case 'C':
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
-	if (aptr->content->type == TYPETEXT && 
-	    mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
-	  snprintf (dest, destlen, fmt, charset);
-	else
-	  snprintf (dest, destlen, fmt, "");
-      }
-      else if (aptr->content->type != TYPETEXT || 
-	       !mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
-        optional = 0;
-      break;
-    case 'c':
-      /* XXX */
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%sc", prefix);
-	snprintf (dest, destlen, fmt, aptr->content->type != TYPETEXT ||
-		  aptr->content->noconv ? 'n' : 'c');
-      }
-      else if (aptr->content->type != TYPETEXT || aptr->content->noconv)
-        optional = 0;
-      break;
     case 'd':
       if(!optional)
       {
@@ -341,7 +313,7 @@ void attach_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 
 int mutt_tag_attach (MUTTMENU *menu, int n)
 {
-  return ((((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged) ? 1 : -1);
+  return (((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged);
 }
 
 int mutt_is_message_type (int type, const char *subtype)
