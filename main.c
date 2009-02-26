@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
- * Copyright (C) 1999-2002 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-2001 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999-2001 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -42,19 +42,19 @@ To contact the developers, please mail to <mutt-dev@mutt.org>.\n\
 To report a bug, please use the flea(1) utility.\n");
 
 static const char *Notice = N_("\
-Copyright (C) 1996-2002 Michael R. Elkins and others.\n\
+Copyright (C) 1996-2001 Michael R. Elkins and others.\n\
 Mutt comes with ABSOLUTELY NO WARRANTY; for details type `mutt -vv'.\n\
 Mutt is free software, and you are welcome to redistribute it\n\
 under certain conditions; type `mutt -vv' for details.\n");
 
 static const char *Copyright = N_("\
-Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>\n\
-Copyright (C) 1996-2002 Brandon Long <blong@fiction.net>\n\
-Copyright (C) 1997-2002 Thomas Roessler <roessler@guug.de>\n\
-Copyright (C) 1998-2002 Werner Koch <wk@isil.d.shuttle.de>\n\
-Copyright (C) 1999-2002 Brendan Cully <brendan@kublai.com>\n\
-Copyright (C) 1999-2002 Tommi Komulainen <Tommi.Komulainen@iki.fi>\n\
-Copyright (C) 2000-2002 Edmund Grimley Evans <edmundo@rano.org>\n\
+Copyright (C) 1996-2001 Michael R. Elkins <me@cs.hmc.edu>\n\
+Copyright (C) 1996-2001 Brandon Long <blong@fiction.net>\n\
+Copyright (C) 1997-2001 Thomas Roessler <roessler@guug.de>\n\
+Copyright (C) 1998-2001 Werner Koch <wk@isil.d.shuttle.de>\n\
+Copyright (C) 1999-2001 Brendan Cully <brendan@kublai.com>\n\
+Copyright (C) 1999-2001 Tommi Komulainen <Tommi.Komulainen@iki.fi>\n\
+Copyright (C) 2000-2001 Edmund Grimley Evans <edmundo@rano.org>\n\
 \n\
 Lots of others not mentioned here contributed lots of code,\n\
 fixes, and suggestions.\n\
@@ -86,6 +86,7 @@ static void mutt_usage (void)
 
   puts _(
 "usage: mutt [ -nRyzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
+       mutt [ -nR ] [ -e <cmd> ] [ -F <file> ] -Q <query> [ -Q <query> ] [...]\n\
        mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] <addr> [ ... ]\n\
        mutt [ -n ] [ -e <cmd> ] [ -F <file> ] -p\n\
        mutt -v[v]\n\
@@ -102,6 +103,7 @@ options:\n\
   -m <type>\tspecify a default mailbox type\n\
   -n\t\tcauses Mutt not to read the system Muttrc\n\
   -p\t\trecall a postponed message\n\
+  -Q <variable>\tquery a configuration variable\n\
   -R\t\topen mailbox in read-only mode\n\
   -s <subj>\tspecify a subject (must be in quotes if it has spaces)\n\
   -v\t\tshow version and compile-time definitions\n\
@@ -139,6 +141,11 @@ static void show_version (void)
   printf (" [using slang %d]", SLANG_VERSION);
 #endif
 
+#ifdef _LIBICONV_VERSION
+  printf (" [using libiconv %d.%d]", _LIBICONV_VERSION >> 8,
+	  _LIBICONV_VERSION & 0xff);
+#endif
+  
   puts (_("\nCompile options:"));
 
 #ifdef DOMAIN
@@ -298,6 +305,12 @@ static void show_version (void)
 	"-HAVE_PGP  "
 #endif
 
+#ifdef HAVE_SMIME
+	"+HAVE_SMIME  "
+#else
+	"-HAVE_SMIME  "
+#endif
+
 #ifdef BUFFY_SIZE
 	"+BUFFY_SIZE "
 #else
@@ -449,6 +462,7 @@ int main (int argc, char **argv)
   HEADER *msg = NULL;
   LIST *attach = NULL;
   LIST *commands = NULL;
+  LIST *queries = NULL;
   int sendflags = 0;
   int flags = 0;
   int version = 0;
@@ -483,7 +497,7 @@ int main (int argc, char **argv)
   memset (Options, 0, sizeof (Options));
   memset (QuadOptions, 0, sizeof (QuadOptions));
   
-  while ((i = getopt (argc, argv, "a:b:F:f:c:d:e:H:s:i:hm:npRvxyzZ")) != EOF)
+  while ((i = getopt (argc, argv, "a:b:F:f:c:d:e:H:s:i:hm:npQ:RvxyzZ")) != EOF)
     switch (i)
     {
       case 'a':
@@ -545,6 +559,10 @@ int main (int argc, char **argv)
 	sendflags |= SENDPOSTPONED;
 	break;
 
+      case 'Q':
+        queries = mutt_add_list (queries, optarg);
+        break;
+      
       case 'R':
 	flags |= M_RO; /* read-only mode */
 	break;
@@ -592,7 +610,7 @@ int main (int argc, char **argv)
   }
 
   /* Check for a batch send. */
-  if (!isatty (0))
+  if (!isatty (0) || queries)
   {
     set_option (OPTNOCURSES);
     sendflags = SENDBATCH;
@@ -607,6 +625,9 @@ int main (int argc, char **argv)
   mutt_init (flags & M_NOSYSRC, commands);
   mutt_free_list (&commands);
 
+  if (queries)
+    return mutt_query_variables (queries);
+  
   if (newMagic)
     mx_set_magic (newMagic);
 
