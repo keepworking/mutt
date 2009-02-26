@@ -153,7 +153,7 @@ void ci_start_color (void)
 #ifdef HAVE_COLOR
 
 #ifdef USE_SLANG_CURSES
-static char *get_color_name (char *dest, size_t destlen, int val)
+static char * get_color_name (int val)
 {
   static char * missing[3] = {"brown", "lightgray", ""};
   int i;
@@ -161,33 +161,30 @@ static char *get_color_name (char *dest, size_t destlen, int val)
   switch (val)
   {
     case COLOR_YELLOW:
-      strfcpy (dest, missing[0], destlen);
-      return dest;
+      return (missing[0]);
 
     case COLOR_WHITE:
-      strfcpy (dest, missing[1], destlen);
-      return dest;
+      return (missing[1]);
       
     case COLOR_DEFAULT:
-      strfcpy (dest, missing[2], destlen);
-      return dest;
+      return (missing[2]);
   }
 
   for (i = 0; Colors[i].name; i++)
   {
     if (Colors[i].value == val)
-    {
-      strfcpy (dest, Colors[i].name, destlen);
-      return dest;
-    }
+      return (Colors[i].name);
   }
 
   /* Sigh. If we got this far, the color is of the form 'colorN'
    * Slang can handle this itself, so just return 'colorN'
    */
+  {
+    static char color [SHORT_STRING];
 
-  snprintf (dest, destlen, "color%d", val);
-  return dest;
+    snprintf (color, sizeof (color), "color%d", val);
+    return color;
+  }
 }
 #endif
 
@@ -195,10 +192,6 @@ int mutt_alloc_color (int fg, int bg)
 {
   COLOR_LIST *p = ColorList;
   int i;
-  
-#if defined (USE_SLANG_CURSES)
-  char fgc[SHORT_STRING], bgc[SHORT_STRING];
-#endif
 
   /* check to see if this color is already allocated to save space */
   while (p)
@@ -239,7 +232,7 @@ int mutt_alloc_color (int fg, int bg)
 
 #if defined (USE_SLANG_CURSES)
   if (fg == COLOR_DEFAULT || bg == COLOR_DEFAULT)
-    SLtt_set_color (i, NULL, get_color_name (fgc, sizeof (fgc), fg), get_color_name (bgc, sizeof (bgc), bg));
+    SLtt_set_color (i, NULL, get_color_name (fg), get_color_name (bg));
   else
 #elif defined (HAVE_USE_DEFAULT_COLORS)
   if (fg == COLOR_DEFAULT)
