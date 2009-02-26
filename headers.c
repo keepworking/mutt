@@ -206,6 +206,31 @@ void mutt_edit_headers (const char *editor,
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #ifdef _PGPPATH
     else if (strncasecmp ("pgp:", cur->data, 4) == 0)
     {
@@ -213,6 +238,12 @@ void mutt_edit_headers (const char *editor,
       keep = 0;
     }
 #endif
+
+
+
+
+
+
 
 
     if (keep)

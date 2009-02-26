@@ -129,9 +129,9 @@ static int be_barf_file (const char *path, char **buf, int buflen)
 static void be_free_memory (char **buf, int buflen)
 {
   while (buflen-- > 0)
-    FREE (&buf[buflen]);
+    free (buf[buflen]);
   if (buf)
-    FREE (&buf);
+    free (buf);
 }
 
 static char **
@@ -404,7 +404,7 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
 	    buflen--;
 	    strfcpy (tmp, buf[buflen], sizeof (tmp));
 	    tmp[strlen (tmp)-1] = 0;
-	    FREE (&buf[buflen]);
+	    free (buf[buflen]);
 	    buf[buflen] = NULL;
 	    continue;
 	  }

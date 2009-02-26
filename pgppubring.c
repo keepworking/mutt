@@ -26,7 +26,6 @@
 #include "sha.h"
 #include "mutt.h"
 #include "pgp.h"
-#include "charset.h"
 
 #define CHUNKSIZE 1024
 
@@ -617,9 +616,9 @@ static int pgp_parse_pgp3_sig(unsigned char *buff, size_t l, KEYINFO *p)
 	if(!--ml) break;
       }
       
-      if((int) ml - (int) skl < 0)
-	break;
       ml -= skl;
+      if(ml < 0)
+	break;
       
       nextone = j + skl;
       skt = buff[j++];
@@ -727,7 +726,6 @@ static KEYINFO *pgp_read_keyring(const char *fname)
   KEYINFO *supkey = NULL;
   PGPUID *uid = NULL;
   LIST **addr = NULL;
-  CHARSET *chs = mutt_get_charset(Charset);
   
   if(!(fp = fopen(fname, "r")))
   {
@@ -792,13 +790,9 @@ static KEYINFO *pgp_read_keyring(const char *fname)
       case PT_NAME:
       {
 	char *chr;
-	
-	if(!addr) break;
-	
 	chr = safe_malloc(l);
 	memcpy(chr, buff + 1, l - 1);
 	chr[l-1] = '\0';
-	mutt_decode_utf8_string(chr, chs);
 	*addr = mutt_new_list();
 	(*addr)->data = safe_malloc(sizeof(PGPUID));
 	uid = (PGPUID *) (*addr)->data;
@@ -836,21 +830,13 @@ KEYINFO *pgp_read_secring(struct pgp_vinfo *pgp)
 void pgp_close_keydb (KEYINFO **ki)
 {
   KEYINFO *tmp, *k = *ki;
-  PGPUID *uid;
-  LIST *p, *q;
+  LIST *q;
   
   while (k)
   {
     if (k->keyid) safe_free ((void **)&k->keyid);
-    for(q = k->address; q; q = p)
-    {
-      uid = (PGPUID *) q->data;
-      p = q->next;
-
-      safe_free((void **)&uid->addr);
+    for(q = k->address; q; q = q-> next)
       safe_free((void **)&q->data);
-      safe_free((void **)&q);
-    }
     tmp = k;
     k = k->next;
     safe_free ((void **)&tmp);
