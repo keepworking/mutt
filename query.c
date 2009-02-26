@@ -18,7 +18,6 @@
 
 #include "mutt.h"
 #include "mutt_menu.h"
-#include "mapping.h"
 #include "sort.h"
 
 #include <string.h>
@@ -80,7 +79,7 @@ static QUERY *run_query (char *s, int quiet)
   int l;
 
 
-  mutt_expand_fmt (cmd, sizeof(cmd), QueryCmd, s);
+  snprintf (cmd, sizeof (cmd), QueryCmd, s);
 
   if ((thepid = mutt_create_filter (cmd, NULL, &fp, NULL)) < 0)
   {
