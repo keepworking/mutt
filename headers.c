@@ -198,11 +198,36 @@ void mutt_edit_headers (const char *editor,
 	else
 	{
 	  mutt_pretty_mailbox (path);
-	  mutt_error (_("%s: unable to attach file"), path);
+	  mutt_error ("%s: unable to attach file", path);
 	}
       }
       keep = 0;
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -213,6 +238,12 @@ void mutt_edit_headers (const char *editor,
       keep = 0;
     }
 #endif
+
+
+
+
+
+
 
 
     if (keep)
