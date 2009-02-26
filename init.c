@@ -1,4 +1,3 @@
-static const char rcsid[]="$Id$";
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
@@ -749,8 +748,23 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
     { 
       if (s && *s->dptr == '=')
       {
-	snprintf (err->data, err->dsize, _("%s is a boolean var!"), tmp->data);
-	return (-1);
+	if (unset || inv || query)
+	{
+	  snprintf (err->data, err->dsize, "Usage: set variable=yes|no");
+	  return (-1);
+	}
+
+	s->dptr++;
+	mutt_extract_token (tmp, s, 0);
+	if (mutt_strcasecmp ("yes", tmp->data) == 0)
+	  unset = inv = 0;
+	else if (mutt_strcasecmp ("no", tmp->data) == 0)
+	  unset = 1;
+	else
+	{
+	  snprintf (err->data, err->dsize, "Usage: set variable=yes|no");
+	  return (-1);
+	}
       }
 
       if (query)
@@ -1428,6 +1442,9 @@ int mutt_var_value_complete (char *buffer, size_t len, int pos)
 		  (*((short *) MuttVars[idx].data) & SORT_LAST) ? "last-" : "",
 		  p);
       }
+      else if (DTYPE (MuttVars[idx].type) == DT_BOOL)
+	snprintf (pt, dlen, "%s%s", tmp, 
+		  option (MuttVars[idx].data) ? "yes" : "no");
       else
 	return 0;
       return 1;
