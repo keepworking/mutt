@@ -286,117 +286,109 @@ int mutt_extract_token (BUFFER *dest, BUFFER *tok, int flags)
   return 0;
 }
 
-
-static void add_to_list (LIST **list, const char *str)
+void mutt_add_to_list (LIST **list, BUFFER *inp)
 {
   LIST *t, *last = NULL;
+  BUFFER buf;
 
-  /* check to make sure the item is not already on this list */
-  for (last = *list; last; last = last->next)
+  memset (&buf, 0, sizeof (buf));
+  do
   {
-    if (mutt_strcasecmp (str, last->data) == 0)
-    {
-      /* already on the list, so just ignore it */
-      last = NULL;
-      break;
-    }
-    if (!last->next)
-      break;
-  }
+    mutt_extract_token (&buf, inp, 0);
 
-  if (!*list || last)
-  {
-    t = (LIST *) safe_calloc (1, sizeof (LIST));
-    t->data = safe_strdup (str);
-    if (last)
+    /* check to make sure the item is not already on this list */
+    for (last = *list; last; last = last->next)
     {
-      last->next = t;
-      last = last->next;
-    }
-    else
-      *list = last = t;
-  }
-}
-
-static void remove_from_list (LIST **l, const char *str)
-{
-  LIST *p, *last = NULL;
-
-  if (mutt_strcmp ("*", str) == 0)
-    mutt_free_list (l);    /* ``unCMD *'' means delete all current entries */
-  else
-  {
-    p = *l;
-    last = NULL;
-    while (p)
-    {
-      if (mutt_strcasecmp (str, p->data) == 0)
+      if (mutt_strcasecmp (buf.data, last->data) == 0)
       {
-	safe_free ((void **) &p->data);
-	if (last)
-	  last->next = p->next;
-	else
-	  (*l) = p->next;
-	safe_free ((void **) &p);
+	/* already on the list, so just ignore it */
+	last = NULL;
+	break;
+      }
+      if (!last->next)
+	break;
+    }
+
+    if (!*list || last)
+    {
+      t = (LIST *) safe_calloc (1, sizeof (LIST));
+      t->data = buf.data;
+      memset (&buf, 0, sizeof (buf));
+      if (last)
+      {
+	last->next = t;
+	last = last->next;
       }
       else
+	*list = last = t;
+    }
+  }
+  while (MoreArgs (inp));
+  FREE (&buf.data);
+}
+
+static void remove_from_list (LIST **l, BUFFER *inp)
+{
+  LIST *p, *last = NULL;
+  BUFFER buf;
+
+  memset (&buf, 0, sizeof (buf));
+  do
+  {
+    mutt_extract_token (&buf, inp, 0);
+
+    if (mutt_strcmp ("*", buf.data) == 0)
+      mutt_free_list (l);    /* ``unCMD *'' means delete all current entries */
+    else
+    {
+      p = *l;
+      last = NULL;
+      while (p)
       {
-	last = p;
-	p = p->next;
+	if (mutt_strcasecmp (buf.data, p->data) == 0)
+	{
+	  safe_free ((void **) &p->data);
+	  if (last)
+	    last->next = p->next;
+	  else
+	    (*l) = p->next;
+	  safe_free ((void **) &p);
+	}
+	else
+	{
+	  last = p;
+	  p = p->next;
+	}
       }
     }
   }
+  while (MoreArgs (inp));
+  FREE (&buf.data);
 }
-
 
 static int parse_unignore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    add_to_list (&UnIgnore, buf->data);
-    remove_from_list (&Ignore, buf->data);
-  }
-  while (MoreArgs (s));
-
+  mutt_add_to_list (&UnIgnore, s);
+  remove_from_list (&Ignore, s);
   return 0;
 }
 
 static int parse_ignore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    remove_from_list (&UnIgnore, buf->data);
-    add_to_list (&Ignore, buf->data);
-  }
-  while (MoreArgs (s));
-
+  mutt_add_to_list (&Ignore, s);
+  remove_from_list (&UnIgnore, s);
   return 0;
 }
 
-
 static int parse_list (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    add_to_list ((LIST **) data, buf->data);
-  }
-  while (MoreArgs (s));
-
+  mutt_add_to_list ((LIST **) data, s);
   return 0;
 }
 
 static int parse_unlist (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    remove_from_list ((LIST **) data, buf->data);
-  }
-  while (MoreArgs (s));
-
+  remove_from_list ((LIST **) data, s);
   return 0;
 }
 
@@ -1038,6 +1030,11 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
 	case DT_SORT_BROWSER:
 	  map = SortBrowserMethods;
 	  break;
+#ifdef _PGPPATH
+	case DT_SORT_KEYS:
+	  map = SortKeyMethods;
+	  break;
+#endif
 	default:
 	  map = SortMethods;
 	  break;
@@ -1076,16 +1073,6 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
       set_option (OPTNEEDRESORT);
   }
   return (r);
-}
-
-void mutt_nocurses_error (const char *fmt, ...)
-{
-  va_list ap;
-
-  va_start (ap, fmt);
-  vfprintf (stderr, fmt, ap);
-  va_end (ap);
-  fputc ('\n', stderr);
 }
 
 /* reads the specified initialization file.  returns -1 if errors were found
@@ -1440,6 +1427,11 @@ int mutt_var_value_complete (char *buffer, size_t len, int pos)
 	  case DT_SORT_BROWSER:
 	    map = SortBrowserMethods;
 	    break;
+#ifdef _PGPPATH
+	  case DT_SORT_KEYS:
+	    map = SortKeyMethods;
+	    break;
+#endif
 	  default:
 	    map = SortMethods;
 	    break;
@@ -1666,24 +1658,6 @@ void mutt_init (int skip_sys_rc, LIST *commands)
     PgpV3Pubring = safe_strdup (buffer);
     snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.skr", NONULL(Homedir));
     PgpV3Secring = safe_strdup (buffer);
-  }
-#endif
-
-#ifdef _PGPV6PATH
-  PgpV6 = safe_strdup (_PGPV6PATH);
-  if ((p = getenv("PGPPATH")) != NULL)
-  {
-    snprintf (buffer, sizeof (buffer), "%s/pubring.pkr", p);
-    PgpV6Pubring = safe_strdup (buffer);
-    snprintf (buffer, sizeof (buffer), "%s/secring.skr", p); 
-    PgpV6Secring = safe_strdup (buffer);
-  }
-  else
-  {
-    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pkr", NONULL(Homedir));
-    PgpV6Pubring = safe_strdup (buffer);
-    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.skr", NONULL(Homedir));
-    PgpV6Secring = safe_strdup (buffer);
   }
 #endif
   
