@@ -888,3 +888,89 @@ int _mutt_traverse_thread (CONTEXT *ctx, HEADER *cur, int flag)
 #undef CHECK_LIMIT
 }
 
+int mutt_messages_in_thread (HEADER *cur)
+{
+  HEADER *top;
+  int n = 1;
+ 
+  if ((Sort & SORT_MASK) != SORT_THREADS)
+  {
+    /* mutt_error _("Threading is not enabled."); */
+    return (1);
+  }
+
+  /* find top parent */
+  while (cur->parent)
+    cur = cur->parent;
+  top = cur;
+ 
+  /* return if there are no children */
+  if ((cur = cur->child) == NULL)
+    return n;
+
+  FOREVER
+  {
+    n++;
+    if (cur->child)
+      cur = cur->child;
+    else if (cur->next)
+      cur = cur->next;
+    else 
+    {
+      while (!cur->next) 
+      {
+        cur = cur->parent;
+        if (cur == top)
+          return n;
+      }
+      cur = cur->next;
+    }
+  }
+  /* not reached */
+}
+
+int mutt_msgno_in_thread (HEADER *cur)
+{
+  HEADER *top;
+  HEADER *target;
+  int n = 0;
+
+  if ((Sort & SORT_MASK) != SORT_THREADS)
+  { 
+    /* mutt_error _("Threading is not enabled."); */
+    return (0);
+  } 
+
+  /* save target */
+  target = cur;
+
+  /* find top parent */
+  while (cur->parent)
+    cur = cur->parent;
+  top = cur;
+
+  /* return if single message */
+  if (top == target)
+    return n;
+
+  /* step into first child */
+  cur = cur->child;
+
+  FOREVER
+  {
+    n++;
+    if (cur == target)
+      return n;
+    if (cur->child)
+      cur = cur->child;
+    else if (cur->next) 
+      cur = cur->next;
+    else 
+    {
+      while (!cur->next) 
+        cur = cur->parent;
+      cur = cur->next;
+    } 
+  } 
+  /* not reached */
+}
