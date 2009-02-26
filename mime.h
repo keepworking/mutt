@@ -24,7 +24,6 @@ enum
   TYPEAPPLICATION,
   TYPEIMAGE,
   TYPEMESSAGE,
-  TYPEMODEL,
   TYPEMULTIPART,
   TYPETEXT,
   TYPEVIDEO
@@ -54,8 +53,8 @@ extern int Index_hex[];
 extern int Index_64[];
 extern char Base64_chars[];
 
-#define hexval(c) Index_hex[(unsigned int)(c)]
-#define base64val(c) Index_64[(unsigned int)(c)]
+#define hexval(c) Index_hex[(int)(c)]
+#define base64val(c) Index_64[(int)(c)]
 
 #define is_multipart(x) \
     ((x)->type == TYPEMULTIPART \
@@ -65,5 +64,5 @@ extern char Base64_chars[];
 extern const char *BodyTypes[];
 extern const char *BodyEncodings[];
 
-#define TYPE(X) ((X->type == TYPEOTHER) && (X->xtype != NULL) ? X->xtype : BodyTypes[(X->type)])
+#define TYPE(X) BodyTypes[(X)]
 #define ENCODING(X) BodyEncodings[(X)]
