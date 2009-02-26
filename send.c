@@ -38,6 +38,9 @@
 #include "pgp.h"
 #endif
 
+#ifdef MIXMASTER
+#include "remailer.h"
+#endif
 
 
 static void append_signature (FILE *f)
@@ -334,7 +337,7 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
   fputs (" -----\n\n", out);
   if (option (OPTFORWDECODE))
   {
-    cmflags |= M_CM_DECODE;
+    cmflags |= M_CM_DECODE | M_CM_CHARCONV;
     if (option (OPTFORWWEEDHEADER))
     {
       chflags |= CH_WEED;
@@ -352,7 +355,7 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
 static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
 {
   char buffer[STRING];
-  int flags = M_CM_PREFIX | M_CM_DECODE;
+  int flags = M_CM_PREFIX | M_CM_DECODE | M_CM_CHARCONV;
 
 
 
@@ -793,13 +796,19 @@ static int send_message (HEADER *msg)
   char tempfile[_POSIX_PATH_MAX];
   FILE *tempfp;
   int i;
-
+  
   /* Write out the message in MIME form. */
   mutt_mktemp (tempfile);
   if ((tempfp = safe_fopen (tempfile, "w")) == NULL)
     return (-1);
 
-  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0);
+#ifdef MIXMASTER
+  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, msg->chain ? 1 : 0);
+#endif
+#ifndef MIXMASTER
+  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, 0);
+#endif
+  
   fputc ('\n', tempfp); /* tie off the header. */
 
   if ((mutt_write_mime_body (msg->content, tempfp) == -1))
@@ -815,6 +824,11 @@ static int send_message (HEADER *msg)
     unlink (tempfile);
     return (-1);
   }
+
+#ifdef MIXMASTER
+  if (msg->chain)
+    return mix_send_message (msg->chain, tempfile);
+#endif
 
   i = mutt_invoke_sendmail (msg->env->to, msg->env->cc, msg->env->bcc,
 		       tempfile, (msg->content->encoding == ENC8BIT));
@@ -1229,21 +1243,11 @@ main_loop:
   mutt_expand_path (fcc, sizeof (fcc));
   if (*fcc && mutt_strcmp ("/dev/null", fcc) != 0)
   {
-    struct stat st;
     BODY *tmpbody = msg->content;
 #ifdef _PGPPATH
     BODY *save_sig = NULL;
     BODY *save_parts = NULL;
 #endif /* _PGPPATH */
-
-    /* honor $confirmcreate and $confirmappend  in interactive mode */
-    if (!option (OPTNOCURSES) && !(flags & SENDMAILX) && 
-	!mutt_save_confirm (fcc, &st))
-    {
-      mutt_pretty_mailbox (fcc);
-      mutt_clear_error();
-      goto main_loop;
-    }
 
     /* check to see if the user wants copies of all attachments */
     if (!option (OPTFCCATTACH) && msg->content->type == TYPEMULTIPART)
