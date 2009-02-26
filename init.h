@@ -261,7 +261,7 @@ struct option_t MuttVars[] = {
   ** When this variable is set, mutt will include Delivered-To headers when
   ** bouncing messages.  Postfix users may wish to unset this variable.
   */
-  { "charset",		DT_STR,	 R_NONE, UL &Charset, UL 0 },
+  { "charset",		DT_STR,	 R_NONE, UL &Charset, UL "iso-8859-1" },
   /*
   ** .pp
   ** Character set your terminal uses to display and enter textual data.
@@ -290,23 +290,6 @@ struct option_t MuttVars[] = {
   ** .pp
   ** When \fIset\fP, Mutt will jump to the next unread message, if any,
   ** when the current thread is \fIun\fPcollapsed.
-  */
-  { "compose_format",	DT_STR,	 R_BOTH, UL &ComposeFormat, UL "-- Mutt: Compose  [Approx. msg size: %l   Atts: %a]%>-" },
-  /*
-  ** .pp
-  ** Controls the format of the status line displayed in the \fCompose\fP
-  ** menu.  This string is similar to ``$$status_format'', but has its own
-  ** set of printf()-like sequences:
-  ** .pp
-  ** .ts
-  ** %a      total number of attachments 
-  ** %h      local hostname
-  ** %l      approximate size (in bytes) of the current message
-  ** %v      Mutt version string
-  ** .te
-  ** .pp
-  ** See the text describing the ``$$status_format'' option for more 
-  ** information on how to set ``$$compose_format''.
   */
   { "confirmappend",	DT_BOOL, R_NONE, OPTCONFIRMAPPEND, 1 },
   /*
@@ -800,8 +783,6 @@ struct option_t MuttVars[] = {
   ** %D      date and time of the message in the format
   ** .       specified by ``date_format'' converted to 
   ** .       the local time zone
-  ** %e      current message number in thread
-  ** %E      number of messages in current thread
   ** %f      entire From: line (address + real name)
   ** %F      author name, or recipient name if the 
   ** .       message is from you
@@ -825,12 +806,6 @@ struct option_t MuttVars[] = {
   ** %u      user (login) name of the author
   ** %v      first name of the author, or the 
   ** .       recipient if the message is from you
-  ** %y	     `x-label:' field, if present
-  ** %Y	     `x-label' field, if present, and 
-  ** .       (1) not at part of a thread tree,
-  ** .       (2) at the top of a thread, or
-  ** . 	     (3) `x-label' is different from preceding
-  ** .       message's `x-label'.
   ** %Z      message status flags
   ** %{fmt}  the date and time of the message is
   ** .       converted to sender's time zone, and 
@@ -1179,7 +1154,7 @@ struct option_t MuttVars[] = {
   ** .pp
   ** If you have more than one key pair, this option allows you to specify
   ** which of your private keys to use.  It is recommended that you use the
-  ** keyid form to specify your key (e.g., ``0xABCDEFGH'').
+  ** keyid form to specify your key (e.g., ``0x00112233'').
   */
   { "pgp_sign_micalg",	DT_STR,	 R_NONE, UL &PgpSignMicalg, UL "pgp-md5" },
   /*
@@ -1372,6 +1347,19 @@ struct option_t MuttVars[] = {
   ** if you accept it or not. If you accept it, the certificate can also 
   ** be saved in this file and further connections are automatically 
   ** accepted.
+  ** .pp
+  ** You can also manually add CA certificates in this file. Any server
+  ** certificate that is signed with one of these CA certificates are 
+  ** also automatically accepted.
+  ** .pp
+  ** Example: set certificate_file=~/.mutt/certificates
+  */
+  { "ssl_usesystemcerts", DT_BOOL, R_NONE, OPTSSLSYSTEMCERTS, 1 },
+  /*
+  ** .pp
+  ** If set to \fIyes\fP, mutt will use CA certificates in the
+  ** system-wide certificate store when checking if server certificate 
+  ** is signed by a trusted CA.
   */
   { "entropy_file",	DT_PATH, R_NONE, UL &SslEntropyFile, 0 },
   /* .pp
@@ -1423,7 +1411,7 @@ struct option_t MuttVars[] = {
   ** messages to an external Unix command.
   */
 #ifdef USE_POP
-  { "pop_delete",	DT_QUAD, R_NONE, OPT_POPDELETE, M_ASKNO },
+  { "pop_delete",	DT_BOOL, R_NONE, OPTPOPDELETE, 0 },
   /*
   ** .pp
   ** If set, Mutt will delete successfully downloaded messages from the POP
