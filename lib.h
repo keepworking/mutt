@@ -64,17 +64,10 @@
 # define STRING          256
 # define SHORT_STRING    128
 
-
 # define FREE(x) safe_free((void **)x)
 # define NONULL(x) x?x:""
 # define ISSPACE(c) isspace((unsigned char)c)
 # define strfcpy(A,B,C) strncpy(A,B,C), *(A+(C)-1)=0
-
-# undef MAX
-# undef MIN
-# define MAX(a,b) ((a) < (b) ? (b) : (a))
-# define MIN(a,b) ((a) < (b) ? (a) : (b))
-
 
 #define FOREVER while (1)
 
@@ -114,6 +107,7 @@ int mutt_strcasecmp (const char *, const char *);
 int mutt_strcmp (const char *, const char *);
 int mutt_strncasecmp (const char *, const char *, size_t);
 int mutt_strncmp (const char *, const char *, size_t);
+int mutt_strcoll (const char *, const char *);
 int safe_open (const char *, int);
 int safe_symlink (const char *, const char *);
 int safe_rename (const char *, const char *);
