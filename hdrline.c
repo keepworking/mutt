@@ -495,7 +495,7 @@ hdr_format_str (char *dest,
 	else if (is_index && threads)
 	  snprintf (dest, destlen, buf2, " ");
 	else
-	  snprintf (dest, destlen, "");
+	  *dest = '\0';
       }
       else
       {
@@ -601,12 +601,10 @@ hdr_format_str (char *dest,
       ch = ' ';
 
 #ifdef _PGPPATH
-      if (hdr->pgp & PGPGOODSIGN)
-        ch = 'S';
-      else if (hdr->pgp & PGPENCRYPT)
+      if (hdr->pgp & PGPENCRYPT)
       	ch = 'P';
       else if (hdr->pgp & PGPSIGN)
-        ch = 's';
+        ch = 'S';
       else if (hdr->pgp & PGPKEY)
         ch = 'K';
 #endif
