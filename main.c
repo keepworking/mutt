@@ -126,6 +126,11 @@ static void show_version (void)
 #endif
 
   puts (
+#ifdef HIDDEN_HOST
+	"+HIDDEN_HOST  "
+#else
+	"-HIDDEN_HOST  "
+#endif
 
 #ifdef HOMESPOOL
 	"+HOMESPOOL  "
@@ -246,7 +251,7 @@ static void show_version (void)
 
 
 
-  puts ("\nMail bug reports along with this output to <mutt-dev@mutt.org>.");
+  puts ("\nMail bug reports along with this output to <mutt-dev@cs.hmc.edu>.");
 
   exit (0);
 }
@@ -535,7 +540,7 @@ int main (int argc, char **argv)
 	    mutt_endwin (NULL);
 	  perror (tempfile);
 	  fclose (fin);
-	  FREE (&tempfile);
+	  free (tempfile);
 	  exit (1);
 	}
 
@@ -555,11 +560,11 @@ int main (int argc, char **argv)
       {
 	if (a)
 	{
-	  a->next = mutt_make_file_attach (t->data);
+	  a->next = mutt_make_attach (t->data);
 	  a = a->next;
 	}
 	else
-	  msg->content = a = mutt_make_file_attach (t->data);
+	  msg->content = a = mutt_make_attach (t->data);
 	if (!a)
 	{
 	  if (!option (OPTNOCURSES))
@@ -602,7 +607,7 @@ int main (int argc, char **argv)
     }
 
     if (!folder[0])
-      strfcpy (folder, NONULL(Spoolfile), sizeof (folder));
+      strfcpy (folder, Spoolfile, sizeof (folder));
     mutt_expand_path (folder, sizeof (folder));
 
     if (flags & M_IGNORE)
@@ -627,17 +632,7 @@ int main (int argc, char **argv)
 
     if ((Context = mx_open_mailbox (folder, ((flags & M_RO) || option (OPTREADONLY)) ? M_READONLY : 0, NULL)) != NULL)
     {
-      int close = mutt_index_menu (0);
-
-      if (Context)
-      {
-	if (close == OP_QUIT) 
-	  mx_close_mailbox (Context);
-	else
-	  mx_fastclose_mailbox (Context);
-      }
-
-      safe_free ((void **)&Context);
+      mutt_index_menu ();
       mutt_endwin (NULL);
     }
     else
