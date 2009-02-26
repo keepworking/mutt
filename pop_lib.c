@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2000-2002 Vsevolod Volkov <vvv@mutt.org.ua>
+ * Copyright (C) 2000 Vsevolod Volkov <vvv@mutt.org.ua>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -230,7 +230,6 @@ int pop_connect (POP_DATA *pop_data)
 int pop_open_connection (POP_DATA *pop_data)
 {
   int ret;
-  unsigned int n, size;
   char buf[LONG_STRING];
 
   ret = pop_connect (pop_data);
@@ -252,8 +251,6 @@ int pop_open_connection (POP_DATA *pop_data)
   ret = pop_authenticate (pop_data);
   if (ret == -1)
     goto err_conn;
-  if (ret == -3)
-    mutt_clear_error ();
   if (ret != 0)
     return ret;
 
@@ -269,8 +266,7 @@ int pop_open_connection (POP_DATA *pop_data)
     return ret;
   }
 
-  sscanf (buf, "+OK %u %u", &n, &size);
-  pop_data->size = size;
+  sscanf (buf, "+OK %d %d", &ret, &pop_data->size);
   return 0;
 
 err_conn:
@@ -420,11 +416,10 @@ int pop_fetch_data (POP_DATA *pop_data, char *query, char *msg,
 /* find message with this UIDL and set refno */
 static int check_uidl (char *line, void *data)
 {
-  int i;
-  unsigned int index;
+  int i, index;
   CONTEXT *ctx = (CONTEXT *)data;
 
-  sscanf (line, "%u %s", &index, line);
+  sscanf (line, "%d %s", &index, line);
   for (i = 0; i < ctx->msgcount; i++)
   {
     if (!mutt_strcmp (ctx->hdrs[i]->data, line))
