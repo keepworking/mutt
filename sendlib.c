@@ -126,13 +126,16 @@ static char MsgIdPfx = 'A';
 
 static void transform_to_7bit (BODY *a, FILE *fpin);
 
-static void encode_quoted (FGETCONV * fc, FILE *fout, int istext)
+static void encode_quoted (FILE * fin, FILE *fout, int istext, CHARSET_MAP *map)
 {
   int c, linelen = 0;
   char line[77], savechar;
 
-  while ((c = fgetconv (fc)) != EOF)
+  while ((c = fgetc (fin)) != EOF)
   {
+    if(istext && map)
+      c = mutt_display_char(c, map);
+
     /* Escape lines that begin with "the message separator". */
     if (linelen == 5 && !mutt_strncmp ("From ", line, 5))
     {
@@ -307,15 +310,18 @@ static void b64_putc(char c, FILE *fout)
 }
   
   
-static void encode_base64 (FGETCONV * fc, FILE *fout, int istext)
+static void encode_base64 (FILE * fin, FILE *fout, int istext, CHARSET_MAP *map)
 {
   int ch, ch1 = EOF;
   
   b64_num = b64_linelen = 0;
   
-  while ((ch = fgetconv (fc)) != EOF)
+  while((ch = fgetc(fin)) != EOF)
   {
-    if (istext && ch == '\n' && ch1 != '\r')
+    if(istext && map)
+      ch = mutt_display_char(ch, map);
+
+    if(istext && ch == '\n' && ch1 != '\r')
       b64_putc('\r', fout);
     b64_putc(ch, fout);
     ch1 = ch;
@@ -324,12 +330,20 @@ static void encode_base64 (FGETCONV * fc, FILE *fout, int istext)
   fputc('\n', fout);
 }
 
-static void encode_8bit (FGETCONV *fc, FILE *fout, int istext)
+static void encode_8bit(FILE *fin, FILE *fout, int istext, CHARSET_MAP *map)
 {
   int ch;
+
+  if(!istext || !map)
+  {
+    mutt_copy_stream(fin, fout);
+    return;
+  }
   
-  while ((ch = fgetconv (fc)) != EOF)
-    fputc (ch, fout);
+  while((ch = fgetc(fin)) != EOF)
+  {
+    fputc(mutt_display_char(ch, map), fout);
+  }
 }
   
 
@@ -430,7 +444,7 @@ int mutt_write_mime_body (BODY *a, FILE *f)
   char send_charset[SHORT_STRING];
   FILE *fpin;
   BODY *t;
-  FGETCONV *fc;
+  CHARSET_MAP *map = NULL;
   
   if (a->type == TYPEMULTIPART)
   {
@@ -476,21 +490,19 @@ int mutt_write_mime_body (BODY *a, FILE *f)
     return -1;
   }
 
-  if (a->type == TYPETEXT && (!a->noconv))
-    fc = fgetconv_open (fpin, Charset, mutt_get_send_charset (send_charset, sizeof (send_charset), a, 1));
-  else
-    fc = fgetconv_open (fpin, 0, 0);
+  if (a->type == TYPETEXT)
+    map = mutt_get_translation (Charset, mutt_get_send_charset (send_charset, sizeof(send_charset), a, 1));
 
   if (a->encoding == ENCQUOTEDPRINTABLE)
-    encode_quoted (fc, f, mutt_is_text_type (a->type, a->subtype));
+    encode_quoted (fpin, f, mutt_is_text_type (a->type, a->subtype), 
+		   a->type == TYPETEXT && (!a->noconv) ? map : NULL);
   else if (a->encoding == ENCBASE64)
-    encode_base64 (fc, f, mutt_is_text_type (a->type, a->subtype));
-  else if (a->type == TYPETEXT && (!a->noconv))
-    encode_8bit (fc, f, mutt_is_text_type (a->type, a->subtype));
+    encode_base64 (fpin, f, mutt_is_text_type (a->type, a->subtype), 
+		   a->type == TYPETEXT && (!a->noconv) ? map : NULL);
   else
-    mutt_copy_stream (fpin, f);
+    encode_8bit (fpin, f, mutt_is_text_type (a->type, a->subtype),
+		      a->type == TYPETEXT && (!a->noconv) ? map : NULL);
 
-  fgetconv_close (fc);
   fclose (fpin);
 
   return (ferror (f) ? -1 : 0);
@@ -512,7 +524,7 @@ void mutt_generate_boundary (PARAMETER **parm)
 }
 
 /* analyze the contents of a file to determine which MIME encoding to use */
-CONTENT *mutt_get_content_info (const char *fname, BODY *b)
+static CONTENT *mutt_get_content_info (const char *fname, BODY *b)
 {
   CONTENT *info;
   FILE *fp;
@@ -533,7 +545,6 @@ CONTENT *mutt_get_content_info (const char *fname, BODY *b)
     linelen++;
     if (ch == '\n')
     {
-      info->crlf++;
       if (whitespace) info->space = 1;
       if (dot) info->dot = 1;
       if (linelen > info->linemax) info->linemax = linelen;
@@ -543,7 +554,6 @@ CONTENT *mutt_get_content_info (const char *fname, BODY *b)
     }
     else if (ch == '\r')
     {
-      info->crlf++;
       info->cr = 1;
       if ((ch = fgetc (fp)) == EOF)
       {
@@ -828,7 +838,7 @@ static void transform_to_7bit (BODY *a, FILE *fpin)
 
 static const char *get_text_charset (BODY *b, CONTENT *info)
 {
-  char send_charset[SHORT_STRING];
+  static char send_charset[SHORT_STRING];
   char *chsname;
 
   chsname = mutt_get_send_charset (send_charset, sizeof (send_charset), b, 1);
@@ -952,9 +962,19 @@ void mutt_update_encoding (BODY *a)
   if (a->type == TYPETEXT)
     mutt_set_body_charset(a, get_text_charset(a, info));
 
+#ifdef HAVE_PGP
+  /* save the info in case this message is signed.  we will want to do Q-P
+   * encoding if any lines begin with "From " so the signature won't be munged,
+   * for example.
+   */ 
   safe_free ((void **) &a->content);
   a->content = info;
+  info = NULL;
+#endif
 
+
+
+  safe_free ((void **) &info);
 }
 
 BODY *mutt_make_message_attach (CONTEXT *ctx, HEADER *hdr, int attach_msg)
@@ -1087,8 +1107,18 @@ BODY *mutt_make_file_attach (const char *path)
 
   if (att->type == TYPETEXT)
     mutt_set_body_charset(att, get_text_charset(att, info));
-
+  
+#ifdef HAVE_PGP
+  /*
+   * save the info in case this message is signed.  we will want to do Q-P
+   * encoding if any lines begin with "From " so the signature won't be munged,
+   * for example.
+   */
   att->content = info;
+  info = NULL;
+#endif
+
+  safe_free ((void **) &info);
 
   return (att);
 }
@@ -1810,7 +1840,7 @@ void mutt_unprepare_envelope (ENVELOPE *env)
   LIST *item;
 
   for (item = env->userhdrs; item; item = item->next)
-    rfc2047_decode (&item->data);
+    rfc2047_decode (item->data, item->data,  mutt_strlen (item->data) + 1);
 
   rfc822_free_address (&env->mail_followup_to);
 
@@ -1819,7 +1849,7 @@ void mutt_unprepare_envelope (ENVELOPE *env)
   rfc2047_decode_adrlist (env->cc);
   rfc2047_decode_adrlist (env->from);
   rfc2047_decode_adrlist (env->reply_to);
-  rfc2047_decode (&env->subject);
+  rfc2047_decode (env->subject, env->subject, mutt_strlen (env->subject) + 1);
 }
 
 static void _mutt_bounce_message (FILE *fp, HEADER *h, ADDRESS *to, const char *resent_from)
