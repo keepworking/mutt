@@ -139,8 +139,8 @@ typedef enum
 #define M_CHARSETHOOK	(1<<5)
 #define M_ICONVHOOK 	(1<<6)
 #define M_MESSAGEHOOK	(1<<7)
-#ifdef HAVE_PGP
-#define M_PGPHOOK	(1<<8)
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#define M_CRYPTHOOK	(1<<8)
 #endif
 #define M_ACCOUNTHOOK	(1<<9)
 
@@ -253,9 +253,11 @@ enum
 enum
 {
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP)||  defined(HAVE_SMIME)
   OPT_VERIFYSIG,      /* verify PGP signatures */
+#ifdef HAVE_PGP
   OPT_PGPTRADITIONAL, /* create old-style PGP messages */
+#endif
 #endif
 
 #ifdef USE_SSL
@@ -336,10 +338,7 @@ enum
   OPTHEADER,
   OPTHELP,
   OPTHIDDENHOST,
-  OPTHIDELIMITED,
   OPTHIDEMISSING,
-  OPTHIDETOPLIMITED,
-  OPTHIDETOPMISSING,
   OPTIGNORELISTREPLYTO,
 #ifdef USE_IMAP
   OPTIMAPLSUB,
@@ -414,14 +413,19 @@ enum
 
   /* PGP options */
   
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+  OPTCRYPTAUTOSIGN,
+  OPTCRYPTAUTOENCRYPT,
+  OPTCRYPTREPLYENCRYPT,
+  OPTCRYPTREPLYSIGN,
+  OPTCRYPTREPLYSIGNENCRYPTED,
+#ifdef HAVE_SMIME
+  OPTSMIMEISDEFAULT,
+#endif
 #ifdef HAVE_PGP
-  OPTPGPAUTOSIGN,
-  OPTPGPAUTOENCRYPT,
   OPTPGPIGNORESUB,
   OPTPGPLONGIDS,
-  OPTPGPREPLYENCRYPT,
-  OPTPGPREPLYSIGN,
-  OPTPGPREPLYSIGNENCRYPTED,
+#endif
 #if 0
   OPTPGPENCRYPTSELF,
 #endif
@@ -603,8 +607,9 @@ typedef struct body
 				 * set when in send-mode.
 				 */
 
-#ifdef HAVE_PGP
-  unsigned int goodsig : 1;	/* good PGP signature */
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+  unsigned int goodsig : 1;	/* good cryptographic signature */
+  unsigned int badsig : 1;	/* bad cryptographic signature (needed to check encrypted s/mime-signatures */
 #endif
 
   unsigned int collapsed : 1;	/* used by recvattach */
@@ -613,8 +618,9 @@ typedef struct body
 
 typedef struct header
 {
-#ifdef HAVE_PGP
-  unsigned int pgp : 4;
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+  unsigned int security : 7;  /* bit 0-4: flags, bit 5,6: application.
+				 see: crypt.h pgplib.h, smime.h */
 #endif
 
   unsigned int mime : 1;    		/* has a Mime-Version header? */
@@ -690,10 +696,6 @@ typedef struct thread
   unsigned int duplicate_thread : 1;
   unsigned int sort_children : 1;
   unsigned int check_subject : 1;
-  unsigned int visible : 1;
-  unsigned int deep : 1;
-  unsigned int subtree_visible : 2;
-  unsigned int next_subtree_visible : 1;
   struct thread *parent;
   struct thread *child;
   struct thread *next;
@@ -798,7 +800,7 @@ typedef struct
 
 
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) || defined(HAVE_SMIME)
 #define M_VERIFY	(1<<1) /* perform signature verification */
 #endif
 
