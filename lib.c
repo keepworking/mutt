@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -156,9 +155,6 @@ void mutt_free_header (HEADER **h)
   mutt_free_body (&(*h)->content);
   safe_free ((void **) &(*h)->tree);
   safe_free ((void **) &(*h)->path);
-#ifdef MIXMASTER
-  mutt_free_list (&(*h)->chain);
-#endif
   safe_free ((void **) h);
 }
 
@@ -609,10 +605,10 @@ int mutt_copy_stream (FILE *fin, FILE *fout)
 
 void mutt_expand_file_fmt (char *dest, size_t destlen, const char *fmt, const char *src)
 {
-  char tmp[LONG_STRING];
+  char *_src = mutt_quote_filename(src);
   
-  mutt_quote_filename (tmp, sizeof (tmp), src);
-  mutt_expand_fmt (dest, destlen, fmt, tmp);
+  mutt_expand_fmt(dest, destlen, fmt, _src);
+  safe_free((void **) &_src);
 }
 
 void mutt_expand_fmt (char *dest, size_t destlen, const char *fmt, const char *src)
@@ -807,8 +803,10 @@ int mutt_check_overwrite (const char *attname, const char *path,
 
       case 2: /* append */
         *append = M_SAVE_APPEND;
+        break;
       case 1: /* overwrite */
-	;
+        *append = M_SAVE_OVERWRITE;
+        break;
     }
   }
   return 0;
@@ -1226,38 +1224,41 @@ int mutt_save_confirm (const char *s, struct stat *st)
  * From the Unix programming FAQ by way of Liviu.
  */
 
-size_t mutt_quote_filename(char *d, size_t l, const char *f)
+char *mutt_quote_filename(const char *f)
 {
-  size_t i, j = 0;
+  char *d;
+  size_t i,l;
 
-  if(!f) 
+  if(!f) return NULL;
+  
+  for(i = 0, l = 3; f[i]; i++, l++)
   {
-    *d = '\0';
-    return 0;
+    if(f[i] == '\'' || f[i] == '`')
+      l += 3;
   }
-
-  /* leave some space for the trailing characters. */
-  l -= 6;
   
-  d[j++] = '\'';
+  d = safe_malloc(l);
   
-  for(i = 0; j < l && f[i]; i++)
+  l = 0;
+  d[l++] = '\'';
+  
+  for(i = 0; f[i]; i++)
   {
     if(f[i] == '\'' || f[i] == '`')
     {
-      d[j++] = '\'';
-      d[j++] = '\\';
-      d[j++] = f[i];
-      d[j++] = '\'';
+      d[l++] = '\'';
+      d[l++] = '\\';
+      d[l++] = f[i];
+      d[l++] = '\'';
     }
     else
-      d[j++] = f[i];
+      d[l++] = f[i];
   }
   
-  d[j++] = '\'';
-  d[j]   = '\0';
+  d[l++] = '\'';
+  d[l]   = '\0';
   
-  return j;
+  return d;
 }
 
 void state_prefix_putc(char c, STATE *s)
@@ -1312,24 +1313,4 @@ int mutt_strncasecmp(const char *a, const char *b, size_t l)
 size_t mutt_strlen(const char *a)
 {
   return a ? strlen (a) : 0;
-}
-
-const char *mutt_stristr (const char *haystack, const char *needle)
-{
-  const char *p, *q;
-
-  if (!haystack)
-    return NULL;
-  if (!needle)
-    return (haystack);
-
-  while (*(p = haystack))
-  {
-    for (q = needle; *p && *q && tolower (*p) == tolower (*q); p++, q++)
-      ;
-    if (!*q)
-      return (haystack);
-    haystack++;
-  }
-  return NULL;
 }
