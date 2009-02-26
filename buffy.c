@@ -41,9 +41,8 @@ static short BuffyNotify = 0;	/* # of unnotified new boxes */
 
 #ifdef BUFFY_SIZE
 
-/* Find the last message in the file. 
- * upon success return 0. If no message found - return -1 */
-
+/* Find the last message in the file. * upon success return 0. * If no
+ * message found - return -1 */
 int fseek_last_message (FILE * f)
 {
   long int pos;
@@ -228,6 +227,19 @@ int mutt_buffy_check (int force)
   char path[_POSIX_PATH_MAX];
   struct stat contex_sb;
   time_t t;
+#ifdef USE_IMAP
+  static time_t last_imap_check = 0;
+  int do_imap_check = 1;
+
+  if (ImapCheckTime)
+  {
+    time_t now = time (NULL);
+    if (!force && (now - last_imap_check < ImapCheckTime))
+      do_imap_check = 0;
+    else
+      last_imap_check = now;
+  }
+#endif
 
   /* fastest return if there are no mailboxes */
   if (!Incoming)
@@ -240,6 +252,9 @@ int mutt_buffy_check (int force)
   BuffyCount = 0;
   BuffyNotify = 0;
 
+#ifdef USE_IMAP
+  if (!Context || Context->magic != M_IMAP)
+#endif
   /* check device ID and serial number instead of comparing paths */
   if (!Context || !Context->path || stat (Context->path, &contex_sb) != 0)
   {
@@ -249,30 +264,34 @@ int mutt_buffy_check (int force)
   
   for (tmp = Incoming; tmp; tmp = tmp->next)
   {
-    tmp->new = 0;
-
 #ifdef USE_IMAP
     if ((tmp->magic == M_IMAP) || mx_is_imap (tmp->path))
-    {
       tmp->magic = M_IMAP;
-    }
     else
 #endif
-    if (stat (tmp->path, &sb) != 0 || sb.st_size == 0 ||
-	(!tmp->magic && (tmp->magic = mx_get_magic (tmp->path)) <= 0))
     {
-      /* if the mailbox still doesn't exist, set the newly created flag to
-       * be ready for when it does.
-       */
-      tmp->newly_created = 1;
-      tmp->magic = 0;
+      tmp->new = 0;
+
+      if (stat (tmp->path, &sb) != 0 ||
+        (!tmp->magic && (tmp->magic = mx_get_magic (tmp->path)) <= 0))
+      {
+        /* if the mailbox still doesn't exist, set the newly created flag to
+         * be ready for when it does.
+         */
+        tmp->newly_created = 1;
+        tmp->magic = 0;
 #ifdef BUFFY_SIZE
-      tmp->size = 0;
+        tmp->size = 0;
 #endif
-      continue;
+        continue;
+      }
     }
 
     if (!Context || !Context->path || 
+#ifdef USE_IMAP
+        /* Poll current IMAP folder like any other */
+        tmp->magic == M_IMAP ||
+#endif
 	sb.st_dev != contex_sb.st_dev || sb.st_ino != contex_sb.st_ino)
     {
       switch (tmp->magic)
@@ -326,11 +345,20 @@ int mutt_buffy_check (int force)
 
 #ifdef USE_IMAP
       case M_IMAP:
-	if (imap_buffy_check (tmp->path) > 0)
-	{
-	  BuffyCount++;
-	  tmp->new = 1;
-	}
+        /* poll on do_imap_check, else return cached value */
+        if (do_imap_check)
+        {
+          tmp->new = 0;
+          if (imap_buffy_check (tmp->path) > 0)
+          {
+            BuffyCount++;
+            tmp->new = 1;
+          }
+        }
+        else
+          if (tmp->new)
+            BuffyCount++;
+
 	break;
 #endif
       }
