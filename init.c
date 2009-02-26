@@ -17,9 +17,10 @@
  */ 
 
 #include "mutt.h"
+#include "mapping.h"
 #include "mutt_curses.h"
 #include "mutt_regex.h"
-
+#include "history.h"
 
 
 #ifdef _PGPPATH
@@ -456,7 +457,7 @@ static int parse_alias (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   }
   s->dptr = p;
 
-  mutt_extract_token (buf, s, M_TOKEN_QUOTE | M_TOKEN_SPACE);
+  mutt_extract_token (buf, s, M_TOKEN_QUOTE | M_TOKEN_SPACE | M_TOKEN_SEMICOLON);
   tmp->addr = mutt_parse_adrlist (tmp->addr, buf->data);
   if (last)
     last->next = tmp;
@@ -629,18 +630,36 @@ static void mutt_restore_default (struct option_t *p)
     case DT_RX:
       {
 	REGEXP *pp = (REGEXP *) p->data;
+	int flags = 0;
+
 	FREE (&pp->pattern);
+	if (pp->rx)
+	{
+	  regfree (pp->rx);
+	  FREE (&pp->rx);
+	}
 	if (p->init)
 	{
-	  if (pp->rx)
-	    regfree (pp->rx);
-	  else
-	    pp->rx = safe_calloc (1, sizeof (regex_t));
+	  char *s = (char *) p->init;
+
+	  pp->rx = safe_calloc (1, sizeof (regex_t));
 	  pp->pattern = safe_strdup ((char *) p->init);
-	  if (REGCOMP (pp->rx, pp->pattern, mutt_which_case (pp->pattern)) != 0)
+	  if (strcmp (p->option, "alternates") == 0)
+	    flags |= REG_ICASE;
+	  else if (strcmp (p->option, "mask") != 0)
+	    flags |= mutt_which_case ((const char *) p->init);
+	  if (strcmp (p->option, "mask") == 0 && *s == '!')
+	  {
+	    s++;
+	    pp->not = 1;
+	  }
+	  if (REGCOMP (pp->rx, s, flags) != 0)
 	  {
 	    fprintf (stderr, "mutt_restore_default: error in regexp: %s\n",
 		     pp->pattern);
+	    FREE (&pp->pattern);
+	    regfree (pp->rx);
+	    FREE (&pp->rx);
 	  }
 	}
       }
@@ -794,15 +813,27 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
 
       if (!ptr->pattern || strcmp (ptr->pattern, tmp->data) != 0)
       {
+	int not = 0;
+
 	/* $alternates is case-insensitive,
 	   $mask is case-sensitive */
 	if (strcmp (MuttVars[idx].option, "alternates") == 0)
 	  flags |= REG_ICASE;
 	else if (strcmp (MuttVars[idx].option, "mask") != 0)
 	  flags |= mutt_which_case (tmp->data);
-	
+
+	p = tmp->data;
+	if (strcmp (MuttVars[idx].option, "mask") == 0)
+	{
+	  if (*p == '!')
+	  {
+	    not = 1;
+	    p++;
+	  }
+	}
+	  
 	rx = (regex_t *) safe_malloc (sizeof (regex_t));
-	if ((e = REGCOMP (rx, tmp->data, flags)) != 0)
+	if ((e = REGCOMP (rx, p, flags)) != 0)
 	{
 	  regerror (e, rx, err->data, err->dsize);
 	  regfree (rx);
@@ -820,6 +851,7 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
 
 	ptr->pattern = safe_strdup (tmp->data);
 	ptr->rx = rx;
+	ptr->not = not;
 
 	/* $reply_regexp requires special treatment */
 	if (Context && Context->msgcount &&
@@ -1120,6 +1152,18 @@ finish:
   return (r);
 }
 
+
+#define MAX(a,b) (((a) >= (b)) ? (a) : (b))
+#define NUMVARS (sizeof (MuttVars)/sizeof (MuttVars[0]))
+#define NUMCOMMANDS (sizeof (Commands)/sizeof (Commands[0]))
+/* initial string that starts completion. No telling how much crap 
+ * the user has typed so far. Allocate LONG_STRING just to be sure! */
+char User_typed [LONG_STRING] = {0}; 
+
+int  Num_matched = 0; /* Number of matches for completion */
+char Completed [STRING] = {0}; /* completed string (command or variable) */
+char *Matches[MAX(NUMVARS,NUMCOMMANDS) + 1]; /* all the matches + User_typed */
+
 /* helper function for completion.  Changes the dest buffer if
    necessary/possible to aid completion.
 	dest == completion result gets here.
@@ -1133,64 +1177,170 @@ static void candidate (char *dest, char *try, char *src, int len)
 
   if (strstr (src, try) == src)
   {
+    Matches[Num_matched++] = src;
     if (dest[0] == 0)
-    {
-      strncpy (dest, src, len);
-      strncat (dest, " ", len);
-    }
+      strfcpy (dest, src, len);
     else
     {
       for (l = 0; src[l] && src[l] == dest[l]; l++);
-	dest[l] = 0;
+      dest[l] = 0;
     }
   }
 }
 
-int mutt_command_complete (char *buffer, size_t len, int pos)
+int mutt_command_complete (char *buffer, size_t len, int pos, int numtabs)
 {
-  char cmd[STRING];
-  char completed[STRING] = { 0 };
-  char *pt;
+  char *pt = buffer;
   int num;
-  
-  if (buffer[0] == 0)
-    return 0;
-  strncpy (cmd, buffer, pos);
-  pt = cmd;
-  pt[pos] = 0;
-  while (!isspace ((unsigned char) *pt))
-    pt++;
-  *pt = 0;
+  int spaces; /* keep track of the number of leading spaces on the line */
 
-  pt = buffer + pos;
+  SKIPWS (buffer);
+  spaces = buffer - pt;
+
+  pt = buffer + pos - spaces;
   while ((pt > buffer) && !isspace ((unsigned char) *pt))
     pt--;
+
   if (pt == buffer) /* complete cmd */
   {
-    for (num = 0; Commands[num].name; num++)
-      candidate (completed, cmd, Commands[num].name, sizeof (completed));
+    /* first TAB. Collect all the matches */
+    if (numtabs == 1)
+    {
+      Num_matched = 0;
+      strfcpy (User_typed, pt, sizeof (User_typed));
+      memset (Matches, 0, sizeof (Matches));
+      memset (Completed, 0, sizeof (Completed));
+      for (num = 0; Commands[num].name; num++)
+	candidate (Completed, User_typed, Commands[num].name, sizeof (Completed));
+      Matches[Num_matched++] = User_typed;
 
-    if (completed[0] == 0)
+      /* All matches are stored. Longest non-ambiguous string is ""
+       * i.e. dont change 'buffer'. Fake successful return this time */
+      if (User_typed[0] == 0)
+	return 1;
+    }
+
+    if (Completed[0] == 0 && User_typed[0])
       return 0;
-    strncpy (buffer, completed, len);
+
+     /* Num_matched will _always_ be atleast 1 since the initial
+      * user-typed string is always stored */
+    if (numtabs == 1 && Num_matched == 2)
+      snprintf(Completed, sizeof(Completed),"%s", Matches[0]);
+    else if (numtabs > 1 && Num_matched > 2)
+      /* cycle thru all the matches */
+      snprintf(Completed, sizeof(Completed), "%s", 
+	       Matches[(numtabs - 2) % Num_matched]);
+
+    /* return the completed command */
+    strncpy (buffer, Completed, len - spaces);
   }
-  else if (!strncasecmp (cmd, "set", 3)
-	   || !strncasecmp (cmd, "unset", 5)
-	   || !strncasecmp (cmd, "toggle", 6))
+  else if (!strncmp (buffer, "set", 3)
+	   || !strncmp (buffer, "unset", 5)
+	   || !strncmp (buffer, "reset", 5)
+	   || !strncmp (buffer, "toggle", 6))
   { 		/* complete variables */
+    char *prefixes[] = { "no", "inv", "?", "&", 0 };
+    
     pt++;
-    if (*pt == 0)
+    /* loop through all the possible prefixes (no, inv, ...) */
+    if (!strncmp (buffer, "set", 3))
+    {
+      for (num = 0; prefixes[num]; num++)
+      {
+	if (!strncmp (pt, prefixes[num], strlen (prefixes[num])))
+	{
+	  pt += strlen (prefixes[num]);
+	  break;
+	}
+      }
+    }
+    
+    /* first TAB. Collect all the matches */
+    if (numtabs == 1)
+    {
+      Num_matched = 0;
+      strfcpy (User_typed, pt, sizeof (User_typed));
+      memset (Matches, 0, sizeof (Matches));
+      memset (Completed, 0, sizeof (Completed));
+      for (num = 0; MuttVars[num].option; num++)
+	candidate (Completed, User_typed, MuttVars[num].option, sizeof (Completed));
+      Matches[Num_matched++] = User_typed;
+
+      /* All matches are stored. Longest non-ambiguous string is ""
+       * i.e. dont change 'buffer'. Fake successful return this time */
+      if (User_typed[0] == 0)
+	return 1;
+    }
+
+    if (Completed[0] == 0 && User_typed[0])
       return 0;
-    strncpy (cmd, pt, sizeof (cmd));
-    for (num = 0; MuttVars[num].option; num++)
-      candidate (completed, cmd, MuttVars[num].option, sizeof (completed));
-    if (completed[0] == 0)
-      return 0;
-    strncpy (pt, completed, buffer + len - pt);
+
+    /* Num_matched will _always_ be atleast 1 since the initial
+     * user-typed string is always stored */
+    if (numtabs == 1 && Num_matched == 2)
+      snprintf(Completed, sizeof(Completed),"%s", Matches[0]);
+    else if (numtabs > 1 && Num_matched > 2)
+    /* cycle thru all the matches */
+      snprintf(Completed, sizeof(Completed), "%s", 
+	       Matches[(numtabs - 2) % Num_matched]);
+
+    strncpy (pt, Completed, buffer + len - pt - spaces);
   }
   else
     return 0;
+
   return 1;
+}
+
+int mutt_var_value_complete (char *buffer, size_t len, int pos)
+{
+  char var[STRING], *pt = buffer;
+  int spaces;
+  
+  if (buffer[0] == 0)
+    return 0;
+
+  SKIPWS (buffer);
+  spaces = buffer - pt;
+
+  pt = buffer + pos - spaces;
+  while ((pt > buffer) && !isspace ((unsigned char) *pt))
+    pt--;
+  pt++; /* move past the space */
+  if (*pt == '=') /* abort if no var before the '=' */
+    return 0;
+
+  if (strncmp (buffer, "set", 3) == 0)
+  {
+    int idx;
+    strfcpy (var, pt, sizeof (var));
+    /* ignore the trailing '=' when comparing */
+    var[strlen (var) - 1] = 0;
+    if ((idx = mutt_option_index (var)) == -1) 
+      return 0; /* no such variable. */
+    else
+    {
+      char tmp [LONG_STRING];
+      size_t dlen = buffer + len - pt - spaces;
+      char *vals[] = { "no", "yes", "ask-no", "ask-yes" };
+      strfcpy (tmp, pt, sizeof(tmp));
+      
+      if ((DTYPE(MuttVars[idx].type) == DT_STR) || 
+	  (DTYPE(MuttVars[idx].type) == DT_PATH) ||
+	  (DTYPE(MuttVars[idx].type) == DT_RX))
+	snprintf(pt, dlen, "%s\"%s\"", tmp, 
+		  NONULL (*((char **) MuttVars[idx].data)));
+      else if (DTYPE (MuttVars[idx].type) == DT_QUAD)
+	snprintf(pt, dlen, "%s%s", tmp,  vals[quadoption (MuttVars[idx].data)]);
+      else if (DTYPE (MuttVars[idx].type) == DT_NUM)
+	snprintf (pt, dlen, "%s%d", tmp, (*((short *) MuttVars[idx].data)));
+      else
+	return 0;
+      return 1;
+    }
+  }
+  return 0;
 }
 
 char *mutt_getnamebyvalue (int val, const struct mapping_t *map)
@@ -1332,12 +1482,8 @@ void mutt_init (int skip_sys_rc, LIST *commands)
   else
 #endif /* DOMAIN */
   {
-# ifdef HIDDEN_HOST
-    Fqdn = safe_strdup (DOMAIN);
-# else
     Fqdn = safe_malloc (strlen (DOMAIN) + strlen (NONULL(Hostname)) + 2);
     sprintf (Fqdn, "%s.%s", NONULL(Hostname), DOMAIN);
-# endif /* HIDDEN_HOST */
   }
 
   if ((p = getenv ("MAIL")))
