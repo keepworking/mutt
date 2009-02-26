@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <limits.h>
 #include <stdarg.h>
@@ -97,7 +98,10 @@ typedef enum
   M_FORMAT_FORCESUBJ	= (1<<0), /* print the subject even if unchanged */
   M_FORMAT_TREE		= (1<<1), /* draw the thread tree */
   M_FORMAT_MAKEPRINT	= (1<<2), /* make sure that all chars are printable */
-  M_FORMAT_OPTIONAL	= (1<<3)
+  M_FORMAT_OPTIONAL	= (1<<3),
+  M_FORMAT_STAT_FILE	= (1<<4), /* used by mutt_attach_fmt */
+  M_FORMAT_ARROWCURSOR	= (1<<5), /* reserve space for arrow_cursor */
+  M_FORMAT_INDEX	= (1<<6)  /* this is a main index entry */
 } format_flag;
 
 /* types for mutt_add_hook() */
@@ -106,6 +110,7 @@ typedef enum
 #define M_SENDHOOK	(1<<2)
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
+#define M_PGPHOOK	(1<<5)
 
 /* tree characters for linearize_tree and print_enriched_string */
 #define M_TREE_LLCORNER		1
@@ -118,6 +123,12 @@ typedef enum
 #define M_TREE_STAR		8
 #define M_TREE_HIDDEN		9
 #define M_TREE_MAX		10
+
+#define M_THREAD_COLLAPSE	(1<<0)
+#define M_THREAD_UNCOLLAPSE	(1<<1)
+#define M_THREAD_GET_HIDDEN	(1<<2)
+#define M_THREAD_UNREAD		(1<<3)
+#define M_THREAD_NEXT_UNREAD	(1<<4)
 
 enum
 {
@@ -174,6 +185,9 @@ enum
   M_PRINT,
   M_AUTOVIEW,
 
+  /* options for socket code */
+  M_NEW_SOCKET,
+
   /* Options for mutt_save_attachment */
   M_SAVE_APPEND
 };
@@ -223,23 +237,69 @@ enum
 /* boolean vars */
 enum
 {
-  OPTPROMPTAFTER,
-  OPTSTATUSONTOP,
   OPTALLOW8BIT,
-  OPTASCIICHARS,
-  OPTMETOO,
-  OPTEDITHDRS,
   OPTARROWCURSOR,
+  OPTASCIICHARS,
+  OPTASKBCC,
   OPTASKCC,
+  OPTATTACHSPLIT,
+  OPTAUTOEDIT,
+  OPTAUTOTAG,
+  OPTBEEP,
+  OPTBEEPNEW,
+  OPTCHECKNEW,
+  OPTCOLLAPSEUNREAD,
+  OPTCONFIRMAPPEND,
+  OPTCONFIRMCREATE,
+  OPTEDITHDRS,
+  OPTFASTREPLY,
+  OPTFCCATTACH,
+  OPTFOLLOWUPTO,
+  OPTFORCENAME,
+  OPTFORWDECODE,
+  OPTFORWQUOTE,
+  OPTHDRS,
   OPTHEADER,
+  OPTHELP,
+  OPTHIDDENHOST,
+  OPTIGNORELISTREPLYTO,
+  OPTMARKERS,
+  OPTMARKOLD,
+  OPTMENUSCROLL,	/* scroll menu instead of implicit next-page */
+  OPTMETAKEY,		/* interpret ALT-x as ESC-x */
+  OPTMETOO,
+  OPTMIMEFORWDECODE,
+  OPTPAGERSTOP,
+  OPTPIPEDECODE,
+  OPTPIPESPLIT,
+  OPTPOPDELETE,
+  OPTPROMPTAFTER,
+  OPTREADONLY,
+  OPTRESOLVE,
   OPTREVALIAS,
   OPTREVNAME,
-  OPTFORCENAME,
+  OPTSAVEADDRESS,
   OPTSAVEEMPTY,
-  OPTPAGERSTOP,
+  OPTSAVENAME,
   OPTSIGDASHES,
-  OPTASKBCC,
-  OPTAUTOEDIT,
+  OPTSORTRE,
+  OPTSTATUSONTOP,
+  OPTSTRICTTHREADS,
+  OPTSUSPEND,
+  OPTTHOROUGHSRC,
+  OPTTILDE,
+  OPTUNCOLLAPSEJUMP,
+  OPTUSE8BITMIME,
+  OPTUSEDOMAIN,
+  OPTUSEFROM,
+  OPTWAITKEY,
+  OPTWEED,
+  OPTWRAP,
+  OPTWRAPSEARCH,
+  OPTWRITEBCC,		/* write out a bcc header? */
+
+  /* PGP options */
+  
 #ifdef _PGPPATH
   OPTPGPAUTOSIGN,
   OPTPGPAUTOENCRYPT,
@@ -249,44 +309,9 @@ enum
   OPTPGPENCRYPTSELF,
   OPTPGPSTRICTENC,
 #endif
-  OPTMARKOLD,
-  OPTCONFIRMCREATE,
-  OPTCONFIRMAPPEND,
-  OPTPOPDELETE,
-  OPTSAVENAME,
-  OPTTHOROUGHSRC,
-  OPTTILDE,
-  OPTMARKERS,
-  OPTFCCATTACH,
-  OPTPIPESPLIT,
-  OPTPIPEDECODE,
-  OPTREADONLY,
-  OPTRESOLVE,
-  OPTSTRICTTHREADS,
-  OPTAUTOTAG,
-  OPTBEEP,
-  OPTHELP,
-  OPTHDRS,
-  OPTWEED,
-  OPTWRAP,
-  OPTCHECKNEW,
-  OPTFASTREPLY,
-  OPTWAITKEY,
-  OPTWRAPSEARCH,
-  OPTIGNORELISTREPLYTO,
-  OPTSAVEADDRESS,
-  OPTSUSPEND,
-  OPTSORTRE,
-  OPTUSEDOMAIN,
-  OPTUSEFROM,
-  OPTUSE8BITMIME,
-  OPTFORWDECODE,
-  OPTMIMEFORWDECODE,
-  OPTFORWQUOTE,
-  OPTBEEPNEW,
-  OPTFOLLOWUPTO,
-  OPTMENUSCROLL,	/* scroll menu instead of implicit next-page */
-  OPTMETAKEY,		/* interpret ALT-x as ESC-x */
+
+  /* pseudo options */
+
   OPTAUXSORT,		/* (pseudo) using auxillary sort function */
   OPTFORCEREFRESH,	/* (pseudo) refresh even during macros */
   OPTLOCALES,		/* (pseudo) set if user has valid locale definition */
@@ -302,6 +327,7 @@ enum
   OPTFORCEREDRAWPAGER,	/* (pseudo) used to force a redraw in the pager */
   OPTSORTSUBTHREADS,	/* (pseudo) used when $sort_aux changes */
   OPTNEEDRESCORE,	/* (pseudo) set when the `score' command is used */
+  OPTSORTCOLLAPSE,	/* (pseudo) used by mutt_sort_headers() */
 
 #ifdef _PGPPATH
   OPTPGPCHECKTRUST,	/* (pseudo) used by pgp_select_key () */
@@ -396,6 +422,7 @@ typedef struct content
 
 typedef struct body
 {
+  char *xtype;			/* content-type if x-unknown */
   char *subtype;                /* content-type subtype */
   PARAMETER *parameter;         /* parameters of the content-type */
   char *description;            /* content-description */
@@ -424,6 +451,10 @@ typedef struct body
   struct body *parts;           /* parts of a multipart or message/rfc822 */
   struct header *hdr;		/* header information for message/rfc822 */
 
+  time_t stamp;			/* time stamp of last
+				 * encoding update.
+				 */
+  
   unsigned int type : 3;        /* content-type primary type */
   unsigned int encoding : 3;    /* content-transfer-encoding */
   unsigned int disposition : 2; /* content-disposition */
@@ -480,6 +511,11 @@ typedef struct header
   /* bits used for caching when searching */
   unsigned int searched : 1;
   unsigned int matched : 1;
+
+  /* the following are used to support collapsing threads  */
+  unsigned int collapsed : 1; /* is this message part of a collapsed thread? */
+  unsigned int limited : 1;   /* is this message in a limited view?  */
+  size_t num_hidden;          /* number of hidden messages in this view */
 
   int pair; /* color-pair to use when displaying in the index */
 
@@ -550,7 +586,6 @@ typedef struct
   int msgnotreadyet;		/* which msg "new" in pager, -1 if none */
 #ifdef USE_IMAP
   void *data;			/* driver specific data */
-  int fd;
 #endif /* USE_IMAP */
 
   short magic;			/* mailbox type */
@@ -563,6 +598,7 @@ typedef struct
   unsigned int setgid : 1;
   unsigned int quiet : 1;	/* inhibit status messages? */
   unsigned int revsort : 1;	/* mailbox sorted in reverse? */
+  unsigned int collapsed : 1;   /* are all threads collapsed? */
 } CONTEXT;
 
 typedef struct attachptr
@@ -570,6 +606,7 @@ typedef struct attachptr
   BODY *content;
   char *tree;
   int level;
+  int num;
 } ATTACHPTR;
 
 typedef struct
