@@ -28,9 +28,9 @@
 #define RSORT(x) (SortAlias & SORT_REVERSE) ? -x : x
 
 static struct mapping_t AliasHelp[] = {
-  { "Exit",   OP_EXIT },
-  { "Select", OP_GENERIC_SELECT_ENTRY },
-  { "Help",   OP_HELP },
+  { N_("Exit"),   OP_EXIT },
+  { N_("Select"), OP_GENERIC_SELECT_ENTRY },
+  { N_("Help"),   OP_HELP },
   { NULL }
 };
 
@@ -80,7 +80,7 @@ int alias_search (MUTTMENU *m, regex_t *re, int n)
 
 void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
 {
-  mutt_FormatString (s, slen, NONULL (AliasFmt), alias_format_str, (unsigned long) ((ALIAS **) m->data)[num], 0);
+  mutt_FormatString (s, slen, NONULL (AliasFmt), alias_format_str, (unsigned long) ((ALIAS **) m->data)[num], M_FORMAT_ARROWCURSOR);
 }
 
 int alias_tag (MUTTMENU *menu, int n)
@@ -125,10 +125,11 @@ void mutt_alias_menu (char *buf, size_t buflen, ALIAS *aliases)
   int t = -1;
   int i, done = 0;
   char helpstr[SHORT_STRING];
+  int savedmenu = CurrentMenu;
 
   if (!aliases)
   {
-    mutt_error ("You have no aliases!");
+    mutt_error _("You have no aliases!");
     return;
   }
 
@@ -139,8 +140,8 @@ void mutt_alias_menu (char *buf, size_t buflen, ALIAS *aliases)
   menu->make_entry = alias_entry;
   menu->search = alias_search;
   menu->tag = alias_tag;
-  menu->menu = MENU_ALIAS;
-  menu->title = "Aliases";
+  menu->menu = CurrentMenu = MENU_ALIAS;
+  menu->title = _("Aliases");
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_ALIAS, AliasHelp);
 
   /* count the number of aliases */
@@ -188,5 +189,6 @@ void mutt_alias_menu (char *buf, size_t buflen, ALIAS *aliases)
     rfc822_write_address (buf, buflen, AliasTable[t]->addr);
   
   mutt_menuDestroy (&menu);
+  CurrentMenu = savedmenu;
   safe_free ((void **) &AliasTable);
 }
