@@ -39,10 +39,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 
 
 
@@ -1211,25 +1207,25 @@ int mutt_index_menu (void)
       case OP_SAVE:
       case OP_DECODE_COPY:
       case OP_DECODE_SAVE:
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
       case OP_DECRYPT_COPY:
       case OP_DECRYPT_SAVE:
 #endif
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
         if (mutt_save_message (tag ? NULL : CURHDR,
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
 			       (op == OP_DECRYPT_SAVE) ||
 #endif
 			       (op == OP_SAVE) || (op == OP_DECODE_SAVE),
 			       (op == OP_DECODE_SAVE) || (op == OP_DECODE_COPY),
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
 			       (op == OP_DECRYPT_SAVE) || (op == OP_DECRYPT_COPY) ||
 #endif
 			       0,
 			       &menu->redraw) == 0 &&
 	    (op == OP_SAVE || op == OP_DECODE_SAVE
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
 	     || op == OP_DECRYPT_SAVE
 #endif
 	     ))
@@ -1727,10 +1723,10 @@ int mutt_index_menu (void)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
       case OP_FORGET_PASSPHRASE:
 
-	crypt_forget_passphrase ();
+	mutt_forget_passphrase ();
 	break;
 #endif /* HAVE_PGP */
 
@@ -1774,21 +1770,15 @@ int mutt_index_menu (void)
 	ci_send_message (SENDKEY, NULL, NULL, NULL, NULL);
 	menu->redraw = REDRAW_FULL;
 	break;
-#endif /* HAVE_PGP */
-
       
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
       case OP_EXTRACT_KEYS:
       
         CHECK_MSGCOUNT;
         CHECK_VISIBLE;
-        crypt_extract_keys_from_messages(tag ? NULL : CURHDR);
+        pgp_extract_keys_from_messages(tag ? NULL : CURHDR);
         menu->redraw = REDRAW_FULL;
         break;
 
-#endif /* HAVE_PGP || HAVE_SMIME */
-
-#ifdef HAVE_PGP
       case OP_CHECK_TRADITIONAL:
       
         CHECK_MSGCOUNT; 
