@@ -53,7 +53,7 @@ event_t mutt_getch (void)
   if (UngetCount)
     return (KeyEvent[--UngetCount]);
 
-  SigInt = 0;
+  Signals &= ~S_INTERRUPT;
 
 #ifdef KEY_RESIZE
   /* ncurses 4.2 sends this when the screen is resized */
@@ -62,7 +62,7 @@ event_t mutt_getch (void)
 #endif /* KEY_RESIZE */
     ch = getch ();
 
-  if (SigInt)
+  if (Signals & S_INTERRUPT)
     mutt_query_exit ();
 
   if(ch == ERR)
@@ -83,7 +83,7 @@ event_t mutt_getch (void)
   return (ch == ctrl ('G') ? err : ret);
 }
 
-int _mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int complete, int multiple, char ***files, int *numfiles)
+int mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int complete)
 {
   int ret;
   int len = mutt_strlen (field); /* in case field==buffer */
@@ -93,7 +93,7 @@ int _mutt_get_field (/* const */ char *field, char *buf, size_t buflen, int comp
     CLEARLINE (LINES-1);
     addstr (field);
     mutt_refresh ();
-    ret = _mutt_enter_string ((unsigned char *) buf, buflen, LINES-1, len, complete, multiple, files, numfiles);
+    ret = mutt_enter_string ((unsigned char *) buf, buflen, LINES-1, len, complete);
   }
   while (ret == 1);
   CLEARLINE (LINES-1);
@@ -124,8 +124,7 @@ void mutt_edit_file (const char *editor, const char *data)
   
   endwin ();
   mutt_expand_file_fmt (cmd, sizeof (cmd), editor, data);
-  if (mutt_system (cmd) == -1)
-    mutt_error (_("Error running \"%s\"!"), cmd);
+  mutt_system (cmd);
   keypad (stdscr, TRUE);
   clearok (stdscr, TRUE);
 }
@@ -180,7 +179,7 @@ void mutt_query_exit (void)
   }
   mutt_clear_error();
   mutt_curs_set (-1);
-  SigInt = 0;
+  Signals &= ~S_INTERRUPT;
 }
 
 static void clean_error_buf(void)
@@ -318,20 +317,15 @@ int mutt_do_pager (const char *banner,
     
     endwin ();
     mutt_expand_file_fmt (cmd, sizeof(cmd), Pager, tempfile);
-    if (mutt_system (cmd) == -1)
-    {
-      mutt_error (_("Error running \"%s\"!"), cmd);
-      rc = -1;
-    }
-    else
-      rc = 0;
+    mutt_system (cmd);
     mutt_unlink (tempfile);
+    rc = 0;
   }
 
   return rc;
 }
 
-int _mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, int buffy, int multiple, char ***files, int *numfiles)
+int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, int buffy)
 {
   event_t ch;
 
@@ -352,7 +346,7 @@ int _mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, 
   {
     mutt_refresh ();
     buf[0] = 0;
-    _mutt_select_file (buf, blen, 0, multiple, files, numfiles);
+    mutt_select_file (buf, blen, 0);
     *redraw = REDRAW_FULL;
   }
   else
@@ -361,7 +355,7 @@ int _mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, 
 
     sprintf (pc, "%s: ", prompt);
     mutt_ungetch (ch.op ? 0 : ch.ch, ch.op ? ch.op : 0);
-    if (_mutt_get_field (pc, buf, blen, (buffy ? M_EFILE : M_FILE) | M_CLEAR, multiple, files, numfiles)
+    if (mutt_get_field (pc, buf, blen, (buffy ? M_EFILE : M_FILE) | M_CLEAR)
 	!= 0)
       buf[0] = 0;
     MAYBE_REDRAW (*redraw);
