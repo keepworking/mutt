@@ -29,14 +29,11 @@
 #include "mutt.h"
 #include "rfc1524.h"
 
-#include <string.h>
-#include <stdlib.h>
 #include <ctype.h>
-
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <string.h>
 
 /* The command semantics include the following:
  * %s is the filename that contains the mail body data
@@ -76,46 +73,30 @@ int rfc1524_expand_command (BODY *a, char *filename, char *_type,
       if (command[x] == '{') 
       {
 	char param[STRING];
-	char pvalue[LONG_STRING];
+	char pvalue[STRING];
+	char *_pvalue;
 	int z = 0;
-	char *ret = NULL;
-	char *pv;
 
 	x++;
 	while (command[x] && command[x] != '}' && z<sizeof(param))
 	  param[z++] = command[x++];
 	param[z] = '\0';
-	dprint(2,(debugfile,"Parameter: %s  Returns: %s\n",param,ret));
-	pv = mutt_get_parameter (param, a->parameter);
-	strfcpy (pvalue, NONULL(pv), sizeof (pvalue));
-	if (option (OPTMAILCAPSANITIZE)) 
+	
+	_pvalue = mutt_get_parameter (param, a->parameter);
+	strfcpy (pvalue, NONULL(_pvalue), sizeof (pvalue));
+	if (option (OPTMAILCAPSANITIZE))
 	  mutt_sanitize_filename (pvalue, 0);
-	ret = mutt_quote_filename (pvalue);
-	dprint(2,(debugfile,"Parameter: %s  Returns: %s\n",param,ret));
-	z = 0;
-	while (ret && ret[z] && y<sizeof(buf))
-	  buf[y++] = ret[z++];
-	FREE(&ret);
+	
+	y += mutt_quote_filename (buf + y, sizeof (buf) - y, pvalue);
       }
       else if (command[x] == 's' && filename != NULL)
       {
-	char *fn = mutt_quote_filename(filename);
-	int i;
-	
-	for(i = 0; fn[i] && y < sizeof(buf); i++)
-	  buf[y++] = fn[i];
-	
-	FREE(&fn);
+	y += mutt_quote_filename (buf + y, sizeof (buf) - y, filename);
 	needspipe = FALSE;
       }
       else if (command[x] == 't')
       {
-	char *t = mutt_quote_filename (type);
-	char *s;
-	
-	for (s = t; *s && y < sizeof (buf);)
-	  buf[y++] = *s++;
-	FREE (&t);
+	y += mutt_quote_filename (buf + y, sizeof (buf) - y, type);
       }
       x++;
     }
@@ -448,7 +429,6 @@ void mutt_adv_mktemp (char *s, size_t l)
   char tmp[_POSIX_PATH_MAX];
   char *period;
   size_t sl;
-  struct stat sb;
   
   strfcpy (buf, NONULL (Tempdir), sizeof (buf));
   mutt_expand_path (buf, sizeof (buf));
@@ -461,7 +441,7 @@ void mutt_adv_mktemp (char *s, size_t l)
   {
     strfcpy (tmp, s, sizeof (tmp));
     snprintf (s, l, "%s/%s", buf, tmp);
-    if (lstat (s, &sb) == -1 && errno == ENOENT)
+    if (access (s, F_OK) != 0)
       return;
     if ((period = strrchr (tmp, '.')) != NULL)
       *period = 0;
@@ -614,11 +594,6 @@ int rfc1524_expand_filename (char *nametemplate,
  * This function returns 0 on successful move, 1 on old file doesn't exist,
  * 2 on new file already exists, and 3 on other failure.
  */
-
-/* note on access(2) use: No dangling symlink problems here due to
- * safe_fopen().
- */
-
 int mutt_rename_file (char *oldfile, char *newfile)
 {
   FILE *ofp, *nfp;
