@@ -21,7 +21,7 @@
 #include "mailbox.h"
 #include "mime.h"
 #include "rfc2047.h"
-#include "rfc2231.h"
+
 
 
 #ifdef _PGPPATH
@@ -138,14 +138,11 @@ static PARAMETER *parse_parameters (const char *s)
   const char *p;
   size_t i;
 
-  dprint (2, (debugfile, "parse_parameters: `%s'\n", s));
-  
   while (*s)
   {
     if ((p = strpbrk (s, "=;")) == NULL)
     {
       dprint(1, (debugfile, "parse_parameters: malformed parameter: %s\n", s));
-      rfc2231_decode_parameters (&head);
       return (head); /* just bail out now */
     }
 
@@ -195,8 +192,6 @@ static PARAMETER *parse_parameters (const char *s)
 
       new->value = safe_strdup (buffer);
 
-      dprint (2, (debugfile, "parse_parameter: `%s' = `%s'\n", new->attribute, new->value));
-      
       /* Add this parameter to the list */
       if (head)
       {
@@ -226,7 +221,6 @@ static PARAMETER *parse_parameters (const char *s)
     while (*s == ';'); /* skip empty parameters */
   }    
 
-  rfc2231_decode_parameters (&head);
   return (head);
 }
 
@@ -268,8 +262,10 @@ void mutt_parse_content_type (char *s, BODY *ct)
       pc++;
     ct->parameter = parse_parameters(pc);
 
-    /* Some pre-RFC1521 gateways still use the "name=filename" convention */
-    if ((pc = mutt_get_parameter("name", ct->parameter)) != 0)
+    /* Some pre-RFC1521 gateways still use the "name=filename" convention,
+     * but if a filename has already been set in the content-disposition,
+     * let that take precedence, and don't set it here */
+    if ((pc = mutt_get_parameter("name", ct->parameter)) != 0 && !ct->filename)
       ct->filename = safe_strdup(pc);
   }
   
@@ -312,13 +308,6 @@ void mutt_parse_content_type (char *s, BODY *ct)
     }
     else
       ct->subtype = safe_strdup ("x-unknown");
-  }
-
-  /* Default character set for text types. */
-  if (ct->type == TYPETEXT)
-  {
-    if (!(pc = mutt_get_parameter ("charset", ct->parameter)))
-      mutt_set_parameter ("charset", "us-ascii", &ct->parameter);
   }
 
 }
@@ -522,7 +511,11 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int di
   {
     len = mutt_strlen (buffer);
 
-    crlf =  (len > 1 && buffer[len - 2] == '\r') ? 1 : 0;
+    /* take note of the line ending.  I'm assuming that either all endings
+     * will use <CR><LF> or none will.
+     */
+    if (len > 1 && buffer[len - 2] == '\r')
+      crlf = 1;
 
     if (buffer[0] == '-' && buffer[1] == '-' &&
 	mutt_strncmp (buffer + 2, boundary, blen) == 0)
