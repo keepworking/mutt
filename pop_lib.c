@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2000-2002 Vsevolod Volkov <vvv@mutt.org.ua>
+ * Copyright (C) 2000 Vsevolod Volkov <vvv@mutt.org.ua>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -83,20 +83,20 @@ static int fetch_capa (char *line, void *data)
   POP_DATA *pop_data = (POP_DATA *)data;
   char *c;
 
-  if (!ascii_strncasecmp (line, "SASL", 4))
+  if (!mutt_strncmp (line, "SASL", 4))
   {
     c = line + 4;
     SKIPWS (c);
     pop_data->auth_list = safe_strdup (c);
   }
 
-  else if (!ascii_strncasecmp (line, "USER", 4))
+  else if (!mutt_strncmp (line, "USER", 4))
     pop_data->cmd_user = 1;
 
-  else if (!ascii_strncasecmp (line, "UIDL", 4))
+  else if (!mutt_strncmp (line, "UIDL", 4))
     pop_data->cmd_uidl = 1;
 
-  else if (!ascii_strncasecmp (line, "TOP", 3))
+  else if (!mutt_strncmp (line, "TOP", 3))
     pop_data->cmd_top = 1;
 
   return 0;
@@ -251,8 +251,6 @@ int pop_open_connection (POP_DATA *pop_data)
   ret = pop_authenticate (pop_data);
   if (ret == -1)
     goto err_conn;
-  if (ret == -3)
-    mutt_clear_error ();
   if (ret != 0)
     return ret;
 
