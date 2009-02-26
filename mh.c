@@ -34,42 +34,6 @@
 #include <errno.h>
 #include <string.h>
 
-static void maildir_parse_flags(HEADER *h)
-{
-  char *p;
-
-  h->flagged = 0;
-  h->read = 0;
-  h->replied = 0;
-  
-  if ((p = strchr (h->path, ':')) != NULL && strncmp (p + 1, "2,", 2) == 0)
-  {
-    p += 3;
-    while (*p)
-    {
-      switch (*p)
-      {
-	case 'F':
-	
-	h->flagged = 1;
-	break;
-	
-	case 'S': /* seen */
-	
-	h->read = 1;
-	break;
-	
-	case 'R': /* replied */
-	
-	h->replied = 1;
-	break;
-      }
-      p++;
-    }
-  }
-}
-
-
 void mh_parse_message (CONTEXT *ctx,
 		       const char *subdir,
 		       const char *fname,
@@ -77,6 +41,7 @@ void mh_parse_message (CONTEXT *ctx,
 		       int isOld)
 {
   char path[_POSIX_PATH_MAX];
+  char *p;
   FILE *f;
   HEADER *h;
   struct stat st;
@@ -130,8 +95,34 @@ void mh_parse_message (CONTEXT *ctx,
        */
 
       h->old = isOld;
-      maildir_parse_flags(h);
+
+      if ((p = strchr (h->path, ':')) != NULL && strncmp (p + 1, "2,", 2) == 0)
+      {
+	p += 3;
+	while (*p)
+	{
+	  switch (*p)
+	  {
+	    case 'F':
+
+	      h->flagged = 1;
+	      break;
+
+	    case 'S': /* seen */
+
+	      h->read = 1;
+	      break;
+
+	    case 'R': /* replied */
+
+	      h->replied = 1;
+	      break;
+	  }
+	  p++;
+	}
+      }
     }
+
     /* set flags and update context info */
     mx_update_context (ctx);
   }
@@ -140,7 +131,7 @@ void mh_parse_message (CONTEXT *ctx,
 /*
  * Mark all the mails in ctx read.
  */
-static void tag_all_read (CONTEXT * ctx)
+void tag_all_read (CONTEXT * ctx)
 {
   int i;
 
@@ -157,7 +148,7 @@ static void tag_all_read (CONTEXT * ctx)
 /*
  * Mark one mail as unread
  */
-static int tag_unread (CONTEXT * ctx, char *name)
+int tag_unread (CONTEXT * ctx, char *name)
 {
   int i;
 
@@ -630,18 +621,14 @@ int mh_sync_mailbox (CONTEXT * ctx)
     if (ctx->hdrs[i]->deleted)
     {
       snprintf (path, sizeof (path), "%s/%s", ctx->path, ctx->hdrs[i]->path);
-      if (ctx->magic == M_MAILDIR || (option (OPTMHPURGE) && ctx->magic == M_MH))
+      if (ctx->magic == M_MAILDIR)
 	unlink (path);
-      else if (ctx->magic == M_MH)
+      else
       {
 	/* MH just moves files out of the way when you delete them */
-	if(*ctx->hdrs[i]->path != ',')
-	{
-	  snprintf (tmp, sizeof (tmp), "%s/,%s", ctx->path, ctx->hdrs[i]->path);
-	  unlink (tmp);
-	  rename (path, tmp);
-	}
-	  
+	snprintf (tmp, sizeof (tmp), "%s/,%s", ctx->path, ctx->hdrs[i]->path);
+	unlink (tmp);
+	rename (path, tmp);
       }
     }
     else if (ctx->hdrs[i]->changed || ctx->hdrs[i]->attach_del)
