@@ -143,7 +143,7 @@ msg_search (CONTEXT *ctx, regex_t *rx, char *buf, size_t blen, int op, int msgno
       /* decode the header / body */
       memset (&s, 0, sizeof (s));
       s.fpin = msg->fp;
-      s.flags |= M_CHARCONV;
+      s.flags = M_CHARCONV;
       mutt_mktemp (tempfile);
       if ((s.fpout = safe_fopen (tempfile, "w+")) == NULL)
       {
@@ -765,10 +765,10 @@ static int match_reference (regex_t *rx, LIST *refs)
 int mutt_is_list_recipient (int alladdr, ADDRESS *a1, ADDRESS *a2)
 {
   for (; a1 ; a1 = a1->next)
-    if (alladdr ^ mutt_is_mail_list (a1))
+    if (alladdr ^ mutt_is_subscribed_list (a1))
       return (! alladdr);
   for (; a2 ; a2 = a2->next)
-    if (alladdr ^ mutt_is_mail_list (a2))
+    if (alladdr ^ mutt_is_subscribed_list (a2))
       return (! alladdr);
   return alladdr;
 }
