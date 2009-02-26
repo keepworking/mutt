@@ -75,7 +75,7 @@ static int browser_compare_subject (const void *a, const void *b)
   struct folder_file *pa = (struct folder_file *) a;
   struct folder_file *pb = (struct folder_file *) b;
 
-  int r = mutt_strcmp (pa->name, pb->name);
+  int r = mutt_strcoll (pa->name, pb->name);
 
   return ((BrowserSort & SORT_REVERSE) ? -r : r);
 }
@@ -168,45 +168,43 @@ folder_format_str (char *dest, size_t destlen, char op, const char *src,
       break;
       
     case 'f':
-    {
-      char *s;
 #ifdef USE_IMAP
       if (folder->ff->imap)
-	s = NONULL (folder->ff->desc);
+        strfcpy (fn, NONULL(folder->ff->desc), sizeof (fn));
       else
 #endif
-	s = NONULL (folder->ff->name);
-
-      snprintf (fn, sizeof (fn), "%s%s", s,
-		folder->ff->st ? (S_ISLNK (folder->ff->st->st_mode) ? "@" :		
-				  (S_ISDIR (folder->ff->st->st_mode) ? "/" : 
-				   ((folder->ff->st->st_mode & S_IXUSR) != 0 ? "*" : ""))) : "");
-      
+      strfcpy (fn, folder->ff->name, sizeof(fn));
+      if (folder->ff->st != NULL)
+      {
+	strcat (fn, S_ISLNK (folder->ff->st->st_mode) ? "@" :		/* __STRCAT_CHECKED__ */
+		(S_ISDIR (folder->ff->st->st_mode) ? "/" : 
+		 ((folder->ff->st->st_mode & S_IXUSR) != 0 ? "*" : "")));
+      }
       mutt_format_s (dest, destlen, fmt, fn);
       break;
-    }
+      
     case 'F':
       if (folder->ff->st != NULL)
       {
-	snprintf (permission, sizeof (permission), "%c%c%c%c%c%c%c%c%c%c",
-		  S_ISDIR(folder->ff->st->st_mode) ? 'd' : (S_ISLNK(folder->ff->st->st_mode) ? 'l' : '-'),
-		  (folder->ff->st->st_mode & S_IRUSR) != 0 ? 'r': '-',
-		  (folder->ff->st->st_mode & S_IWUSR) != 0 ? 'w' : '-',
-		  (folder->ff->st->st_mode & S_ISUID) != 0 ? 's' : (folder->ff->st->st_mode & S_IXUSR) != 0 ? 'x': '-',
-		  (folder->ff->st->st_mode & S_IRGRP) != 0 ? 'r' : '-',
-		  (folder->ff->st->st_mode & S_IWGRP) != 0 ? 'w' : '-',
-		  (folder->ff->st->st_mode & S_ISGID) != 0 ? 's' : (folder->ff->st->st_mode & S_IXGRP) != 0 ? 'x': '-',
-		  (folder->ff->st->st_mode & S_IROTH) != 0 ? 'r' : '-',
-		  (folder->ff->st->st_mode & S_IWOTH) != 0 ? 'w' : '-',
-		  (folder->ff->st->st_mode & S_ISVTX) != 0 ? 't' : (folder->ff->st->st_mode & S_IXOTH) != 0 ? 'x': '-');
+	sprintf (permission, "%c%c%c%c%c%c%c%c%c%c",
+	    S_ISDIR(folder->ff->st->st_mode) ? 'd' : (S_ISLNK(folder->ff->st->st_mode) ? 'l' : '-'),
+	    (folder->ff->st->st_mode & S_IRUSR) != 0 ? 'r': '-',
+	    (folder->ff->st->st_mode & S_IWUSR) != 0 ? 'w' : '-',
+	    (folder->ff->st->st_mode & S_ISUID) != 0 ? 's' : (folder->ff->st->st_mode & S_IXUSR) != 0 ? 'x': '-',
+	    (folder->ff->st->st_mode & S_IRGRP) != 0 ? 'r' : '-',
+	    (folder->ff->st->st_mode & S_IWGRP) != 0 ? 'w' : '-',
+	    (folder->ff->st->st_mode & S_ISGID) != 0 ? 's' : (folder->ff->st->st_mode & S_IXGRP) != 0 ? 'x': '-',
+	    (folder->ff->st->st_mode & S_IROTH) != 0 ? 'r' : '-',
+	    (folder->ff->st->st_mode & S_IWOTH) != 0 ? 'w' : '-',
+	    (folder->ff->st->st_mode & S_ISVTX) != 0 ? 't' : (folder->ff->st->st_mode & S_IXOTH) != 0 ? 'x': '-');
 	mutt_format_s (dest, destlen, fmt, permission);
       }
 #ifdef USE_IMAP
       else if (folder->ff->imap)
       {
 	/* mark folders with subfolders AND mail */
-	snprintf (permission, sizeof (permission), "IMAP %c",
-		  (folder->ff->inferiors && folder->ff->selectable) ? '+' : ' ');
+	sprintf (permission, "IMAP %c",
+          (folder->ff->inferiors && folder->ff->selectable) ? '+' : ' ');
 	mutt_format_s (dest, destlen, fmt, permission);
       }                                        
 #endif
@@ -972,7 +970,7 @@ void _mutt_select_file (char *f, size_t flen, int flags, char ***files, int *num
 	
       case OP_ENTER_MASK:
 
-	strfcpy (buf, NONULL(Mask.pattern), sizeof (buf));
+	strfcpy (buf, Mask.pattern, sizeof (buf));
 	if (mutt_get_field (_("File Mask: "), buf, sizeof (buf), 0) == 0)
 	{
 	  regex_t *rx = (regex_t *) safe_malloc (sizeof (regex_t));
