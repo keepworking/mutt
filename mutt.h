@@ -140,9 +140,8 @@ typedef enum
 #define M_SENDHOOK	(1<<2)
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
-#define M_CHARSETHOOK	(1<<5)
 #ifdef _PGPPATH
-#define M_PGPHOOK	(1<<6)
+#define M_PGPHOOK	(1<<5)
 #endif
 
 /* tree characters for linearize_tree and print_enriched_string */
@@ -228,7 +227,8 @@ enum
   M_NEW_SOCKET,
 
   /* Options for mutt_save_attachment */
-  M_SAVE_APPEND
+  M_SAVE_APPEND,
+  M_SAVE_OVERWRITE
 };
 
 /* possible arguments to set_quadoption() */
@@ -303,11 +303,8 @@ enum
   OPTHELP,
   OPTHIDDENHOST,
   OPTIGNORELISTREPLYTO,
-#ifdef USE_IMAP
-  OPTIMAPLSUB,
-  OPTIMAPPASSIVE,
-#endif
   OPTIMPLICITAUTOVIEW,
+  OPTMAILCAPSANITIZE,
   OPTMARKERS,
   OPTMARKOLD,
   OPTMENUSCROLL,	/* scroll menu instead of implicit next-page */
@@ -357,7 +354,6 @@ enum
   OPTPGPENCRYPTSELF,
   OPTPGPSTRICTENC,
   OPTFORWDECRYPT,
-  OPTPGPSHOWUNUSABLE,
 #endif
 
   /* pseudo options */
@@ -377,7 +373,6 @@ enum
   OPTFORCEREDRAWPAGER,	/* (pseudo) used to force a redraw in the pager */
   OPTSORTSUBTHREADS,	/* (pseudo) used when $sort_aux changes */
   OPTNEEDRESCORE,	/* (pseudo) set when the `score' command is used */
-  OPTSORTCOLLAPSE,	/* (pseudo) used by mutt_sort_headers() */
   OPTUSEHEADERDATE,	/* (pseudo) used by edit-message */
   OPTATTACHMSG,		/* (pseudo) used by attach-message */
   
@@ -470,6 +465,7 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
+  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
@@ -517,7 +513,7 @@ typedef struct body
 				 */
   unsigned int tagged : 1;
   unsigned int deleted : 1;	/* attachment marked for deletion */
-  unsigned int noconv : 1;	/* don't do character set conversion */
+
 } BODY;
 
 typedef struct header
@@ -582,10 +578,6 @@ typedef struct header
   struct header *last_sort; /* last message in subthread, for secondary SORT_LAST */
   char *tree;            /* character string to print thread tree */
 
-#ifdef MIXMASTER
-  LIST *chain;
-#endif
-  
 } HEADER;
 
 #include "mutt_regex.h"
@@ -681,7 +673,6 @@ typedef struct
 
 #define M_PENDINGPREFIX (1<<2) /* prefix to write, but character must follow */
 #define M_WEED          (1<<3) /* weed headers even when not in display mode */
-#define M_CHARCONV	(1<<4) /* Do character set conversions */
 
 #define state_set_prefix(s) ((s)->flags |= M_PENDINGPREFIX)
 #define state_reset_prefix(s) ((s)->flags &= ~M_PENDINGPREFIX)

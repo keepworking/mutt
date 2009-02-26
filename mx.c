@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -66,18 +65,18 @@
 
 #ifdef DL_STANDALONE
 
-static int invoke_dotlock (const char *path, int flags, int retry)
+static int invoke_dotlock(const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
-  char f[SHORT_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
+  char *f;
   
-  if (flags & DL_FL_RETRY)
-    snprintf (r, sizeof (r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
+  if(flags & DL_FL_RETRY)
+    snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
   
-  mutt_quote_filename (f, sizeof (f), path);
+  f = mutt_quote_filename(path);
   
-  snprintf (cmd, sizeof (cmd),
+  snprintf(cmd, sizeof(cmd),
 	   "%s %s%s%s%s%s%s",
 	   DOTLOCK,
 	   flags & DL_FL_TRY ? "-t " : "",
@@ -87,7 +86,9 @@ static int invoke_dotlock (const char *path, int flags, int retry)
 	   flags & DL_FL_RETRY ? r : "",
 	   f);
   
-  return mutt_system (cmd);
+  FREE(&f);
+
+  return mutt_system(cmd);
 }
 
 #else 
@@ -786,10 +787,6 @@ int mx_close_mailbox (CONTEXT *ctx)
       return (-1);
   }
 
-#ifdef USE_IMAP
-  /* IMAP doesn't support an OLD flag */
-  if (ctx->magic != M_IMAP)
-#endif
   if (option (OPTMARKOLD))
   {
     for (i = 0; i < ctx->msgcount; i++)
@@ -1009,9 +1006,7 @@ int mx_sync_mailbox (CONTEXT *ctx)
     }
 
     mx_update_tables(ctx, 1);
-    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, 1); /* rethread from scratch */
-    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (rc);
