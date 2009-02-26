@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -24,15 +24,12 @@
 #include <ctype.h>
 #include <string.h>
 
-typedef void encode_t (char *, size_t, const unsigned char *, const char *);
+typedef void encode_t (char *, size_t, const unsigned char *);
 
 extern char MimeSpecials[];
 extern char B64Chars[];
 
-static void q_encode_string (char *d, 
-			     size_t dlen, 
-			     const unsigned char *s,
-			     const char *send_charset)
+static void q_encode_string (char *d, size_t dlen, const unsigned char *s)
 {
   char charset[SHORT_STRING];
   size_t cslen, wordlen;
@@ -118,16 +115,14 @@ static void q_encode_string (char *d,
   strcpy (wptr, "?=");
 }
 
-static void b_encode_string (char *d, size_t dlen, 
-			     const unsigned char *s, 
-			     const char *send_charset)
+static void b_encode_string (char *d, size_t dlen, const unsigned char *s)
 {
   char charset[SHORT_STRING];
   char *wptr = d;
   int cslen;
   int wordlen;
 
-  snprintf (charset, sizeof (charset), "=?%s?B?", NONULL(send_charset));
+  snprintf (charset, sizeof (charset), "=?%s?B?", NONULL(Charset));
   cslen = mutt_strlen (charset);
   strcpy (wptr, charset);
   wptr += cslen;
@@ -187,16 +182,7 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
   int len;
   const unsigned char *p = s;
   encode_t *encoder;
-  char send_charset[SHORT_STRING];
-  unsigned char scratch[LONG_STRING]; 
-  
-  /* attention: this function will fail for
-   * strings longer then LONG_STRING.  But lots
-   * of code in mutt will anyway...
-   */
-  
-  mutt_get_send_charset(send_charset, sizeof(send_charset), NULL, 0);
-  
+
   /* First check to see if there are any 8-bit characters */
   for (; *p; p++)
   {
@@ -214,8 +200,8 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
     return;
   }
 
-  if (mutt_strcasecmp("us-ascii", send_charset) == 0 ||
-      mutt_strncasecmp("iso-8859", send_charset, 8) == 0)
+  if (mutt_strcasecmp("us-ascii", Charset) == 0 ||
+      mutt_strncasecmp("iso-8859", Charset, 8) == 0)
     encoder = q_encode_string;
   else
   {
@@ -244,11 +230,7 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
     s += 5;
   }
 
-  strfcpy((char *)scratch, (const char *) s, sizeof(scratch));
-  if (*send_charset && mutt_strcasecmp("us-ascii", send_charset))
-    mutt_display_string((char *)scratch, mutt_get_translation(Charset, send_charset));
-  
-  (*encoder) (d, dlen, scratch, send_charset);
+  (*encoder) (d, dlen, s);
 }
 
 void rfc2047_encode_adrlist (ADDRESS *addr)
@@ -281,19 +263,15 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
   char *p = safe_strdup (s);
   char *pp = p;
   char *pd = d;
-  char *t;
   int enc = 0, filter = 0, count = 0, c1, c2, c3, c4;
   char *charset = NULL;
-
+  
   while ((pp = strtok (pp, "?")) != NULL)
   {
     count++;
     switch (count)
     {
       case 2:
-	/* ignore language specification a la RFC 2231 */        
-        if ((t = strchr (pp, '*')))
-	  *t = '\0';
 	if (mutt_strcasecmp (pp, Charset) != 0)
         {
 	  filter = 1;
