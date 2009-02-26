@@ -38,9 +38,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef MIXMASTER
-#include "remailer.h"
-#endif
 
 
 static void append_signature (FILE *f)
@@ -340,7 +337,7 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
     cmflags |= M_CM_DECODE | M_CM_CHARCONV;
     if (option (OPTFORWWEEDHEADER))
     {
-      chflags |= CH_WEED | CH_REORDER;
+      chflags |= CH_WEED;
       cmflags |= M_CM_WEED;
     }
   }
@@ -356,7 +353,6 @@ static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
 {
   char buffer[STRING];
   int flags = M_CM_PREFIX | M_CM_DECODE | M_CM_CHARCONV;
-
 
 
 #ifdef _PGPPATH
@@ -398,15 +394,8 @@ static int default_to (ADDRESS **to, ENVELOPE *env, int group)
 
   if (group && env->mail_followup_to)
   {
-    snprintf (prompt, sizeof (prompt), _("Follow-up to %s%s?"),
-	      env->mail_followup_to->mailbox,
-	      env->mail_followup_to->next ? "..." : "");
-
-    if (query_quadoption (OPT_MFUPTO, prompt) == M_YES)
-    {
-      rfc822_append (to, env->mail_followup_to);
-      return 0;
-    }
+    rfc822_append (to, env->mail_followup_to);
+    return 0;
   }
 
   if (!option(OPTREPLYSELF) && mutt_addr_is_user (env->from))
@@ -577,22 +566,20 @@ envelope_defaults (ENVELOPE *env, CONTEXT *ctx, HEADER *cur, int flags)
       env->subject = safe_strdup ("Re: your mail");
 
     /* add the In-Reply-To field */
-    if (InReplyTo)
+    snprintf (buffer, sizeof (buffer), "In-Reply-To: %s", 
+	      cur->env->message_id);
+
+    tmp = env->userhdrs;
+    while (tmp && tmp->next)
+      tmp = tmp->next;
+    if (tmp)
     {
-      strfcpy (buffer, "In-Reply-To: ", sizeof (buffer));
-      mutt_make_string (buffer + 13, sizeof (buffer) - 13, InReplyTo, ctx, cur);
-      tmp = env->userhdrs;
-      while (tmp && tmp->next)
-	tmp = tmp->next;
-      if (tmp)
-      {
-	tmp->next = mutt_new_list ();
-	tmp = tmp->next;
-      }
-      else
-	tmp = env->userhdrs = mutt_new_list ();
-      tmp->data = safe_strdup (buffer);
+      tmp->next = mutt_new_list ();
+      tmp = tmp->next;
     }
+    else
+      tmp = env->userhdrs = mutt_new_list ();
+    tmp->data = safe_strdup (buffer);
 
     if(tag)
     {
@@ -732,8 +719,7 @@ void mutt_set_followup_to (ENVELOPE *e)
   ADDRESS *t = NULL;
 
   /* only generate the Mail-Followup-To if the user has requested it, and
-   * it hasn't already been set
-   */
+     it hasn't already been set */
   if (option (OPTFOLLOWUPTO) && !e->mail_followup_to)
   {
     if (mutt_is_list_recipient (0, e->to, e->cc))
@@ -804,19 +790,13 @@ static int send_message (HEADER *msg)
   char tempfile[_POSIX_PATH_MAX];
   FILE *tempfp;
   int i;
-  
+
   /* Write out the message in MIME form. */
   mutt_mktemp (tempfile);
   if ((tempfp = safe_fopen (tempfile, "w")) == NULL)
     return (-1);
 
-#ifdef MIXMASTER
-  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, msg->chain ? 1 : 0);
-#endif
-#ifndef MIXMASTER
-  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, 0);
-#endif
-  
+  mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0);
   fputc ('\n', tempfp); /* tie off the header. */
 
   if ((mutt_write_mime_body (msg->content, tempfp) == -1))
@@ -832,11 +812,6 @@ static int send_message (HEADER *msg)
     unlink (tempfile);
     return (-1);
   }
-
-#ifdef MIXMASTER
-  if (msg->chain)
-    return mix_send_message (msg->chain, tempfile);
-#endif
 
   i = mutt_invoke_sendmail (msg->env->to, msg->env->cc, msg->env->bcc,
 		       tempfile, (msg->content->encoding == ENC8BIT));
@@ -874,7 +849,6 @@ ci_send_message (int flags,		/* send mode */
   FILE *tempfp = NULL;
   BODY *pbody;
   int i, killfrom = 0;
-
 #ifdef _PGPPATH
   BODY *save_content = NULL;
   char *pgpkeylist = NULL;
@@ -1045,8 +1019,6 @@ ci_send_message (int flags,		/* send mode */
 	msg->pgp |= PGPENCRYPT;
       if (option (OPTPGPREPLYSIGN) && cur && cur->pgp & PGPSIGN)
 	msg->pgp |= PGPSIGN;
-      if (option (OPTPGPREPLYSIGNENCRYPTED) && cur && cur->pgp & PGPENCRYPT)
-	msg->pgp |= PGPSIGN;
     }
 #endif /* _PGPPATH */
 
@@ -1136,7 +1108,7 @@ ci_send_message (int flags,		/* send mode */
   /* specify a default fcc.  if we are in batchmode, only save a copy of
    * the message if the value of $copy is yes or ask-yes */
 
-  if (!fcc[0] && !(flags & SENDPOSTPONED) && (!(flags & SENDBATCH) || (quadoption (OPT_COPY) & 0x1)))
+  if (!fcc[0] && (!(flags & SENDBATCH) || (quadoption (OPT_COPY) & 0x1)))
   {
     /* set the default FCC */
     if (!msg->env->from)
@@ -1159,7 +1131,6 @@ ci_send_message (int flags,		/* send mode */
   {
 main_loop:
 
-    mutt_pretty_mailbox (fcc);
     i = mutt_compose_menu (msg, fcc, sizeof (fcc), cur);
     if (i == -1)
     {
@@ -1215,15 +1186,11 @@ main_loop:
 #ifdef _PGPPATH
   if (msg->pgp)
   {
-    if (pgp_get_keys (msg, &pgpkeylist) == -1)
-      goto main_loop;
-
-    mutt_message _("Invoking PGP...");
-    
     /* save the decrypted attachments */
     save_content = msg->content;
 
-    if (pgp_protect (msg, pgpkeylist) == -1)
+    if ((pgp_get_keys (msg, &pgpkeylist) == -1) ||
+	(pgp_protect (msg, pgpkeylist) == -1))
     {
       if (msg->content->parts)
       {
@@ -1240,17 +1207,12 @@ main_loop:
   }
 #endif /* _PGPPATH */
 
-  /* the following check may _badly_ interact with the PGP code above. */
-  
-#if 0
   if (flags & SENDEDITMSG)
   {
    int really_send = mutt_yesorno (_("Message edited. Really send?"), 1);
    if (really_send != M_YES)
      goto main_loop;
   }
-#endif
-
 
   if (!option (OPTNOCURSES) && !(flags & SENDMAILX))
     mutt_message _("Sending message...");
@@ -1259,7 +1221,6 @@ main_loop:
   encode_descriptions (msg->content);
 
   /* save a copy of the message, if necessary. */
-
   mutt_expand_path (fcc, sizeof (fcc));
   if (*fcc && mutt_strcmp ("/dev/null", fcc) != 0)
   {
