@@ -85,8 +85,8 @@ struct q_class_t
 struct syntax_t
 {
   int color;
-  short first;
-  short last;
+  int first;
+  int last;
 };
 
 struct line_t
@@ -887,13 +887,6 @@ fill_buffer (FILE *f, long *last_pos, long offset, unsigned char *buf,
   return b_read;
 }
 
-static int is_ansi (unsigned char *buf)
-{
-  while (buf && (isdigit(*buf) || *buf == ';'))
-    buf++;
-  return (*buf == 'm');
-}
-
 static int grok_ansi(unsigned char *buf, int pos, ansi_attr *a)
 {
   int x = pos;
@@ -1128,7 +1121,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
       c = buf[cnt];
     }
 
-    if (*buf_ptr == '\033' && *(buf_ptr + 1) && *(buf_ptr + 1) == '[' && is_ansi (buf_ptr+2))
+    if (*buf_ptr == '\033' && *(buf_ptr + 1) && *(buf_ptr + 1) == '[')
     {
       cnt = grok_ansi(buf, cnt+3, NULL);
       cnt++;
@@ -1259,7 +1252,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     }
 
     /* Handle ANSI sequences */
-    if (c == '\033' && buf[ch+1] == '[' && is_ansi (buf+ch+2))
+    if (c == '\033' && buf[ch+1] == '[')
     {
       ch = grok_ansi(buf, ch+2, &a);
       c = buf[ch];
@@ -1903,7 +1896,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  /* update the search pointers */
 	  i = 0;
 	  while (display_line (fp, &last_pos, &lineInfo, i, &lastLine, 
-				&maxLine, M_SEARCH, &QuoteList, &q_level,
+				&maxLine, M_SEARCH | (flags & M_PAGER_NSKIP),
+				&QuoteList, &q_level,
 				&force_redraw, &SearchRE) == 0)
 	    i++;
 
