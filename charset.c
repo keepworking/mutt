@@ -286,7 +286,7 @@ iconv_t iconv_open (const char *tocode, const char *fromcode)
   return (iconv_t)(-1);
 }
 
-size_t iconv (iconv_t cd, const char **inbuf, size_t *inbytesleft,
+size_t iconv (iconv_t cd, ICONV_CONST char **inbuf, size_t *inbytesleft,
 	      char **outbuf, size_t *outbytesleft)
 {
   return 0;
@@ -314,8 +314,12 @@ iconv_t mutt_iconv_open (const char *tocode, const char *fromcode, int flags)
   iconv_t cd;
   
   mutt_canonical_charset (tocode1, sizeof (tocode1), tocode);
+
+#ifdef M_ICONV_HOOK_TO
+  /* Not used. */
   if ((flags & M_ICONV_HOOK_TO) && (tmp = mutt_charset_hook (tocode1)))
     mutt_canonical_charset (tocode1, sizeof (tocode1), tmp);
+#endif
 
   mutt_canonical_charset (fromcode1, sizeof (fromcode1), fromcode);
   if ((flags & M_ICONV_HOOK_FROM) && (tmp = mutt_charset_hook (fromcode1)))
@@ -336,12 +340,12 @@ iconv_t mutt_iconv_open (const char *tocode, const char *fromcode, int flags)
  * if you're supplying an outrepl, the target charset should be.
  */
 
-size_t mutt_iconv (iconv_t cd, const char **inbuf, size_t *inbytesleft,
+size_t mutt_iconv (iconv_t cd, ICONV_CONST char **inbuf, size_t *inbytesleft,
 		   char **outbuf, size_t *outbytesleft,
-		   const char **inrepls, const char *outrepl)
+		   ICONV_CONST char **inrepls, const char *outrepl)
 {
   size_t ret = 0, ret1;
-  const char *ib = *inbuf;
+  ICONV_CONST char *ib = *inbuf;
   size_t ibl = *inbytesleft;
   char *ob = *outbuf;
   size_t obl = *outbytesleft;
@@ -356,10 +360,10 @@ size_t mutt_iconv (iconv_t cd, const char **inbuf, size_t *inbytesleft,
       if (inrepls)
       {
 	/* Try replacing the input */
-	const char **t;
+	ICONV_CONST char **t;
 	for (t = inrepls; *t; t++)
 	{
-	  const char *ib1 = *t;
+	  ICONV_CONST char *ib1 = *t;
 	  size_t ibl1 = strlen (*t);
 	  char *ob1 = ob;
 	  size_t obl1 = obl;
@@ -404,7 +408,7 @@ size_t mutt_iconv (iconv_t cd, const char **inbuf, size_t *inbytesleft,
 int mutt_convert_string (char **ps, const char *from, const char *to, int flags)
 {
   iconv_t cd;
-  const char *repls[] = { "\357\277\275", "?", 0 };
+  ICONV_CONST char *repls[] = { "\357\277\275", "?", 0 };
   char *s = *ps;
 
   if (!s || !*s)
@@ -413,10 +417,10 @@ int mutt_convert_string (char **ps, const char *from, const char *to, int flags)
   if (to && from && (cd = mutt_iconv_open (to, from, flags)) != (iconv_t)-1)
   {
     int len;
-    const char *ib;
+    ICONV_CONST char *ib;
     char *buf, *ob;
     size_t ibl, obl;
-    const char **inrepls = 0;
+    ICONV_CONST char **inrepls = 0;
     char *outrepl = 0;
 
     if (mutt_is_utf8 (to))
@@ -462,7 +466,7 @@ struct fgetconv_s
   char *ob;
   char *ib;
   size_t ibl;
-  const char **inrepls;
+  ICONV_CONST char **inrepls;
 };
 
 struct fgetconv_not
@@ -475,7 +479,7 @@ FGETCONV *fgetconv_open (FILE *file, const char *from, const char *to, int flags
 {
   struct fgetconv_s *fc;
   iconv_t cd = (iconv_t)-1;
-  static const char *repls[] = { "\357\277\275", "?", 0 };
+  static ICONV_CONST char *repls[] = { "\357\277\275", "?", 0 };
 
   if (from && to)
     cd = mutt_iconv_open (to, from, flags);
@@ -513,7 +517,7 @@ int fgetconv (FGETCONV *_fc)
   if (fc->ibl)
   {
     size_t obl = sizeof (fc->bufo);
-    iconv (fc->cd, (const char **)&fc->ib, &fc->ibl, &fc->ob, &obl);
+    iconv (fc->cd, (ICONV_CONST char **)&fc->ib, &fc->ibl, &fc->ob, &obl);
     if (fc->p < fc->ob)
       return (unsigned char)*(fc->p)++;
   }
@@ -537,7 +541,7 @@ int fgetconv (FGETCONV *_fc)
   if (fc->ibl)
   {
     size_t obl = sizeof (fc->bufo);
-    mutt_iconv (fc->cd, (const char **)&fc->ib, &fc->ibl, &fc->ob, &obl,
+    mutt_iconv (fc->cd, (ICONV_CONST char **)&fc->ib, &fc->ibl, &fc->ob, &obl,
 		fc->inrepls, 0);
     if (fc->p < fc->ob)
       return (unsigned char)*(fc->p)++;
