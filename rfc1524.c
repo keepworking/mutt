@@ -392,8 +392,6 @@ int rfc1524_mailcap_lookup (BODY *a, char *type, rfc1524_entry *entry, int opt)
     return 0;
   }
 
-  mutt_check_lookup_list (a, type, SHORT_STRING);
-
   while (!found && *curr)
   {
     x = 0;
