@@ -21,7 +21,6 @@
 #include "mutt_regex.h"
 #include "keymap.h"
 #include "mutt_menu.h"
-#include "mapping.h"
 #include "sort.h"
 #include "pager.h"
 #include "attach.h"
@@ -72,13 +71,6 @@
 				mutt_error ("Mailbox is read-only.");	\
 				break; \
 			}
-
-#define CHECK_ATTACH if(option(OPTATTACHMSG)) \
-		     {\
-			mutt_flushinp (); \
-			mutt_error ("Function not permitted in attach-message mode."); \
-			break; \
-		     }
 
 struct q_class_t
 {
@@ -609,12 +601,12 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
 }
 
 static void
-resolve_types (char *buf, struct line_t *lineInfo, int n, int last,
+resolve_types (const char *buf, struct line_t *lineInfo, int n, int last,
 		struct q_class_t **QuoteList, int *q_level, int *force_redraw,
 		int q_classify)
 {
   COLOR_LINE *color_line;
-  regmatch_t pmatch[1], smatch[1];
+  regmatch_t pmatch[1];
   int found, offset, null_rx, i;
 
   if (n == 0 || ISHEADER (lineInfo[n-1].type))
@@ -666,43 +658,14 @@ resolve_types (char *buf, struct line_t *lineInfo, int n, int last,
   }
   else if (check_sig (buf, lineInfo, n - 1) == 0)
     lineInfo[n].type = MT_COLOR_SIGNATURE;
-  else if (regexec ((regex_t *) QuoteRegexp.rx, buf, 1, pmatch, 0) == 0)
+  else if (regexec ((regex_t *) QuoteRegexp.rx, buf, 1, pmatch, 0) == 0 &&
+	    strncmp (buf, ">From ", 6))
   {
-    if (regexec ((regex_t *) Smileys.rx, buf, 1, smatch, 0) == 0)
-    {
-      if (smatch[0].rm_so > 0)
-      {
-	char c;
-
-	/* hack to avoid making an extra copy of buf */
-	c = buf[smatch[0].rm_so];
-	buf[smatch[0].rm_so] = 0;
-
-	if (regexec ((regex_t *) QuoteRegexp.rx, buf, 1, pmatch, 0) == 0)
-	{
-	  if (q_classify && lineInfo[n].quote == NULL)
-	    lineInfo[n].quote = classify_quote (QuoteList,
-				  buf + pmatch[0].rm_so,
-				  pmatch[0].rm_eo - pmatch[0].rm_so,
-				  force_redraw, q_level);
-	  lineInfo[n].type = MT_COLOR_QUOTED;
-	}
-	else
-	  lineInfo[n].type = MT_COLOR_NORMAL;
-
-	buf[smatch[0].rm_so] = c;
-      }
-      else
-	lineInfo[n].type = MT_COLOR_NORMAL;
-    }
-    else
-    {
-      if (q_classify && lineInfo[n].quote == NULL)
-	lineInfo[n].quote = classify_quote (QuoteList, buf + pmatch[0].rm_so,
-			      pmatch[0].rm_eo - pmatch[0].rm_so,
-			      force_redraw, q_level);
-      lineInfo[n].type = MT_COLOR_QUOTED;
-    }
+    if (q_classify && lineInfo[n].quote == NULL)
+      lineInfo[n].quote = classify_quote (QuoteList, buf + pmatch[0].rm_so,
+			     pmatch[0].rm_eo - pmatch[0].rm_so,
+			     force_redraw, q_level);
+     lineInfo[n].type = MT_COLOR_QUOTED;
   }
   else
     lineInfo[n].type = MT_COLOR_NORMAL;
@@ -1148,23 +1111,24 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     {
       if (buf[ch+2] == c)
       {
-	special = (c == '_' && last_special == A_UNDERLINE)
-	  ? A_UNDERLINE : A_BOLD;
+	special = A_BOLD;
+	last_special = 1;
 	ch += 2;
       }
       else if (buf[ch] == '_' || buf[ch+2] == '_')
       {
 	special = A_UNDERLINE;
+	last_special = 1;
 	ch += 2;
 	c = (buf[ch] == '_') ? buf[ch-2] : buf[ch];
       }
       else
       {
 	special = 0; /* overstrike: nothing to do! */
+	last_special = 0;
 	ch += 2;
 	c = buf[ch];
       }
-      last_special = special;
     }
 
     /* Handle ANSI sequences */
@@ -1519,7 +1483,6 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       /* print out the index status bar */
       menu_status_line (buffer, sizeof (buffer), index, NONULL(Status));
- 
       move (indexoffset + (option (OPTSTATUSONTOP) ? 0 : (indexlen - 1)), 0);
       SETCOLOR (MT_COLOR_STATUS);
       printw ("%-*.*s", COLS, COLS, buffer);
@@ -1895,8 +1858,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       case OP_BOUNCE_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
-        ci_bounce_message (extra->hdr, &redraw);
+	ci_bounce_message (extra->hdr, &redraw);
 	break;
 
       case OP_CREATE_ALIAS:
@@ -1914,7 +1876,7 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 	{
 	  ch = -1;
 	  rc = OP_MAIN_NEXT_UNDELETED;
-	}
+	};
 	break;
 
       case OP_DELETE_THREAD:
@@ -2051,49 +2013,40 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       case OP_MAIL:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;      
 	ci_send_message (0, NULL, NULL, NULL, NULL);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_REPLY:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;      
 	ci_send_message (SENDREPLY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_RECALL_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDPOSTPONED, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_GROUP_REPLY:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDREPLY | SENDGROUPREPLY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_LIST_REPLY:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDREPLY | SENDLISTREPLY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
       case OP_FORWARD_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDFORWARD, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
 
-#ifdef _PGPPATH      
-      case OP_DECRYPT_SAVE:
-#endif
       case OP_SAVE:
 	if (IsAttach (extra))
 	{
@@ -2104,26 +2057,11 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
       case OP_COPY_MESSAGE:
       case OP_DECODE_SAVE:
       case OP_DECODE_COPY:
-#ifdef _PGPPATH
-      case OP_DECRYPT_COPY:
-#endif
 	CHECK_MODE(IsHeader (extra));
 	if (mutt_save_message (extra->hdr,
-#ifdef _PGPPATH
-			       (ch == OP_DECRYPT_SAVE) ||
-#endif			       
-			       (ch == OP_SAVE) || (ch == OP_DECODE_SAVE),
-			       (ch == OP_DECODE_SAVE) || (ch == OP_DECODE_COPY),
-#ifdef _PGPPATH
-			       (ch == OP_DECRYPT_SAVE) || (ch == OP_DECRYPT_COPY),
-#else
-			       0,
-#endif
-			       &redraw) == 0 && (ch == OP_SAVE || ch == OP_DECODE_SAVE
-#ifdef _PGPPATH
-						 || ch == OP_DECRYPT_SAVE
-#endif
-						 ))
+			       (ch == OP_SAVE || ch == OP_DECODE_SAVE),
+			       (ch == OP_DECODE_SAVE || ch == OP_DECODE_COPY),
+			       &redraw) == 0 && (ch == OP_SAVE || ch == OP_DECODE_SAVE))
 	{
 	  if (option (OPTRESOLVE))
 	  {
@@ -2226,7 +2164,6 @@ mutt_pager (const char *banner, const char *fname, int do_color, pager_t *extra)
 
       case OP_MAIL_KEY:
 	CHECK_MODE(IsHeader(extra));
-        CHECK_ATTACH;
 	ci_send_message (SENDKEY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
