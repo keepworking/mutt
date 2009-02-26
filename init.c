@@ -286,6 +286,7 @@ int mutt_extract_token (BUFFER *dest, BUFFER *tok, int flags)
   return 0;
 }
 
+
 static void add_to_list (LIST **list, const char *str)
 {
   LIST *t, *last = NULL;
@@ -347,12 +348,17 @@ static void remove_from_list (LIST **l, const char *str)
   }
 }
 
+
 static int parse_unignore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
   do
   {
     mutt_extract_token (buf, s, 0);
-    add_to_list (&UnIgnore, buf->data);
+
+    /* don't add "*" to the unignore list */
+    if (strcmp (buf->data, "*")) 
+      add_to_list (&UnIgnore, buf->data);
+
     remove_from_list (&Ignore, buf->data);
   }
   while (MoreArgs (s));
@@ -372,6 +378,7 @@ static int parse_ignore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err
 
   return 0;
 }
+
 
 static int parse_list (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
@@ -397,33 +404,6 @@ static int parse_unlist (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err
   return 0;
 }
 
-
-static int parse_unlists (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
-{
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    remove_from_list (&MailLists, buf->data);
-    remove_from_list (&SubscribedLists, buf->data);
-  }
-  while (MoreArgs (s));
-
-  return 0;
-}
-
-static int parse_subscribe (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
-{
-  do
-  {
-    mutt_extract_token (buf, s, 0);
-    add_to_list (&MailLists, buf->data);
-    add_to_list (&SubscribedLists, buf->data);
-  }
-  while (MoreArgs (s));
-
-  return 0;
-}
-  
 static int parse_unalias (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
   ALIAS *tmp, *last = NULL;
@@ -1062,11 +1042,6 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
 	case DT_SORT_BROWSER:
 	  map = SortBrowserMethods;
 	  break;
-#ifdef _PGPPATH
-	case DT_SORT_KEYS:
-	  map = SortKeyMethods;
-	  break;
-#endif
 	default:
 	  map = SortMethods;
 	  break;
@@ -1105,6 +1080,16 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
       set_option (OPTNEEDRESORT);
   }
   return (r);
+}
+
+void mutt_nocurses_error (const char *fmt, ...)
+{
+  va_list ap;
+
+  va_start (ap, fmt);
+  vfprintf (stderr, fmt, ap);
+  va_end (ap);
+  fputc ('\n', stderr);
 }
 
 /* reads the specified initialization file.  returns -1 if errors were found
@@ -1459,11 +1444,6 @@ int mutt_var_value_complete (char *buffer, size_t len, int pos)
 	  case DT_SORT_BROWSER:
 	    map = SortBrowserMethods;
 	    break;
-#ifdef _PGPPATH
-	  case DT_SORT_KEYS:
-	    map = SortKeyMethods;
-	    break;
-#endif
 	  default:
 	    map = SortMethods;
 	    break;
@@ -1654,6 +1634,71 @@ void mutt_init (int skip_sys_rc, LIST *commands)
 
   Tempdir = safe_strdup ((p = getenv ("TMPDIR")) ? p : "/tmp");
 
+  
+
+#ifdef _PGPPATH
+#ifdef _PGPV2PATH
+  PgpV2 = safe_strdup (_PGPV2PATH);
+  if ((p = getenv("PGPPATH")) != NULL)
+  {
+    snprintf (buffer, sizeof (buffer), "%s/pubring.pgp", p);
+    PgpV2Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/secring.pgp", p); 
+    PgpV2Secring = safe_strdup (buffer);
+  }
+  else
+  {
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pgp", NONULL(Homedir));
+    PgpV2Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.pgp", NONULL(Homedir));
+    PgpV2Secring = safe_strdup (buffer);
+  }
+#endif
+
+#ifdef _PGPV3PATH
+  PgpV3 = safe_strdup (_PGPV3PATH);
+  if ((p = getenv("PGPPATH")) != NULL)
+  {
+    snprintf (buffer, sizeof (buffer), "%s/pubring.pkr", p);
+    PgpV3Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/secring.skr", p); 
+    PgpV3Secring = safe_strdup (buffer);
+  }
+  else
+  {
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pkr", NONULL(Homedir));
+    PgpV3Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.skr", NONULL(Homedir));
+    PgpV3Secring = safe_strdup (buffer);
+  }
+#endif
+
+#ifdef _PGPV6PATH
+  PgpV6 = safe_strdup (_PGPV6PATH);
+  if ((p = getenv("PGPPATH")) != NULL)
+  {
+    snprintf (buffer, sizeof (buffer), "%s/pubring.pkr", p);
+    PgpV6Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/secring.skr", p); 
+    PgpV6Secring = safe_strdup (buffer);
+  }
+  else
+  {
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/pubring.pkr", NONULL(Homedir));
+    PgpV6Pubring = safe_strdup (buffer);
+    snprintf (buffer, sizeof (buffer), "%s/.pgp/secring.skr", NONULL(Homedir));
+    PgpV6Secring = safe_strdup (buffer);
+  }
+#endif
+  
+#ifdef _PGPGPGPATH
+  PgpGpg = safe_strdup (_PGPGPGPATH);
+#endif
+
+#endif /* _PGPPATH */
+  
+  
+
 #ifdef USE_POP
   PopUser = safe_strdup (Username);
 #endif
@@ -1766,7 +1811,5 @@ void mutt_init (int skip_sys_rc, LIST *commands)
       mutt_exit(1);
   }
 
-#if 0
   set_option (OPTWEED); /* turn weeding on by default */
-#endif
 }
