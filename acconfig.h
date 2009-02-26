@@ -17,6 +17,9 @@
 /* Does your version of PGP support the PGPPASSFD environment variable? */
 #define HAVE_PGPPASSFD
 
+/* Disable the X-Mailer header? */
+#undef NO_XMAILER
+
 /* What is your domain name? */
 #undef DOMAIN
 
@@ -134,9 +137,3 @@
 
 /* Use the included regex.c? */
 #undef USE_GNU_REGEX
-
-/* Where's mixmaster located? */
-#undef MIXMASTER
-
-/* Where are the character set definitions located? */
-#undef CHARMAPS_DIR
