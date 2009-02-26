@@ -143,6 +143,7 @@ msg_search (CONTEXT *ctx, regex_t *rx, char *buf, size_t blen, int op, int msgno
       /* decode the header / body */
       memset (&s, 0, sizeof (s));
       s.fpin = msg->fp;
+      s.flags = M_CHARCONV;
       mutt_mktemp (tempfile);
       if ((s.fpout = safe_fopen (tempfile, "w+")) == NULL)
       {
@@ -1139,10 +1140,10 @@ int mutt_search_command (int cur, int op)
 	return i;
     }
 
-    if (Signals & S_INTERRUPT)
+    if (SigInt)
     {
       mutt_error _("Search interrupted.");
-      Signals &= ~S_INTERRUPT;
+      SigInt;
       return (-1);
     }
 
