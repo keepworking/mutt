@@ -108,7 +108,7 @@ int mutt_which_case (const char *s)
 {
   while (*s)
   {
-    if (isalpha (*s) && isupper (*s))
+    if (isalpha ((unsigned char) *s) && isupper ((unsigned char) *s))
       return 0; /* case-sensitive */
     s++;
   }
@@ -242,14 +242,17 @@ int eat_regexp (pattern_t *pat, BUFFER *s, BUFFER *err)
 int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
 {
   char *tmp;
-
+  int do_exclusive = 0;
+  
+  if (*s->dptr == '<')
+    do_exclusive = 1;
   if ((*s->dptr != '-') && (*s->dptr != '<'))
   {
     /* range minimum */
     if (*s->dptr == '>')
     {
       pat->max = M_MAXRANGE;
-      pat->min = strtol (s->dptr + 1, &tmp, 0);
+      pat->min = strtol (s->dptr + 1, &tmp, 0) + 1; /* exclusive range */
     }
     else
       pat->min = strtol (s->dptr, &tmp, 0);
@@ -283,7 +286,7 @@ int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
     tmp = s->dptr;
   }
   
-  if (isdigit (*tmp))
+  if (isdigit ((unsigned char) *tmp))
   {
     /* range maximum */
     pat->max = strtol (tmp, &tmp, 0);
@@ -297,6 +300,8 @@ int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
       pat->max *= 1048576;
       tmp++;
     }
+    if (do_exclusive)
+      (pat->max)--;
   }
   else
     pat->max = M_MAXRANGE;
@@ -792,7 +797,7 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
       return (pat->not ^ (h->score >= pat->min && (pat->max == M_MAXRANGE ||
 						   h->score <= pat->max)));
     case M_SIZE:
-      return (pat->not ^ (h->content->length > pat->min && (pat->max == M_MAXRANGE || h->content->length < pat->max)));
+      return (pat->not ^ (h->content->length >= pat->min && (pat->max == M_MAXRANGE || h->content->length <= pat->max)));
     case M_REFERENCE:
       return (pat->not ^ match_reference (pat->rx, h->env->references));
     case M_ADDRESS:
@@ -865,7 +870,7 @@ void mutt_check_simple (char *s, size_t len, const char *simple)
   }
 }
 
-int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
+int mutt_pattern_func (int op, char *prompt)
 {
   pattern_t *pat;
   char buf[LONG_STRING] = "", *simple, error[STRING];
@@ -894,12 +899,18 @@ int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
   if (op == M_LIMIT)
   {
     for (i = 0; i < Context->msgcount; i++)
+    {
       Context->hdrs[i]->virtual = -1;
+      Context->hdrs[i]->limited = 0;
+      Context->hdrs[i]->collapsed = 0;
+      Context->hdrs[i]->num_hidden = 0;
+    }
     Context->vcount = 0;
     Context->vsize = 0;
+    Context->collapsed = 0;
   }
 
-#define this_body Context->hdrs[i]->content
+#define THIS_BODY Context->hdrs[i]->content
 
   for (i = 0; i < Context->msgcount; i++)
     if (mutt_pattern_exec (pat, M_MATCH_FULL_ADDRESS, Context, Context->hdrs[i]))
@@ -920,19 +931,21 @@ int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
 	  break;
 	case M_LIMIT:
 	  Context->hdrs[i]->virtual = Context->vcount;
+	  Context->hdrs[i]->limited = 1;
 	  Context->v2r[Context->vcount] = i;
 	  Context->vcount++;
-	  Context->vsize+=this_body->length + this_body->offset -
-	                  this_body->hdr_offset;
+	  Context->vsize+=THIS_BODY->length + THIS_BODY->offset -
+	                  THIS_BODY->hdr_offset;
 	  break;
       }
     }
-#undef this_body
+#undef THIS_BODY
 
   mutt_clear_error ();
 
   if (op == M_LIMIT)
   {
+    Context->collapsed = 0;
     safe_free ((void **) &Context->pattern);
     if (Context->limit_pattern) 
       mutt_pattern_free (&Context->limit_pattern);
@@ -943,6 +956,9 @@ int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
       for (i = 0; i < Context->msgcount; i++)
       {
 	Context->hdrs[i]->virtual = i;
+	Context->hdrs[i]->limited = 0;
+	Context->hdrs[i]->num_hidden = 0;
+	Context->hdrs[i]->collapsed = 0;
 	Context->v2r[i] = i;
       }
 
