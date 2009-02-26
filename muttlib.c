@@ -28,14 +28,10 @@
 
 #ifdef USE_IMAP
 #include "imap.h"
- #endif
+#endif
 
 #ifdef HAVE_PGP
 #include "pgp.h"
-#endif
-
-#ifdef HAVE_SMIME
-#include "smime.h"
 #endif
 
 #include <string.h>
@@ -49,14 +45,6 @@
 #include <time.h>
 #include <sys/types.h>
 #include <utime.h>
-
-HEADER *mutt_new_header (void)
-{
-  HEADER *hdr = safe_calloc (1, sizeof (HEADER));
-  hdr->lines = -1;
-  return hdr;
-}
-
 
 BODY *mutt_new_body (void)
 {
@@ -606,13 +594,8 @@ int mutt_needs_mailcap (BODY *m)
     case TYPEAPPLICATION:
       if(mutt_is_application_pgp(m))
 	return 0;
-#endif /* HAVE_PGP */
-
-#ifdef HAVE_SMIME
-      if(mutt_is_application_smime(m))
-	return 0;
       break;
-#endif /* HAVE_SMIME */
+#endif /* HAVE_PGP */
 
 
     case TYPEMULTIPART:
@@ -925,6 +908,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
   char ifstring[SHORT_STRING], elsestring[SHORT_STRING];
   size_t wlen, count, len;
 
+  prefix[0] = '\0';
   destlen--; /* save room for the terminal \0 */
   wlen = (flags & M_FORMAT_ARROWCURSOR && option (OPTARROWCURSOR)) ? 3 : 0;
     
@@ -1328,3 +1312,4 @@ const char *mutt_make_version (void)
 	    MUTT_VERSION, ReleaseDate);
   return vstring;
 }
+
