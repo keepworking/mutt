@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -51,6 +51,7 @@ ADDRESS *rfc822_cpy_adr (ADDRESS *addr);
 ADDRESS *rfc822_cpy_adr_real (ADDRESS *addr);
 ADDRESS *rfc822_append (ADDRESS **a, ADDRESS *b);
 void rfc822_write_address (char *, size_t, ADDRESS *);
+void rfc822_write_address_single (char *, size_t, ADDRESS *);
 void rfc822_write_list (char *, size_t, ADDRESS *);
 void rfc822_free_address (ADDRESS **addr);
 void rfc822_cat (char *, size_t, const char *, const char *);

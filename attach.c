@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -769,7 +769,7 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
 
 /* returns 0 on success, -1 on error */
 int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
-					      int displaying, int flags)
+				 int displaying, int flags)
 {
   STATE s;
   unsigned int saved_encoding = 0;
@@ -777,10 +777,8 @@ int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
   HEADER *saved_hdr = NULL;
 
   memset (&s, 0, sizeof (s));
-  s.flags = displaying ? M_DISPLAY : 0;
+  s.flags = (displaying ? M_DISPLAY : 0);
 
-  s.flags |= M_CHARCONV;
-  
   if (flags == M_SAVE_APPEND)
     s.fpout = fopen (path, "a");
   else if (flags == M_SAVE_OVERWRITE)
@@ -820,9 +818,16 @@ int mutt_decode_save_attachment (FILE *fp, BODY *m, char *path,
     saved_parts = m->parts;
     saved_hdr = m->hdr;
     mutt_parse_part (s.fpin, m);
+
+    /* display a readable version to the user */
+    if (m->noconv)
+      s.flags |= M_CHARCONV;
   }
   else
+  {
     s.fpin = fp;
+    s.flags |= M_CHARCONV;
+  }
 
   mutt_body_handler (m, &s);
 
