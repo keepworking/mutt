@@ -127,6 +127,10 @@ int mutt_check_encoding (const char *c)
     return (ENCBASE64);
   else if (mutt_strncasecmp ("x-uuencode", c, sizeof("x-uuencode")-1) == 0)
     return (ENCUUENCODED);
+#ifdef SUN_ATTACHMENT
+  else if (mutt_strncasecmp ("uuencode", c, sizeof("uuencode")-1) == 0)
+    return (ENCUUENCODED);
+#endif
   else
     return (ENCOTHER);
 }
@@ -237,6 +241,10 @@ int mutt_check_mime_type (const char *s)
     return TYPETEXT;
   else if (mutt_strcasecmp ("multipart", s) == 0)
     return TYPEMULTIPART;
+#ifdef SUN_ATTACHMENT 
+  else if (mutt_strcasecmp ("x-sun-attachment", s) == 0)
+    return TYPEMULTIPART;
+#endif
   else if (mutt_strcasecmp ("application", s) == 0)
     return TYPEAPPLICATION;
   else if (mutt_strcasecmp ("message", s) == 0)
@@ -272,8 +280,15 @@ void mutt_parse_content_type (char *s, BODY *ct)
     /* Some pre-RFC1521 gateways still use the "name=filename" convention,
      * but if a filename has already been set in the content-disposition,
      * let that take precedence, and don't set it here */
-    if ((pc = mutt_get_parameter("name", ct->parameter)) != 0 && !ct->filename)
+    if ((pc = mutt_get_parameter( "name", ct->parameter)) != 0 && !ct->filename)
       ct->filename = safe_strdup(pc);
+    
+#ifdef SUN_ATTACHMENT
+    /* this is deep and utter perversion */
+    if ((pc = mutt_get_parameter ("conversions", ct->parameter)) != 0)
+      ct->encoding = mutt_check_encoding (pc);
+#endif
+    
   }
   
   /* Now get the subtype */
@@ -288,6 +303,11 @@ void mutt_parse_content_type (char *s, BODY *ct)
 
   /* Finally, get the major type */
   ct->type = mutt_check_mime_type (s);
+
+#ifdef SUN_ATTACHMENT
+  if (mutt_strcasecmp ("x-sun-attachment", s) == 0)
+      ct->subtype = safe_strdup ("x-sun-attachment");
+#endif
 
   if (ct->type == TYPEOTHER)
   {
@@ -407,9 +427,26 @@ BODY *mutt_read_mime_header (FILE *fp, int digest)
       else if (!mutt_strcasecmp ("description", line + 8))
       {
 	mutt_str_replace (&p->description, c);
-	rfc2047_decode (p->description, p->description, mutt_strlen (p->description) + 1);
+	rfc2047_decode (&p->description);
+      }
+    } 
+#ifdef SUN_ATTACHMENT
+    else if (!mutt_strncasecmp ("x-sun-", line, 6))
+    {
+      if (!mutt_strcasecmp ("data-type", line + 6))
+        mutt_parse_content_type (c, p);
+      else if (!mutt_strcasecmp ("encoding-info", line + 6))
+        p->encoding = mutt_check_encoding (c);
+      else if (!mutt_strcasecmp ("content-lines", line + 6))
+        mutt_set_parameter ("content-lines", safe_strdup (c), &(p->parameter));
+      else if (!mutt_strcasecmp ("data-description", line + 6))
+      {
+        safe_free ((void **) &p->description);
+        p->description = safe_strdup (c);
+        rfc2047_decode (&p->description);
       }
     }
+#endif
   }
   p->offset = ftell (fp); /* Mark the start of the real data */
   if (p->type == TYPETEXT && !p->subtype)
@@ -424,11 +461,20 @@ BODY *mutt_read_mime_header (FILE *fp, int digest)
 
 void mutt_parse_part (FILE *fp, BODY *b)
 {
+  char *bound = 0;
+
   switch (b->type)
   {
     case TYPEMULTIPART:
+#ifdef SUN_ATTACHMENT
+      if ( !mutt_strcasecmp (b->subtype, "x-sun-attachment") )
+          bound = "--------";
+      else
+#endif
+          bound = mutt_get_parameter ("boundary", b->parameter);
+
       fseek (fp, b->offset, SEEK_SET);
-      b->parts =  mutt_parse_multipart (fp, mutt_get_parameter ("boundary", b->parameter), 
+      b->parts =  mutt_parse_multipart (fp, bound, 
 					b->offset + b->length,
 					mutt_strcasecmp ("digest", b->subtype) == 0);
       break;
@@ -506,6 +552,9 @@ BODY *mutt_parse_messageRFC822 (FILE *fp, BODY *parent)
 
 BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int digest)
 {
+#ifdef SUN_ATTACHMENT
+  int lines;
+#endif
   int blen, len, crlf = 0;
   char buffer[LONG_STRING];
   BODY *head = 0, *last = 0, *new = 0;
@@ -551,6 +600,15 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int di
       else if (buffer[2 + blen] == 0)
       {
 	new = mutt_read_mime_header (fp, digest);
+
+#ifdef SUN_ATTACHMENT
+        if (mutt_get_parameter ("content-lines", new->parameter)) {
+	  for (lines = atoi(mutt_get_parameter ("content-lines", new->parameter));
+	       lines; lines-- )
+	     if (ftell (fp) >= end_off || fgets (buffer, LONG_STRING, fp) == NULL)
+	       break;
+	}
+#endif
 	
 	/*
 	 * Consistency checking - catch
@@ -874,12 +932,10 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
   LIST *last = NULL;
   char *line = safe_malloc (LONG_STRING);
   char *p;
-  char in_reply_to[STRING];
+  char *in_reply_to = 0;
   long loc;
   int matched;
   size_t linelen = LONG_STRING;
-
-  in_reply_to[0] = 0;
 
   if (hdr)
   {
@@ -986,9 +1042,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
 	    if (hdr)
 	    {
 	      mutt_str_replace (&hdr->content->description, p);
-	      rfc2047_decode (hdr->content->description,
-			      hdr->content->description,
-			      mutt_strlen (hdr->content->description) + 1);
+	      rfc2047_decode (&hdr->content->description);
 	    }
 	    matched = 1;
 	  }
@@ -1030,9 +1084,8 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
 	{
 	  if (hdr)
 	  {
-	    strfcpy (in_reply_to, p, sizeof (in_reply_to));
-	    rfc2047_decode (in_reply_to, in_reply_to,
-			    sizeof (in_reply_to));
+	    in_reply_to = strdup (p);
+	    rfc2047_decode (&in_reply_to);
 	  }
 	}
 	break;
@@ -1181,6 +1234,11 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
 	  }
 	  matched = 1;
 	}
+	else if (mutt_strcasecmp (line+1, "-label") == 0)
+	{
+	  e->x_label = safe_strdup(p);
+	  matched = 1;
+	}
 	    
       default:
 	break;
@@ -1203,7 +1261,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
       }
       else
 	last = e->userhdrs = mutt_new_list ();
-      rfc2047_decode (line, line, linelen);
+      rfc2047_decode (&line);
       last->data = safe_strdup (line);
     }
   }
@@ -1218,7 +1276,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
     /* if an in-reply-to was given, check to see if it is in the references
      * list already.  if not, add it so we can do a better job of threading.
      */
-    if (in_reply_to[0] && (p = extract_message_id (in_reply_to)) != NULL)
+    if (in_reply_to && (p = extract_message_id (in_reply_to)) != NULL)
     {
       if (!e->references ||
 	  (e->references && mutt_strcmp (e->references->data, p) != 0))
@@ -1246,7 +1304,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
     {
       regmatch_t pmatch[1];
 
-      rfc2047_decode (e->subject, e->subject, mutt_strlen (e->subject) + 1);
+      rfc2047_decode (&e->subject);
 
       if (regexec (ReplyRegexp.rx, e->subject, 1, pmatch, 0) == 0)
 	e->real_subj = e->subject + pmatch[0].rm_eo;
@@ -1262,6 +1320,7 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
     }
   }
 
+  safe_free ((void *) &in_reply_to);
   return (e);
 }
 

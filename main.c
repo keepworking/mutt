@@ -100,7 +100,7 @@ static void mutt_usage (void)
 {
   printf ("Mutt %s (%s)\n", MUTT_VERSION, ReleaseDate);
   puts _(
-"usage: mutt [ -nRzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
+"usage: mutt [ -nRyzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
        mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] <addr> [ ... ]\n\
        mutt [ -n ] [ -e <cmd> ] [ -F <file> ] -p\n\
        mutt -v[v]\n\
@@ -188,6 +188,14 @@ static void show_version (void)
 	"-USE_DOTLOCK  "
 #endif
 
+#ifdef DL_STANDALONE
+	"+DL_STANDALONE  "
+#else
+	"-DL_STANDALONE  "
+#endif
+
+	"\n"
+	
 #ifdef USE_FCNTL
 	"+USE_FCNTL  "
 #else
@@ -213,12 +221,21 @@ static void show_version (void)
 	"-USE_GSS  "
 #endif
 
+#ifdef HAVE_HEIMDAHL
+	"+HAVE_HEIMDAHL  "
+#else
+	"-HAVE_HEIMDAHL  "
+#endif
+	
+	
 #ifdef USE_SSL
 	"+USE_SSL  "
 #else
 	"-USE_SSL  "
 #endif
 
+	"\n"
+	
 #ifdef USE_POP
 	"+USE_POP  "
 #else
@@ -244,7 +261,51 @@ static void show_version (void)
 #else
 	"-HAVE_COLOR  "
 #endif
+	
+#ifdef HAVE_START_COLOR
+	"+HAVE_START_COLOR  "
+#else
+	"-HAVE_START_COLOR  "
+#endif
+	
+#ifdef HAVE_TYPEAHEAD
+	"+HAVE_TYPEAHEAD  "
+#else
+	"-HAVE_TYPEAHEAD  "
+#endif
+	
+#ifdef HAVE_BKGDSET
+	"+HAVE_BKGDSET  "
+#else
+	"-HAVE_BKGDSET  "
+#endif
 
+	"\n"
+	
+#ifdef HAVE_CURS_SET
+	"+HAVE_CURS_SET  "
+#else
+	"-HAVE_CURS_SET  "
+#endif
+	
+#ifdef HAVE_META
+	"+HAVE_META  "
+#else
+	"-HAVE_META  "
+#endif
+	
+#ifdef HAVE_RESIZETERM
+	"+HAVE_RESIZETERM  "
+#else
+	"-HAVE_RESIZETERM  "
+#endif
+	
+	
+	);
+  
+  
+  puts (
+	
 #ifdef HAVE_PGP
 	"+HAVE_PGP  "
 #else
@@ -262,18 +323,47 @@ static void show_version (void)
 	"-"
 #endif
 	"EXACT_ADDRESS  "
+
+#ifdef SUN_ATTACHMENT
+	"+SUN_ATTACHMENT  "
+#else
+	"-SUN_ATTACHMENT  "
+#endif
+
+	"\n"
+	
 #ifdef ENABLE_NLS
 	"+"
 #else
 	"-"
 #endif
-	"ENABLE_NLS"
+	"ENABLE_NLS  "
+
+#ifdef LOCALES_HACK
+	"+LOCALES_HACK  "
+#else
+	"-LOCALES_HACK  "
+#endif
+	      
+#ifdef HAVE_WC_FUNCS
+	"+HAVE_WC_FUNCS  "
+#else
+	"-HAVE_WC_FUNCS  "
+#endif
+	
+#ifdef HAVE_LANGINFO_CODESET
+	"+HAVE_LANGINFO_CODESET  "
+#else
+	"-HAVE_LANGINFO_CODESET  "
+#endif
+	      
 	);
 
-  printf ("SENDMAIL=\"%s\"\n", SENDMAIL);
-  printf ("MAILPATH=\"%s\"\n", MAILPATH);
-  printf ("SHAREDIR=\"%s\"\n", SHAREDIR);
-  printf ("SYSCONFDIR=\"%s\"\n", SYSCONFDIR);
+#ifdef CHARMAPS_DIR
+  printf ("+BUILD_ICONV CHARMAPS_DIR=\"%s\"\n", CHARMAPS_DIR);
+#else
+  puts ("-BUILD_ICONV -CHARMAPS_DIR");
+#endif
 
 #ifdef ISPELL
   printf ("ISPELL=\"%s\"\n", ISPELL);
@@ -281,6 +371,17 @@ static void show_version (void)
   puts ("-ISPELL");
 #endif
 
+  printf ("SENDMAIL=\"%s\"\n", SENDMAIL);
+  printf ("MAILPATH=\"%s\"\n", MAILPATH);
+  printf ("SHAREDIR=\"%s\"\n", SHAREDIR);
+  printf ("SYSCONFDIR=\"%s\"\n", SYSCONFDIR);
+  printf ("EXECSHELL=\"%s\"\n", EXECSHELL);
+#ifdef MIXMASTER
+  printf ("MIXMASTER=\"%s\"\n", MIXMASTER);
+#else
+  puts ("-MIXMASTER");
+#endif
+  
   puts(_(ReachingUs));
 
   exit (0);
@@ -362,7 +463,6 @@ int main (int argc, char **argv)
   setlocale (LC_CTYPE, "");
 
   mutt_error = mutt_nocurses_error;
-  mutt_message = mutt_nocurses_error;
   SRAND (time (NULL));
   umask (077);
 
@@ -504,7 +604,6 @@ int main (int argc, char **argv)
     SETCOLOR (MT_COLOR_NORMAL);
     clear ();
     mutt_error = mutt_curses_error;
-    mutt_message = mutt_curses_message;
   }
 
   /* Create the Maildir directory if it doesn't exist. */
@@ -682,8 +781,6 @@ int main (int argc, char **argv)
     if (!folder[0])
       strfcpy (folder, NONULL(Spoolfile), sizeof (folder));
     mutt_expand_path (folder, sizeof (folder));
-
-    mutt_str_replace (&LastFolder, folder);
 
     if (flags & M_IGNORE)
     {
