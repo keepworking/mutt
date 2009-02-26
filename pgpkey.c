@@ -309,7 +309,6 @@ char *pgp_ask_for_key (struct pgp_vinfo *pgp, KEYINFO *db, char *tag, char *what
 
   FOREVER
   {
-    resp[0] = 0;
     if (mutt_get_field (tag, resp, sizeof (resp), M_CLEAR) != 0)
       return NULL;
     

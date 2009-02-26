@@ -23,8 +23,6 @@
 #include "mime.h"
 #include "attach.h"
 #include "mapping.h"
-#include "mailbox.h"
-#include "sort.h"
 
 #include <string.h>
 #include <sys/stat.h>
@@ -75,7 +73,7 @@ void snd_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 {
     mutt_FormatString (b, blen, NONULL (AttachFormat), mutt_attach_fmt,
 	    (unsigned long)(((ATTACHPTR **) menu->data)[num]),
-	    M_FORMAT_STAT_FILE | M_FORMAT_ARROWCURSOR);
+	    M_FORMAT_STAT_FILE);
 }
 
 
@@ -181,39 +179,7 @@ static int pgp_send_menu (int bits)
 }
 #endif /* _PGPPATH */
 
-static int
-check_attachments(ATTACHPTR **idx, short idxlen)
-{
-  int i, r;
-  struct stat st;
-  char pretty[_POSIX_PATH_MAX], msg[_POSIX_PATH_MAX + SHORT_STRING];
 
-  for (i = 0; i < idxlen; i++)
-  {
-    strfcpy(pretty, idx[i]->content->filename, sizeof(pretty));
-    if(stat(idx[i]->content->filename, &st) != 0)
-    {
-      mutt_pretty_mailbox(pretty);
-      mutt_error("%s [#%d] no longer exists!",
-		 pretty, i+1);
-      return -1;
-    }
-    
-    if(idx[i]->content->stamp < st.st_mtime)
-    {
-      mutt_pretty_mailbox(pretty);
-      snprintf(msg, sizeof(msg), "%s [#%d] modified. Update encoding?",
-	       pretty, i+1);
-      
-      if((r = mutt_yesorno(msg, M_YES)) == M_YES)
-	mutt_update_encoding(idx[i]->content);
-      else if(r == -1)
-	return -1;
-    }
-  }
-
-  return 0;
-}
 
 static void draw_envelope (HEADER *msg, char *fcc)
 {
@@ -339,13 +305,13 @@ static int edit_address_list (int line, ENVELOPE *env)
   }
 
   rfc822_write_address (buf, sizeof (buf), *addr);
-  if (mutt_get_field (prompt, buf, sizeof (buf), M_ALIAS) == 0)
-  {
-    rfc822_free_address (addr);
-    *addr = mutt_parse_adrlist (*addr, buf);
-    *addr = mutt_expand_aliases (*addr);
-  }
-  
+  if (mutt_get_field (prompt, buf, sizeof (buf), M_ALIAS) != 0)
+    return 0;
+
+  rfc822_free_address (addr);
+  *addr = mutt_parse_adrlist (*addr, buf);
+  *addr = mutt_expand_aliases (*addr);
+
   if (option (OPTNEEDREDRAW))
   {
     unset_option (OPTNEEDREDRAW);
@@ -396,25 +362,13 @@ static int delete_attachment (MUTTMENU *menu, short *idxlen, int x)
   return (0);
 }
 
-static void update_idx (MUTTMENU *menu, ATTACHPTR **idx, short idxlen)
-{
-  idx[idxlen]->level = (idxlen > 0) ? idx[idxlen-1]->level : 0;
-  if (idxlen)
-    idx[idxlen - 1]->content->next = idx[idxlen]->content;
-  menu->current = idxlen++;
-  mutt_update_tree (idx, idxlen);
-  menu->max = idxlen;
-  return;
-}
-
-
 /* return values:
  *
  * 1	message should be postponed
  * 0	normal exit
  * -1	abort message
  */
-int mutt_compose_menu (HEADER *msg,   /* structure for new message */
+int mutt_send_menu (HEADER *msg,   /* structure for new message */
 		    char *fcc,     /* where to save a copy of the message */
 		    size_t fcclen,
 		    HEADER *cur)   /* current message */
@@ -426,15 +380,11 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
   ATTACHPTR **idx = NULL;
   short idxlen = 0;
   short idxmax = 0;
-  int i, close = 0;
+  int i;
   int r = -1;		/* return value */
   int op = 0;
   int loop = 1;
   int fccSet = 0;	/* has the user edited the Fcc: field ? */
-  CONTEXT *ctx = NULL, *this = NULL;
-  /* Sort, SortAux could be changed in mutt_index_menu() */
-  int oldSort = Sort, oldSortAux = SortAux;
-  struct stat st;
 
   idx = mutt_gen_attach_list (msg->content, idx, &idxlen, &idxmax, 0, 1);
 
@@ -533,7 +483,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	    safe_free ((void **) &idx[i]);
 	  idxlen = 0;
 	  idx = mutt_gen_attach_list (msg->content, idx, &idxlen, &idxmax, 0, 1);
-	  menu->data = idx;
 	  menu->max = idxlen;
 	}
 
@@ -591,33 +540,10 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 
 
       case OP_COMPOSE_ATTACH_FILE:
-      case OP_COMPOSE_ATTACH_MESSAGE:
-
 	fname[0] = 0;
-	{
-	  char* prompt;
-	  int flag;
-
-	  if (op == OP_COMPOSE_ATTACH_FILE)
-	  {
-	    prompt = "Attach file";
-	    flag = 0;
-	  }
-	  else
-	  {
-	    prompt = "Open mailbox to attach message from";
-	    if (Context)
-	    {
-	      strfcpy (fname, NONULL (Context->path), sizeof (fname));
-	      mutt_pretty_mailbox (fname);
-	    }
-	    flag = 1;
-	  }
-
-	  if (mutt_enter_fname (prompt, fname, sizeof (fname), &menu->redraw, flag) == -1)
-	    break;
-	}
-
+	if (mutt_enter_fname ("Attach file", fname, sizeof (fname),
+			      &menu->redraw, 0) == -1)
+	  break;
 	if (!fname[0])
 	  continue;
 	mutt_expand_path (fname, sizeof (fname));
@@ -629,98 +555,30 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  break;
 	}
 
-	if (op == OP_COMPOSE_ATTACH_MESSAGE)
+	if (idxlen == idxmax)
 	{
-	  menu->redraw = REDRAW_FULL;
-
-	  ctx = mx_open_mailbox (fname, M_READONLY, NULL);
-	  if (ctx == NULL)
-	  {
-	    mutt_perror (fname);
-	    break;
-	  }
-
-	  if (!ctx->msgcount)
-	  {
-	    mx_close_mailbox (ctx);
-	    safe_free ((void **) &ctx);
-	    mutt_error ("No messages in that folder.");
-	    break;
-	  }
-	  
-	  this = Context; /* remember current folder */
-	  Context = ctx;
-	  close = mutt_index_menu (1);
-	  if (!Context)
-	  {
-	    /* go back to the folder we started from */
-	    Context = this;
-	    /* Restore old $sort and $sort_aux */
-	    Sort = oldSort;
-	    SortAux = oldSortAux;
-	    menu->redraw |= REDRAW_INDEX | REDRAW_STATUS;
-	    break;
-	  }
-	}
-        {
-	  int numtag = 0;
-
-	  if (op == OP_COMPOSE_ATTACH_MESSAGE)
-	    numtag = Context->tagged;
-	  if (idxlen + numtag >= idxmax)
-	  {
-	    safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (idxmax += 5 + numtag));
-	    menu->data = idx;
-	  }
+	  safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (idxmax += 5));
+	  menu->data = idx;
 	}
 
-	if (op == OP_COMPOSE_ATTACH_FILE)
+	idx[idxlen] = (ATTACHPTR *) safe_calloc (1, sizeof (ATTACHPTR));
+	if ((idx[idxlen]->content = mutt_make_attach (fname)) != NULL)
 	{
-	  idx[idxlen] = (ATTACHPTR *) safe_calloc (1, sizeof (ATTACHPTR));
-	  idx[idxlen]->content = mutt_make_file_attach (fname);
-	  if (idx[idxlen]->content != NULL)
-	    update_idx (menu, idx, idxlen++);
-	  else
-	  {
-	    mutt_error ("Unable to attach!");
-	    safe_free ((void **) &idx[idxlen]);
-	  }
+	  idx[idxlen]->level = (idxlen > 0) ? idx[idxlen-1]->level : 0;
+
+	  if (idxlen)
+	    idx[idxlen - 1]->content->next = idx[idxlen]->content;
+
+	  menu->current = idxlen++;
+	  mutt_update_tree (idx, idxlen);
+	  menu->max = idxlen;
 	  menu->redraw |= REDRAW_INDEX | REDRAW_STATUS;
-	  break;
-        }
+	}
 	else
 	{
-	  HEADER *h;
-	  for (i = 0; i < Context->msgcount; i++)
-	  {
-	    h = Context->hdrs[i];
-	    if (h->tagged)
-	    {
-	      idx[idxlen] = (ATTACHPTR *) safe_calloc (1, sizeof (ATTACHPTR));
-	      idx[idxlen]->content = mutt_make_message_attach (Context, h, 1);
-	      if (idx[idxlen]->content != NULL)
-		update_idx (menu, idx, idxlen++);
-	      else
-	      {
-		mutt_error ("Unable to attach!");
-		safe_free ((void **) &idx[idxlen]);
-	      }
-	    }
-	  }
-	  menu->redraw |= REDRAW_FULL;
+	  mutt_error ("Unable to attach file!");
+	  safe_free ((void **) &idx[idxlen]);
 	}
-
-	if (close == OP_QUIT) 
-	  mx_close_mailbox (Context);
-	else
-	  mx_fastclose_mailbox (Context);
-	safe_free ((void **) &Context);
-	
-	/* go back to the folder we started from */
-	Context = this;
-	/* Restore old $sort and $sort_aux */
-	Sort = oldSort;
-	SortAux = oldSortAux;
 	break;
 
       case OP_DELETE:
@@ -754,29 +612,10 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	}
 	break;
 
-      case OP_COMPOSE_UPDATE_ENCODING:
-        CHECK_COUNT;
-        if(menu->tagprefix)
-        {
-	  BODY *top;
-	  for(top = msg->content; top; top = top->next)
-	  {
-	    if(top->tagged)
-	      mutt_update_encoding(top);
-	  }
-	  menu->redraw = REDRAW_FULL;
-	}
-        else
-        {
-          mutt_update_encoding(idx[menu->current]->content);
-	  menu->redraw = REDRAW_CURRENT;
-	}
-        break;
-      
       case OP_COMPOSE_EDIT_TYPE:
 	CHECK_COUNT;
 	snprintf (buf, sizeof (buf), "%s/%s",
-		  TYPE (idx[menu->current]->content),
+		  TYPE (idx[menu->current]->content->type),
 		  idx[menu->current]->content->subtype);
 	if (mutt_get_field ("Content-Type: ", buf, sizeof (buf), 0) == 0 && buf[0])
 	{
@@ -814,13 +653,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	break;
 
       case OP_COMPOSE_SEND_MESSAGE:
-      
-        if(check_attachments(idx, idxlen) != 0)
-        {
-	  menu->redraw = REDRAW_FULL;
-	  break;
-	}
-      
 	if (!fccSet && *fcc)
 	{
 	  if ((i = query_quadoption (OPT_COPY, "Save a copy of this message?"))
@@ -848,23 +680,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	menu->redraw = REDRAW_INDEX;
 	break;
 
-      case OP_COMPOSE_GET_ATTACHMENT:
-        CHECK_COUNT;
-        if(menu->tagprefix)
-        {
-	  BODY *top;
-	  for(top = msg->content; top; top = top->next)
-	  {
-	    if(top->tagged)
-	      mutt_get_tmp_attachment(top);
-	  }
-	  menu->redraw = REDRAW_FULL;
-	}
-        else if (mutt_get_tmp_attachment(idx[menu->current]->content) == 0)
-	  menu->redraw = REDRAW_CURRENT;
-
-        break;
-      
       case OP_COMPOSE_RENAME_FILE:
 	CHECK_COUNT;
 	strfcpy (fname, idx[menu->current]->content->filename, sizeof (fname));
@@ -872,23 +687,13 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	if (mutt_get_field ("Rename to: ", fname, sizeof (fname), M_FILE) == 0
 								  && fname[0])
 	{
-	  if(stat(idx[menu->current]->content->filename, &st) == -1)
-	  {
-	    mutt_error("Can't stat: %s", fname);
-	    break;
-	  }
-
 	  mutt_expand_path (fname, sizeof (fname));
-	  if(mutt_rename_file (idx[menu->current]->content->filename, fname))
-	    break;
-	  
-	  safe_free ((void **) &idx[menu->current]->content->filename);
-	  idx[menu->current]->content->filename = safe_strdup (fname);
-	  menu->redraw = REDRAW_CURRENT;
-
-	  if(idx[menu->current]->content->stamp >= st.st_mtime)
-	    mutt_stamp_attachment(idx[menu->current]->content);
-	  
+	  if (!mutt_rename_file (idx[menu->current]->content->filename, fname))
+	  {
+	    safe_free ((void **) &idx[menu->current]->content->filename);
+	    idx[menu->current]->content->filename = safe_strdup (fname);
+	    menu->redraw = REDRAW_CURRENT;
+	  }
 	}
 	break;
 
@@ -939,7 +744,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  }
 	  fclose (fp);
 
-	  if ((idx[idxlen]->content = mutt_make_file_attach (fname)) == NULL)
+	  if ((idx[idxlen]->content = mutt_make_attach (fname)) == NULL)
 	  {
 	    mutt_error ("What we have here is a failure to make an attachment");
 	    continue;
@@ -974,7 +779,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 
       case OP_COMPOSE_EDIT_MIME:
 	CHECK_COUNT;
-	if (mutt_edit_attachment (idx[menu->current]->content))
+	if (mutt_edit_attachment (idx[menu->current]->content, 0))
 	{
 	  mutt_update_encoding (idx[menu->current]->content);
 	  menu->redraw = REDRAW_FULL;
@@ -1003,8 +808,8 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
       case OP_FILTER:
         CHECK_COUNT;
 	mutt_pipe_attachment_list (NULL, menu->tagprefix, menu->tagprefix ? msg->content : idx[menu->current]->content, op == OP_FILTER);
-	if (op == OP_FILTER) /* cte might have changed */
-	  menu->redraw = menu->tagprefix ? REDRAW_FULL : REDRAW_CURRENT; 
+	if (op == OP_FILTER)
+	  menu->redraw = REDRAW_CURRENT; /* cte might have changed */
 	break;
 
 
@@ -1037,13 +842,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	/* fall through to postpone! */
 
       case OP_COMPOSE_POSTPONE_MESSAGE:
-      
-        if(check_attachments(idx, idxlen) != 0)
-        {
-	  menu->redraw = REDRAW_FULL;
-	  break;
-	}
-      
 	loop = 0;
 	r = 1;
 	break;
@@ -1052,33 +850,9 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	endwin ();
 	snprintf (buf, sizeof (buf), "%s -x %s", NONULL(Ispell), msg->content->filename);
 	mutt_system (buf);
-        mutt_update_encoding(msg->content);
 	break;
 
-      case OP_COMPOSE_WRITE_MESSAGE:
 
-       fname[0] = '\0';
-       if (idxlen)
-         msg->content = idx[0]->content;
-       if (mutt_enter_fname ("Write message to mailbox", fname, sizeof (fname),
-                             &menu->redraw, 1) != -1 && fname[0])
-       {
-	 int oldhdrdate;
-         mutt_message ("Writing message to %s ...", fname);
-         mutt_expand_path (fname, sizeof (fname));
-
-         if (msg->content->next)
-           msg->content = mutt_make_multipart (msg->content);
-
-	 oldhdrdate = option(OPTUSEHEADERDATE);
-	 set_option(OPTUSEHEADERDATE);
-         if (mutt_write_fcc (NONULL (fname), msg, NULL, 1) < 0)
-           msg->content = mutt_remove_multipart (msg->content);
-         else
-           mutt_message ("Message written.");
-	 if(!oldhdrdate) unset_option(OPTUSEHEADERDATE);
-       }
-       break;
 
 #ifdef _PGPPATH
       case OP_COMPOSE_PGP_MENU:
