@@ -1110,7 +1110,7 @@ BODY *pgp_sign_message (BODY *a)
  */
 char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
 {
-  char *key, *keylist = NULL;
+  char *key, *keyID, *keylist = NULL;
   size_t keylist_size = 0;
   size_t keylist_used = 0;
   ADDRESS *tmp = NULL;
@@ -1145,9 +1145,17 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
 
   for (p = tmp; p ; p = p->next)
   {
-    if ((k_info = ki_getkeybyaddr (pgp, p, db, KEYFLAG_CANENCRYPT)) == NULL)
+    char buf[LONG_STRING];
+
+    k_info = NULL;
+    if ((keyID = mutt_pgp_hook (p)) != NULL)
     {
-      char buf[LONG_STRING];
+      snprintf (buf, sizeof (buf), "Use keyID = \"%s\" for %s?", keyID, p->mailbox);
+      if (mutt_yesorno (buf, M_YES) == M_YES)
+	k_info = ki_getkeybystr (pgp, keyID, db, KEYFLAG_CANENCRYPT);
+    }
+    if (k_info == NULL && (k_info = ki_getkeybyaddr (pgp, p, db, KEYFLAG_CANENCRYPT)) == NULL)
+    {
       snprintf (buf, sizeof (buf), "Enter keyID for %s: ", p->mailbox);
       
       if ((key = pgp_ask_for_key (pgp, db, buf, p->mailbox,
@@ -1173,6 +1181,8 @@ char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
   return (keylist);
 }
 
+/* Warning: "a" is no longer free()d in this routine, you need
+ * to free() it later.  This is necessary for $fcc_attach. */
 BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
 {
   char buf[LONG_STRING];
@@ -1297,14 +1307,11 @@ BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
   t->parts->next->use_disp = 0;
   t->parts->next->unlink = 1; /* delete after sending the message */
 
-  mutt_free_body (&a); /* no longer needed! */
-
   return (t);
 }
 
-int pgp_protect (HEADER *msg)
+int pgp_protect (HEADER *msg, char **pgpkeylist)
 {
-  char *pgpkeylist = NULL;
   BODY *pbody = NULL;
 
   /* Do a quick check to make sure that we can find all of the encryption
@@ -1315,7 +1322,7 @@ int pgp_protect (HEADER *msg)
 
   if (msg->pgp & PGPENCRYPT)
   {
-    if ((pgpkeylist = pgp_findKeys (msg->env->to, msg->env->cc, msg->env->bcc)) == NULL)
+    if ((*pgpkeylist = pgp_findKeys (msg->env->to, msg->env->cc, msg->env->bcc)) == NULL)
       return (-1);
   }
 
@@ -1325,10 +1332,12 @@ int pgp_protect (HEADER *msg)
   endwin ();
   if (msg->pgp & PGPENCRYPT)
   {
-    pbody = pgp_encrypt_message (msg->content, pgpkeylist, msg->pgp & PGPSIGN);
-    safe_free ((void **) &pgpkeylist);
+    pbody = pgp_encrypt_message (msg->content, *pgpkeylist, msg->pgp & PGPSIGN);
     if (!pbody)
+    {
+      FREE (pgpkeylist);
       return (-1);
+    }
   }
   else if (msg->pgp & PGPSIGN)
   {
