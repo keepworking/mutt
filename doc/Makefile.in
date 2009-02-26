@@ -51,11 +51,10 @@ DISTFILES = Makefile.in dotlock.man  	\
 	stamp-doc-sgml			\
 	stamp-doc-man			\
 	instdoc.sh.in			\
-	patch-notes.txt			\
-	smime-notes.txt
+	patch-notes.txt
 
 srcdir_DOCFILES = PGP-Notes.txt applying-patches.txt	\
-	devel-notes.txt patch-notes.txt smime-notes.txt
+	devel-notes.txt patch-notes.txt
 
 
 topsrcdir_DOCFILES = COPYRIGHT GPL INSTALL ChangeLog	\
