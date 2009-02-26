@@ -31,11 +31,6 @@
 #endif
 
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
-
 #if defined(USE_SSL) || defined(USE_NSS)
 #include "mutt_ssl.h"
 #endif
@@ -1206,7 +1201,10 @@ static int parse_set (BUFFER *tmp, BUFFER *s, unsigned long data, BUFFER *err)
       mutt_extract_token (tmp, s , 0);
 
       if (parse_sort ((short *) MuttVars[idx].data, tmp->data, map, err) == -1)
+      {
+	r = -1;
 	break;
+      }
     }
     else
     {

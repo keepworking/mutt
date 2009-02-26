@@ -35,10 +35,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 
 
 static int eat_regexp (pattern_t *pat, BUFFER *, BUFFER *);
@@ -177,8 +173,8 @@ msg_search (CONTEXT *ctx, regex_t *rx, char *buf, size_t blen, int op, int msgno
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-	if (h->security & ENCRYPT && !crypt_valid_passphrase(h->security))
+#ifdef HAVE_PGP
+	if (h->pgp & PGPENCRYPT && !pgp_valid_passphrase())
 	{
 	  mx_close_message (&msg);
 	  if (fp)
@@ -1047,11 +1043,11 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
       return (pat->not ^ (h->collapsed && h->num_hidden > 1));
 #ifdef HAVE_PGP
    case M_PGP_SIGN:
-     return (pat->not ^ (h->security & APPLICATION_PGP && h->security & SIGN));
+     return (pat->not ^ (h->pgp & PGPSIGN));
    case M_PGP_ENCRYPT:
-     return (pat->not ^ (h->security & APPLICATION_PGP && h->security & ENCRYPT));
+     return (pat->not ^ (h->pgp & PGPENCRYPT));
    case M_PGP_KEY:
-     return (pat->not ^ (h->security & APPLICATION_PGP && h->security & PGPKEY));
+     return (pat->not ^ (h->pgp & PGPKEY));
 #endif
     case M_XLABEL:
       return (pat->not ^ (h->env->x_label && regexec (pat->rx, h->env->x_label, 0, NULL, 0) == 0));
