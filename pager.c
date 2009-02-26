@@ -85,8 +85,8 @@ struct q_class_t
 struct syntax_t
 {
   int color;
-  int first;
-  int last;
+  short first;
+  short last;
 };
 
 struct line_t
@@ -887,6 +887,13 @@ fill_buffer (FILE *f, long *last_pos, long offset, unsigned char *buf,
   return b_read;
 }
 
+static int is_ansi (unsigned char *buf)
+{
+  while (buf && (isdigit(*buf) || *buf == ';'))
+    buf++;
+  return (*buf == 'm');
+}
+
 static int grok_ansi(unsigned char *buf, int pos, ansi_attr *a)
 {
   int x = pos;
@@ -1121,7 +1128,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
       c = buf[cnt];
     }
 
-    if (*buf_ptr == '\033' && *(buf_ptr + 1) && *(buf_ptr + 1) == '[')
+    if (*buf_ptr == '\033' && *(buf_ptr + 1) && *(buf_ptr + 1) == '[' && is_ansi (buf_ptr+2))
     {
       cnt = grok_ansi(buf, cnt+3, NULL);
       cnt++;
@@ -1252,7 +1259,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     }
 
     /* Handle ANSI sequences */
-    if (c == '\033' && buf[ch+1] == '[')
+    if (c == '\033' && buf[ch+1] == '[' && is_ansi (buf+ch+2))
     {
       ch = grok_ansi(buf, ch+2, &a);
       c = buf[ch];
@@ -1659,13 +1666,13 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
     mutt_clear_error ();
     mutt_curs_set (1);
 
-    if (Signals & S_INTERRUPT)
+    if (SigInt)
     {
       mutt_query_exit ();
       continue;
     }
 #if defined (USE_SLANG_CURSES) || defined (HAVE_RESIZETERM)
-    else if (Signals & S_SIGWINCH)
+    else if (SigWinch)
     {
       mutt_resize_screen ();
 
@@ -1710,7 +1717,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	ch = 0;
       }
 
-      Signals &= ~S_SIGWINCH;
+      SigWinch = 0;
       continue;
     }
 #endif
