@@ -33,9 +33,11 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <errno.h>
-#include <pwd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) < (b) ? (b) : (a))
 
 BODY *mutt_new_body (void)
 {
@@ -128,7 +130,6 @@ int mutt_copy_body (FILE *fp, BODY **tgt, BODY *src)
   memcpy (b, src, sizeof (BODY));
   b->parts = NULL;
   b->next  = NULL;
-  b->hdr = NULL;
 
   b->filename = safe_strdup (tmp);
   b->use_disp = use_disp;
@@ -143,7 +144,6 @@ int mutt_copy_body (FILE *fp, BODY **tgt, BODY *src)
   b->filename = safe_strdup (b->filename);
   b->d_filename = safe_strdup (b->d_filename);
   b->description = safe_strdup (b->description);
-
   
   /* copy parameters */
   for (par = b->parameter, ppar = &b->parameter; par; ppar = &(*ppar)->next, par = par->next)
@@ -337,15 +337,11 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
 	  struct passwd *pw;
 	  if ((t = strchr (s + 1, '/'))) 
 	    *t = 0;
-
 	  if ((pw = getpwnam (s + 1)))
 	  {
 	    strfcpy (p, pw->pw_dir, sizeof (p));
 	    if (t)
-	    {
-	      *t = '/';
-	      tail = t;
-	    }
+	      tail = t + 1;
 	    else
 	      tail = "";
 	  }
@@ -402,14 +398,14 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       
       case '>':
       {
-	strfcpy (p, NONULL(Inbox), sizeof (p));
+	strfcpy (p, Inbox, sizeof (p));
 	tail = s + 1;
       }
       break;
       
       case '<':
       {
-	strfcpy (p, NONULL(Outbox), sizeof (p));
+	strfcpy (p, Outbox, sizeof (p));
 	tail = s + 1;
       }
       break;
@@ -418,12 +414,12 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       {
 	if (*(s+1) == '!')
 	{
-	  strfcpy (p, NONULL(LastFolder), sizeof (p));
+	  strfcpy (p, LastFolder, sizeof (p));
 	  tail = s + 2;
 	}
 	else 
 	{
-	  strfcpy (p, NONULL(Spoolfile), sizeof (p));
+	  strfcpy (p, Spoolfile, sizeof (p));
 	  tail = s + 1;
 	}
       }
@@ -431,7 +427,7 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       
       case '-':
       {
-	strfcpy (p, NONULL(LastFolder), sizeof (p));
+	strfcpy (p, LastFolder, sizeof (p));
 	tail = s + 1;
       }
       break;
@@ -458,6 +454,46 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
   return (s);
 }
 
+
+char *mutt_gecos_name (char *dest, size_t destlen, struct passwd *pw)
+{
+  regmatch_t pat_match[1];
+  size_t pwnl;
+  int idx;
+  char *p;
+  
+  if (!pw || !pw->pw_gecos) 
+    return NULL;
+
+  memset (dest, 0, destlen);
+  
+  if (GecosMask.rx)
+  {
+    if (regexec (GecosMask.rx, pw->pw_gecos, 1, pat_match, 0) == 0)
+      strfcpy (dest, pw->pw_gecos + pat_match[0].rm_so, 
+	       MIN (pat_match[0].rm_eo - pat_match[0].rm_so + 1, destlen));
+  }
+  else if ((p = strchr (pw->pw_gecos, ',')))
+    strfcpy (dest, pw->pw_gecos, MIN (destlen, p - pw->pw_gecos + 1));
+  else
+    strfcpy (dest, pw->pw_gecos, destlen);
+
+  pwnl = strlen (pw->pw_name);
+
+  for (idx = 0; dest[idx]; idx++)
+  {
+    if (dest[idx] == '&')
+    {
+      memmove (&dest[idx + pwnl], &dest[idx + 1],
+	       MAX(destlen - idx - pwnl - 1, 0));
+      memcpy (&dest[idx], pw->pw_name, MIN(destlen - idx - 1, pwnl));
+      dest[idx] = toupper (dest[idx]);
+    }
+  }
+      
+  return dest;
+}
+  
 
 char *mutt_get_parameter (const char *s, PARAMETER *p)
 {
@@ -977,6 +1013,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
   }
   *wptr = 0;
 
+#if 0
   if (flags & M_FORMAT_MAKEPRINT)
   {
     /* Make sure that the string is printable by changing all non-printable
@@ -986,6 +1023,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	  !((flags & M_FORMAT_TREE) && (*cp <= M_TREE_MAX)))
 	*cp = isspace ((unsigned char) *cp) ? ' ' : '.';
   }
+#endif
 }
 
 /* This function allows the user to specify a command to read stdout from in

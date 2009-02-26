@@ -28,10 +28,16 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <signal.h>
+#ifdef HAVE_WCHAR_H
+#include <wchar.h>
+#endif
 
 #ifndef _POSIX_PATH_MAX
 #include <posix1_lim.h>
 #endif
+
+#include <pwd.h>
+#include <grp.h>
 
 #include "rfc822.h"
 #include "hash.h"
@@ -123,8 +129,9 @@ typedef enum
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
 #define M_CHARSETHOOK	(1<<5)
+#define M_DISPLAYHOOK	(1<<6)
 #ifdef HAVE_PGP
-#define M_PGPHOOK	(1<<6)
+#define M_PGPHOOK	(1<<7)
 #endif
 
 /* tree characters for linearize_tree and print_enriched_string */
@@ -199,6 +206,7 @@ enum
   M_PGP_ENCRYPT,
   M_PGP_KEY,
 #endif
+  M_XLABEL,
   
   /* Options for Mailcap lookup */
   M_EDIT,
@@ -242,6 +250,7 @@ enum
   OPT_MIMEFWD,
   OPT_MOVE,
   OPT_COPY,
+  OPT_POPDELETE,
   OPT_POSTPONE,
   OPT_QUIT,
   OPT_REPLYTO,
@@ -309,7 +318,6 @@ enum
   OPTSSLV2,
   OPTSSLV3,
   OPTTLSV1,
-  OPTSSLSYSTEMCERTS,
 #endif
   OPTIMPLICITAUTOVIEW,
   OPTMAILCAPSANITIZE,
@@ -323,7 +331,6 @@ enum
   OPTPAGERSTOP,
   OPTPIPEDECODE,
   OPTPIPESPLIT,
-  OPTPOPDELETE,
   OPTPOPLAST,
   OPTPRINTDECODE,
   OPTPROMPTAFTER,
@@ -463,6 +470,7 @@ typedef struct envelope
   char *message_id;
   char *supersedes;
   char *date;
+  char *x_label;
   LIST *references;		/* message references (in reverse order) */
   LIST *userhdrs;		/* user defined headers */
 } ENVELOPE;
@@ -479,6 +487,7 @@ typedef struct content
 {
   long hibin;              /* 8-bit characters */
   long lobin;              /* unprintable 7-bit chars (eg., control chars) */
+  long crlf;		   /* '\r' and '\n' characters */
   long ascii;              /* number of ascii chars */
   long linemax;            /* length of the longest line in the file */
   unsigned int space : 1;  /* whitespace at the end of lines? */
