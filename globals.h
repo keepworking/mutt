@@ -22,6 +22,12 @@ WHERE CONTEXT *Context;
 
 WHERE char Errorbuf[SHORT_STRING];
 
+#if defined(DL_STANDALONE) && defined(USE_DOTLOCK)
+WHERE char *MuttDotlock;
+#endif
+
+WHERE ADDRESS *From;
+
 WHERE char *AliasFile;
 WHERE char *AliasFmt;
 WHERE char *AttachSep;
@@ -44,6 +50,7 @@ WHERE char *Hostname;
 WHERE char *ImapUser INITVAL (NULL);
 WHERE char *ImapPass INITVAL (NULL);
 WHERE short ImapCheckTime;
+WHERE char *ImapHomeNamespace INITVAL (NULL);
 #endif
 WHERE char *Inbox;
 WHERE char *Ispell;
@@ -51,6 +58,12 @@ WHERE char *Locale;
 WHERE char *MailcapPath;
 WHERE char *Maildir;
 WHERE char *MsgFmt;
+
+#ifdef MIXMASTER
+WHERE char *Mixmaster;
+WHERE char *MixEntryFormat;
+#endif
+
 WHERE char *Muttrc INITVAL (NULL);
 WHERE char *Outbox;
 WHERE char *Pager;
@@ -67,6 +80,7 @@ WHERE char *Prefix;
 WHERE char *PrintCmd;
 WHERE char *QueryCmd;
 WHERE char *Realname;
+WHERE char *SendCharset;
 WHERE char *Sendmail;
 WHERE char *Shell;
 WHERE char *Signature;
@@ -87,6 +101,7 @@ WHERE LIST *HeaderOrderList INITVAL(0);
 WHERE LIST *Ignore INITVAL(0);
 WHERE LIST *UnIgnore INITVAL(0);
 WHERE LIST *MailLists INITVAL(0);
+WHERE LIST *SubscribedLists INITVAL(0);
 
 /* bit vector for boolean variables */
 #ifdef MAIN_C
