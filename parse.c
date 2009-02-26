@@ -308,6 +308,13 @@ void mutt_parse_content_type (char *s, BODY *ct)
       ct->subtype = safe_strdup ("x-unknown");
   }
 
+  /* Default character set for text types. */
+  if (ct->type == TYPETEXT)
+  {
+    if (!(pc = mutt_get_parameter ("charset", ct->parameter)))
+      mutt_set_parameter ("charset", "us-ascii", &ct->parameter);
+  }
+
 }
 
 static void parse_content_disposition (char *s, BODY *ct)
@@ -509,11 +516,7 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int di
   {
     len = mutt_strlen (buffer);
 
-    /* take note of the line ending.  I'm assuming that either all endings
-     * will use <CR><LF> or none will.
-     */
-    if (len > 1 && buffer[len - 2] == '\r')
-      crlf = 1;
+    crlf =  (len > 1 && buffer[len - 2] == '\r') ? 1 : 0;
 
     if (buffer[0] == '-' && buffer[1] == '-' &&
 	mutt_strncmp (buffer + 2, boundary, blen) == 0)
