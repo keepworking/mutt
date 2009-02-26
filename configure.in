@@ -21,19 +21,15 @@ fi
 AC_MSG_RESULT($mutt_cv_prefix)
 
 AC_PROG_CC
+AC_ISC_POSIX
+AM_C_PROTOTYPES
+if test "x$U" != "x"; then
+  AC_MSG_ERROR(Compiler not ANSI compliant)
+fi
 AC_PROG_CPP
 AC_PROG_MAKE_SET
 AC_PROG_INSTALL
-AC_ISC_POSIX
 AC_PROG_RANLIB
-
-case "$host" in
-*-*-hpux*)
-	if test -z "$GCC" ; then
-		CFLAGS="$CFLAGS -Ae -D_HPUX_SOURCE"
-	fi
-	;;
-esac
 
 AC_C_INLINE
 AC_C_CONST
@@ -382,44 +378,6 @@ AC_ARG_WITH(sharedir, [  --with-sharedir=PATH       Specify where to put arch in
 sharedir=$mutt_cv_sharedir
 AC_SUBST(sharedir)
 
-AC_ARG_WITH(iconv, [  --with-iconv               Use system's iconv], [
-  AC_CACHE_CHECK(for iconv, mutt_cv_func_iconv,
-    [ mutt_cv_func_iconv=no
-      mutt_cv_lib_iconv=no
-      AC_TRY_LINK([#include <stdlib.h>
-#include <iconv.h>],
-	[iconv_t cd = iconv_open("",""); iconv(cd,NULL,NULL,NULL,NULL); iconv_close(cd);],
-	mutt_cv_func_iconv=yes)
-      if test "$mutt_cv_func_iconv" = no; then
-	mutt_save_LIBS="$LIBS"
-	LIBS="$LIBS -liconv"
-	AC_TRY_LINK([#include <stdlib.h>
-#include <iconv.h>],
-	  [iconv_t cd = iconv_open("",""); iconv(cd,NULL,NULL,NULL,NULL); iconv_close(cd);],
-	  mutt_cv_lib_iconv=yes
-	  mutt_cv_func_iconv=yes)
-	LIBS="$mutt_save_LIBS"
-      fi
-    ])
-  if test "$mutt_cv_func_iconv" = no; then
-    AC_MSG_ERROR(No iconv)
-  fi
-  LIBICONV=
-  if test "$mutt_cv_lib_iconv" = yes; then
-    LIBICONV="-liconv"
-  fi
-  need_iconv=no
-],
-[ LIBICONV="-Liconv -liconv"
-  LIBICONVDEPS="\$(top_srcdir)/iconv/iconv.h iconv/libiconv.a"
-  need_iconv=yes
-])
-AM_CONDITIONAL(BUILD_ICONV, test "$need_iconv" = yes)
-AC_SUBST(LIBICONV)
-AC_SUBST(LIBICONVDEPS)
-
-if test "$need_iconv" = yes ; then
-
 mutt_cv_charmaps=/usr/share/i18n/charmaps
 AC_ARG_WITH(charmaps, [  --with-charmaps=PATH	     Where to find character set definitions],
 	[if test x$withval != x -a $withval != yes ; then
@@ -447,8 +405,6 @@ AC_DEFINE_UNQUOTED(CHARMAPS_DIR, "$mutt_cv_charmaps")
 charmaps=$mutt_cv_charmaps
 AC_SUBST(charmaps)
 AM_CONDITIONAL(BUILD_CHARMAPS, test x$need_charmaps = xyes)
-
-fi # /* need_iconv */
 
 AC_ARG_WITH(docdir, [  --with-docdir=PATH         Specify where to put the documentation],
 	[mutt_cv_docdir=$withval],
@@ -519,10 +475,7 @@ AC_ARG_WITH(gss,    [    --with-gss[=DIR]         Compile in GSSAPI authenticati
   	  saved_LIBS="$LIBS"
           gss_type="none"
 
-          dnl MIT kerberos V support
-          dnl Note: older krb5 distributions use -lcrypto instead of
-          dnl -lk5crypto, which collides with OpenSSL. I punt and ignore
-          dnl it here.
+          dnl New MIT kerberos V support
           AC_CHECK_LIB(gssapi_krb5, gss_init_sec_context, [
             gss_type="MIT",
             MUTTLIBS="$MUTTLIBS -lgssapi_krb5 -lkrb5 -lk5crypto -lcom_err"
@@ -536,7 +489,21 @@ AC_ARG_WITH(gss,    [    --with-gss[=DIR]         Compile in GSSAPI authenticati
               MUTTLIBS="$MUTTLIBS -lgssapi -lkrb5 -ldes -lasn1 -lroken"
               MUTTLIBS="$MUTTLIBS -lcrypt -lcom_err"
               AC_DEFINE(HAVE_HEIMDAL)
-              ],, -lgssapi -lkrb5 -ldes -lasn1 -lroken -lcrypt -lcom_err)
+              ],, -lkrb5 -ldes -lasn1 -lroken -lcrypt -lcom_err)
+          fi
+
+	  dnl Old MIT Kerberos V
+	  dnl Note: older krb5 distributions use -lcrypto instead of
+	  dnl -lk5crypto, which collides with OpenSSL.  One way of dealing
+	  dnl with that is to extract all objects from krb5's libcrypto
+	  dnl and from openssl's libcrypto into the same directory, then
+	  dnl to create a new libcrypto from these.
+          if test x$gss_type = xnone
+          then
+            AC_CHECK_LIB(gssapi_krb5, g_order_init, [
+              gss_type="OldMIT",
+              MUTTLIBS="$MUTTLIBS -lgssapi_krb5 -lkrb5 -lcrypto -lcom_err"
+              ],, -lkrb5 -lcrypto -lcom_err)
           fi
 
           if test x$gss_type = xnone
@@ -654,5 +621,5 @@ AC_DEFINE_UNQUOTED(MUTTLOCALEDIR, "$MUTTLOCALEDIR")
 AC_OUTPUT(Makefile intl/Makefile m4/Makefile dnl
 	po/Makefile.in doc/Makefile contrib/Makefile dnl
 	muttbug.sh dnl
-	charmaps/Makefile imap/Makefile iconv/Makefile dnl
+	charmaps/Makefile imap/Makefile dnl
 	Muttrc.head)
