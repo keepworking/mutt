@@ -44,7 +44,7 @@ extern char RFC822Specials[];
 
 
 
-static void append_signature (FILE *f)
+static void append_signature (ENVELOPE *env, FILE *f)
 {
   FILE *tmpfp;
   pid_t thepid;
@@ -323,10 +323,13 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
 
 
 #ifdef _PGPPATH
-  if ((cur->pgp & PGPENCRYPT) && option (OPTFORWDECODE))
+  if (cur->pgp)
   {
-    /* make sure we have the user's passphrase before proceeding... */
-    pgp_valid_passphrase ();
+    if (cur->pgp & PGPENCRYPT)
+    {
+      /* make sure we have the user's passphrase before proceeding... */
+      pgp_valid_passphrase ();
+    }
   }
 #endif /* _PGPPATH */
 
@@ -389,6 +392,38 @@ static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
   return 0;
 }
 
+static BODY *make_forward (CONTEXT *ctx, HEADER *hdr)
+{
+  char buffer[LONG_STRING];
+  BODY *body;
+  FILE *fpout;
+
+  mutt_mktemp (buffer);
+  if ((fpout = safe_fopen (buffer, "w")) == NULL)
+    return NULL;
+
+  body = mutt_new_body ();
+  body->type = TYPEMESSAGE;
+  body->subtype = safe_strdup ("rfc822");
+  body->filename = safe_strdup (buffer);
+  body->unlink = 1;
+  body->use_disp = 0;
+
+  /* this MUST come after setting ->filename because we reuse buffer[] */
+  strfcpy (buffer, "Forwarded message from ", sizeof (buffer));
+  rfc822_write_address (buffer + 23, sizeof (buffer) - 23, hdr->env->from);
+  body->description = safe_strdup (buffer);
+
+  mutt_parse_mime_message (ctx, hdr);
+  mutt_copy_message (fpout, ctx, hdr,
+		     option (OPTMIMEFORWDECODE) ? M_CM_DECODE : 0,
+		     CH_XMIT | (option (OPTMIMEFORWDECODE) ? (CH_MIME | CH_TXTPLAIN ) : 0));
+  
+  fclose (fpout);
+  mutt_update_encoding (body);
+  return (body);
+}
+
 static int default_to (ADDRESS **to, ENVELOPE *env, int group)
 {
   char prompt[STRING];
@@ -445,23 +480,6 @@ static int default_to (ADDRESS **to, ENVELOPE *env, int group)
     rfc822_append (to, env->from);
 
   return (0);
-}
-
-static LIST *make_references(ENVELOPE *e)
-{
-  LIST *t, *l;
-  
-  l = mutt_copy_list(e->references);
-  
-  if(e->message_id)
-  {
-    t = mutt_new_list();
-    t->data = safe_strdup(e->message_id);
-    t->next = l;
-    l = t;
-  }
-  
-  return l;
 }
 
 static int fetch_recips (ENVELOPE *out, ENVELOPE *in, int flags)
@@ -580,30 +598,22 @@ envelope_defaults (ENVELOPE *env, CONTEXT *ctx, HEADER *cur, int flags)
       tmp->data = safe_strdup (buffer);
     }
 
-    if(tag)
+    env->references = mutt_copy_list (curenv->references);
+
+    if (curenv->message_id)
     {
-      HEADER *h;
-      LIST **p;
+      LIST *t;
 
-      env->references = NULL;
-      p = &env->references;
-      
-      for(i = 0; i < ctx->vcount; i++)
-      {
-	while(*p) p = &(*p)->next;
-	h = ctx->hdrs[ctx->v2r[i]];
-	if(h->tagged)
-	  *p = make_references(h->env);
-      }
+      t = mutt_new_list ();
+      t->data = safe_strdup (curenv->message_id);
+      t->next = env->references;
+      env->references = t;
     }
-    else
-      env->references = make_references(curenv);
-
   }
   else if (flags & SENDFORWARD)
   {
     /* set the default subject for the message. */
-    mutt_make_string (buffer, sizeof (buffer), NONULL(ForwFmt), ctx, cur);
+    mutt_make_string (buffer, sizeof (buffer), ForwFmt, ctx, cur);
     env->subject = safe_strdup (buffer);
   }
 
@@ -659,7 +669,7 @@ generate_body (FILE *tempfp,	/* stream for outgoing message */
 
       if (cur)
       {
-	tmp = mutt_make_message_attach (ctx, cur, 0);
+	tmp = make_forward (ctx, cur);
 	if (last)
 	  last->next = tmp;
 	else
@@ -671,7 +681,7 @@ generate_body (FILE *tempfp,	/* stream for outgoing message */
 	{
 	  if (ctx->hdrs[ctx->v2r[i]]->tagged)
 	  {
-	    tmp = mutt_make_message_attach (ctx, ctx->hdrs[ctx->v2r[i]], 0);
+	    tmp = make_forward (ctx, ctx->hdrs[ctx->v2r[i]]);
 	    if (last)
 	    {
 	      last->next = tmp;
@@ -784,17 +794,16 @@ static ADDRESS *set_reverse_name (ENVELOPE *env)
 static ADDRESS *mutt_default_from (void)
 {
   ADDRESS *adr = rfc822_new_address ();
-  const char *fqdn = mutt_fqdn(1);
-  
+
   /* don't set realname here, it will be set later */
 
   if (option (OPTUSEDOMAIN))
   {
-    adr->mailbox = safe_malloc (strlen (NONULL(Username)) + strlen (NONULL(fqdn)) + 2);
-    sprintf (adr->mailbox, "%s@%s", NONULL(Username), NONULL(fqdn));
+    adr->mailbox = safe_malloc (strlen (Username) + strlen (Fqdn) + 2);
+    sprintf (adr->mailbox, "%s@%s", Username, Fqdn);
   }
   else
-    adr->mailbox = safe_strdup (NONULL(Username));
+    adr->mailbox = safe_strdup (Username);
   return (adr);
 }
 
@@ -894,8 +903,8 @@ ci_send_message (int flags,		/* send mode */
 
     if (!tempfp)
     {
-      dprint(1,(debugfile, "newsend_message: can't create tempfile %s (errno=%d)\n", msg->content->filename, errno));
-      mutt_perror (msg->content->filename);
+      dprint(1,(debugfile, "newsend_message: can't create tempfile %s (errno=%d)\n", tempfile, errno));
+      mutt_perror (tempfile);
       goto cleanup;
     }
   }
@@ -983,8 +992,8 @@ ci_send_message (int flags,		/* send mode */
     if (generate_body (tempfp, msg, flags, ctx, cur) == -1)
       goto cleanup;
 
-    if (! (flags & (SENDMAILX | SENDKEY)) && Editor && strcmp (Editor, "builtin") != 0)
-      append_signature (tempfp);
+    if (! (flags & (SENDMAILX | SENDKEY)) && strcmp (Editor, "builtin") != 0)
+      append_signature (msg->env, tempfp);
   }
   /* wait until now to set the real name portion of our return address so
      that $realname can be set in a send-hook */
@@ -1034,8 +1043,8 @@ ci_send_message (int flags,		/* send mode */
     if(! (flags & SENDKEY))
     {
       if (mutt_needs_mailcap (msg->content))
-	mutt_edit_attachment (msg->content);
-      else if (!Editor || strcmp ("builtin", Editor) == 0)
+	mutt_edit_attachment (msg->content, 0);
+      else if (strcmp ("builtin", Editor) == 0)
 	mutt_builtin_editor (msg->content->filename, msg, cur);
       else if (option (OPTEDITHDRS))
 	mutt_edit_headers (Editor, msg->content->filename, msg, fcc, sizeof (fcc));
@@ -1096,7 +1105,7 @@ main_loop:
       /* postpone the message until later. */
       if (msg->content->next)
 	msg->content = mutt_make_multipart (msg->content);
-      if (!Postponed || mutt_write_fcc (Postponed, msg, (cur && (flags & SENDREPLY)) ? cur->env->message_id : NULL, 1) < 0)
+      if (mutt_write_fcc (NONULL (Postponed), msg, (cur && (flags & SENDREPLY)) ? cur->env->message_id : NULL, 1) < 0)
       {
 	msg->content = remove_multipart (msg->content);
 	goto main_loop;
@@ -1166,7 +1175,7 @@ main_loop:
      * it by using an empty To: field.
      */
     msg->env->to = rfc822_new_address ();
-    msg->env->to->mailbox = safe_strdup ("undisclosed-recipients:;");
+    msg->env->to->mailbox = safe_strdup (EmptyTo);
     msg->env->to->group = 1;
     msg->env->to->next = rfc822_new_address ();
  
