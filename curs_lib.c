@@ -65,6 +65,9 @@ int mutt_getch (void)
   if (Signals & S_INTERRUPT)
     mutt_query_exit ();
 
+  if(ch == -1)
+    return ch;
+  
   if ((ch & 0x80) && option (OPTMETAKEY))
   {
     /* send ALT-x as ESC-x */
@@ -113,9 +116,9 @@ void mutt_clear_error (void)
 void mutt_edit_file (const char *editor, const char *data)
 {
   char cmd[LONG_STRING];
-
+  
   endwin ();
-  mutt_expand_fmt (cmd, sizeof (cmd), editor, data);
+  mutt_expand_file_fmt (cmd, sizeof (cmd), editor, data);
   mutt_system (cmd);
   keypad (stdscr, TRUE);
   clearok (stdscr, TRUE);
@@ -166,6 +169,7 @@ void mutt_query_exit (void)
     endwin ();
     exit (0);
   }
+  mutt_clear_error();
   mutt_curs_set (-1);
   Signals &= ~S_INTERRUPT;
 }
@@ -178,6 +182,7 @@ void mutt_curses_error (const char *fmt, ...)
   vsnprintf (Errorbuf, sizeof (Errorbuf), fmt, ap);
   va_end (ap);
   
+  dprint (1, (debugfile, "%s\n", Errorbuf));
   Errorbuf[ (COLS < sizeof (Errorbuf) ? COLS : sizeof (Errorbuf)) - 2 ] = 0;
 
   BEEP ();
@@ -232,6 +237,8 @@ void mutt_perror (const char *s)
 {
   char *p = strerror (errno);
 
+  dprint (1, (debugfile, "%s: %s (errno = %d)\n", s, 
+      p ? p : "unknown error", errno));
   mutt_error ("%s: %s (errno = %d)", s, p ? p : "unknown error", errno);
 }
 
@@ -268,15 +275,15 @@ int mutt_do_pager (const char *banner,
 		   pager_t *info)
 {
   int rc;
-
+  
   if (!Pager || strcmp (Pager, "builtin") == 0)
-    rc = mutt_pager (banner, tempfile, do_color, info);
+    rc = mutt_pager (banner, tempfile, do_color, info, "");
   else
   {
     char cmd[STRING];
     
     endwin ();
-    snprintf (cmd, sizeof (cmd), "%s %s", NONULL(Pager), tempfile);
+    mutt_expand_file_fmt (cmd, sizeof(cmd), Pager, tempfile);
     mutt_system (cmd);
     mutt_unlink (tempfile);
     rc = 0;
@@ -318,7 +325,7 @@ int mutt_enter_fname (const char *prompt, char *buf, size_t blen, int *redraw, i
 	!= 0)
       buf[0] = 0;
     MAYBE_REDRAW (*redraw);
-    free (pc);
+    FREE (&pc);
   }
 
   return 0;
