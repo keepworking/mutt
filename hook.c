@@ -87,11 +87,8 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     memset (&pattern, 0, sizeof (pattern));
     pattern.data = safe_strdup (path);
   }
-  else if (DefaultHook && !(data & (M_CHARSETHOOK | M_ACCOUNTHOOK))
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-      && !(data & M_CRYPTHOOK)
-#endif /* HAVE_PGP */
-      )
+  else if (DefaultHook && (data & (M_FOLDERHOOK | M_MBOXHOOK | M_SENDHOOK |
+				   M_FCCHOOK | M_SAVEHOOK | M_MESSAGEHOOK)))
   {
     char tmp[HUGE_STRING];
 
@@ -444,10 +441,10 @@ char *mutt_iconv_hook (const char *chs)
   return _mutt_string_hook (chs, M_ICONVHOOK);
 }
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-char *mutt_crypt_hook (ADDRESS *adr)
+#ifdef HAVE_PGP
+char *mutt_pgp_hook (ADDRESS *adr)
 {
-  return _mutt_string_hook (adr->mailbox, M_CRYPTHOOK);
+  return _mutt_string_hook (adr->mailbox, M_PGPHOOK);
 }
 #endif /* HAVE_PGP */
 
