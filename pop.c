@@ -276,13 +276,11 @@ void mutt_fetchPopMail (void)
       fwrite (p, 1, chunk, msg->fp);
     }
 
-    if (mx_commit_message (msg, &ctx) != 0)
+    if (mx_close_message (&msg) != 0)
     {
       mutt_error _("Error while writing mailbox!");
       err = 1;
     }
-
-    mx_close_message (&msg);
 
     if (err)
       break;
@@ -308,10 +306,7 @@ void mutt_fetchPopMail (void)
   }
 
   if (msg)
-  {
-    mx_commit_message (msg, &ctx);
     mx_close_message (&msg);
-  }
   mx_close_mailbox (&ctx);
 
   if (err)
