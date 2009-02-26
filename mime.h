@@ -24,7 +24,6 @@ enum
   TYPEAPPLICATION,
   TYPEIMAGE,
   TYPEMESSAGE,
-  TYPEMODEL,
   TYPEMULTIPART,
   TYPETEXT,
   TYPEVIDEO
@@ -65,5 +64,5 @@ extern char Base64_chars[];
 extern const char *BodyTypes[];
 extern const char *BodyEncodings[];
 
-#define TYPE(X) ((X->type == TYPEOTHER) && (X->xtype != NULL) ? X->xtype : BodyTypes[(X->type)])
+#define TYPE(X) BodyTypes[(X)]
 #define ENCODING(X) BodyEncodings[(X)]
