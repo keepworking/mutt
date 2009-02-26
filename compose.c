@@ -26,7 +26,6 @@
 #include "mailbox.h"
 #include "sort.h"
 #include "charset.h"
-#include "iconv.h"
 
 #ifdef MIXMASTER
 #include "remailer.h"
@@ -68,7 +67,7 @@ enum
 };
 
 #define HDR_XOFFSET 10
-#define TITLE_FMT "%10s" /* Used for Prompts, which are ASCII */
+#define TITLE_FMT "%10s"
 #define W (COLS - HDR_XOFFSET)
 
 static char *Prompts[] =
@@ -278,8 +277,7 @@ static void draw_envelope_addr (int line, ADDRESS *addr)
 
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), addr);
-  mvprintw (line, 0, TITLE_FMT, Prompts[line - 1]);
-  mutt_paddstr (W, buf);
+  mvprintw (line, 0, TITLE_FMT "%-*.*s", Prompts[line - 1], W, W, buf);
 }
 
 static void draw_envelope (HEADER *msg, char *fcc)
@@ -288,11 +286,10 @@ static void draw_envelope (HEADER *msg, char *fcc)
   draw_envelope_addr (HDR_TO, msg->env->to);
   draw_envelope_addr (HDR_CC, msg->env->cc);
   draw_envelope_addr (HDR_BCC, msg->env->bcc);
-  mvprintw (HDR_SUBJECT, 0, TITLE_FMT, Prompts[HDR_SUBJECT - 1]);
-  mutt_paddstr (W, NONULL (msg->env->subject));
+  mvprintw (HDR_SUBJECT, 0, TITLE_FMT "%-*.*s", Prompts[HDR_SUBJECT - 1], W, W,
+	    NONULL(msg->env->subject));
   draw_envelope_addr (HDR_REPLYTO, msg->env->reply_to);
-  mvprintw (HDR_FCC, 0, TITLE_FMT, Prompts[HDR_FCC - 1]);
-  mutt_paddstr (W, fcc);
+  mvprintw (HDR_FCC, 0, TITLE_FMT "%-*.*s", Prompts[HDR_FCC - 1], W, W, fcc);
 
 
 
@@ -334,8 +331,7 @@ static int edit_address_list (int line, ADDRESS **addr)
   /* redraw the expanded list so the user can see the result */
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), *addr);
-  move (line, HDR_XOFFSET);
-  mutt_paddstr (W, buf);
+  mvprintw (line, HDR_XOFFSET, "%-*.*s", W, W, buf);
 
   return 0;
 }
@@ -389,7 +385,6 @@ static void update_idx (MUTTMENU *menu, ATTACHPTR **idx, short idxlen)
 static int change_attachment_charset (BODY *b)
 {
   char buff[SHORT_STRING];
-  iconv_t cd;
 
   if (!mutt_is_text_type (b->type, b->subtype))
   {
@@ -401,14 +396,20 @@ static int change_attachment_charset (BODY *b)
   
   if (mutt_get_field (_("Enter character set: "), buff, sizeof(buff), 0) == -1)
     return 0;
-
-  if ((cd = iconv_open (buff, "us-ascii")) == (iconv_t)-1)
+    
+  if (mutt_is_utf8(buff))
+  {
+    if (!b->noconv)
+    {
+      mutt_error (_("UTF-8 encoding attachments has not yet been implemented."));
+      return 0;
+    }
+  }
+  else if (mutt_get_charset (buff) == NULL)
   {
     mutt_error (_("Character set %s is unknown."), buff);
     return 0;
   }
-  else
-    iconv_close (cd);
   
   mutt_set_body_charset (b, buff);
   return REDRAW_CURRENT;
@@ -487,7 +488,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  move (HDR_SUBJECT, HDR_XOFFSET);
 	  clrtoeol ();
 	  if (msg->env->subject)
-	    mutt_paddstr (W, msg->env->subject);
+	    printw ("%-*.*s", W, W, msg->env->subject);
 	}
 	break;
       case OP_COMPOSE_EDIT_REPLY_TO:
@@ -499,8 +500,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	{
 	  strfcpy (fcc, buf, _POSIX_PATH_MAX);
 	  mutt_pretty_mailbox (fcc);
-	  move (HDR_FCC, HDR_XOFFSET);
-	  mutt_paddstr (W, fcc);
+	  mvprintw (HDR_FCC, HDR_XOFFSET, "%-*.*s", W, W, fcc);
 	  fccSet = 1;
 	}
 	MAYBE_REDRAW (menu->redraw);
@@ -763,6 +763,11 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
         if (!mutt_is_text_type (CURRENT->type, CURRENT->subtype))
         {
 	  mutt_error (_("Recoding only affects text attachments."));
+	  break;
+	}
+	if (mutt_is_utf8 (mutt_get_parameter ("charset", CURRENT->parameter)))
+	{
+	  mutt_error (_("We currently can't encode to utf-8."));
 	  break;
 	}
         CURRENT->noconv = !CURRENT->noconv;
