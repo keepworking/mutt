@@ -1,4 +1,634 @@
-Mon Jul 26 14:53:01 1999  Thomas Roessler  <roessler@guug.de>
+Mon Oct 11 19:16:13 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/zh_TW.Big5.po: New Chinese Translation.
+
+	* dotlock.c: [stable] Use dotlock.c from unstable.
+
+Wed Oct  6 20:20:54 1999  Thomas Roessler  <roessler@guug.de>
+
+	* Makefile.am: Makefile.am fix for unstable.
+
+	* Makefile.am:
+	[stable] Check for mutt_dotlock in $(DESTDIR)$(bindir), not in
+	$(bindir). This should fix some Debian build problems.
+
+	* init.h: fix the $from documentation.  Noted by David DeSimone.
+
+Tue Oct  5 06:50:34 1999  Thomas Roessler  <roessler@guug.de>
+
+	* compose.c, mutt.h, recvattach.c: small fixes from Gero Treuner.
+
+	* mutt.h, recvattach.c, compose.c:
+	[stable] small fixes from Gero Treuner.
+
+Mon Oct  4 10:05:26 1999  Thomas Roessler  <roessler@guug.de>
+
+	* configure.in: [stable] add pt_BR to ALL_LINGUAS.
+
+	* configure.in: add pt_BR to ALL_LINGUAS.
+
+	* po/pt_BR.po: Brasilian translation.
+
+	* po/pt_BR.po:
+	file pt_BR.po was initially added on branch mutt-1-0-stable.
+
+	* .cvsignore, mx.c: Some fixes from Brendan Cully.
+
+	* pgpewrap: pgpewrap spits out ugly error messages when used with ash.
+
+	* configure.in:
+	AM_C_PROTOTYPES seems to be too recent for the installed
+	automake/autoconf base.
+
+	* postpone.c: Remove some nonsense from the resend-message patches.
+
+	* postpone.c: Fix a memory leak.
+
+Thu Sep 30 22:05:25 1999  Thomas Roessler  <roessler@guug.de>
+
+	* send.c, sendlib.c, OPS, buffy.c, curs_main.c, functions.h, headers.c, main.c, mbox.c, mh.c, mutt.h, parse.c, parse.h, postpone.c, protos.h, recvattach.c:
+	Add a resend-message function (similar to the _old_ edit-message),
+	and redo large parts of mutt_prepare_edit_message (now
+	mutt_prepare_template).
+
+	* main.c: unstable cosmetics.
+
+	* main.c: [stable] cosmetic change suggested by marco d'itri.
+
+	* po/es.po: New spanish translation from Boris Wesslowsky.
+
+	* makedoc.c: Build fixes from Lars Hecking.
+
+	* doc/Attic/manual.sgml.in, Attic/Muttrc.in, NEWS, globals.h, init.h, send.c:
+	[stable] Re-add in_reply_to, this time with the right default value.
+
+	* sendlib.c: [unstable] fix the duplicate x-mailer/uesr-agent problem.
+
+	* send.c, globals.h, init.h:
+	[unstable] Re-add in-reply-to.  This time with a suitable default. #-\
+
+Wed Sep 29 17:47:33 1999  Thomas Roessler  <roessler@guug.de>
+
+	* configure.in: More fixes from Lars Hecking.
+
+	* configure.in: Adding AC_PREREQ to configure.in.
+
+	* configure.in:
+	make sure the right software is used for building mutt. Patch
+	suggested by Lars Hecking and Will Fiveash.
+
+	* pgpinvoke.c:
+	don't leak /dev/null file descriptors.  From Roland Rosenfeld.
+
+	* curs_main.c: fix^2 for stable.
+
+	* curs_main.c: Fixing the fix - missing brackets.
+
+	* curs_main.c, parse.c:
+	[stable] Fix some memory leaks noted by purify running on behalf of
+	Daniel Eisenbud.
+
+	* curs_main.c, parse.c:
+	Fix some memory leaks noted by purify running on behalf of Daniel
+	Eisenbud.
+
+Tue Sep 28 18:55:31 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/ru.po:
+	Here goes an update for version 1.0-pre3i.  The main feature of this
+	translation is that one-letter answers to multiple choice questions are not
+	localized (Thomas, could you please add this as comment to the update in CVS?)
+
+	(From: Michael Sobolev.)
+
+	* sendlib.c: [stable] Include SPACE and HT with MIME specials.
+
+	* sendlib.c: [unstable] Include SPACE and HT with MimeSpecials.
+
+	* Makefile.am: Better solution for the makedoc build using automake.
+
+	* Makefile.am:
+	Some makes apparently have to be told about how to build makedoc.
+
+Mon Sep 27 17:55:14 1999  Thomas Roessler  <roessler@guug.de>
+
+	* copy.c:
+	A back-port from unstable had missed some parts which could lead to
+	message corruption with mh mail folders.
+
+	* po/it.po: new Italian translation from Marco d'Itri.
+
+	* po/pl.po: New polish translation.
+
+	* po/de.po: Translation fix from Roland Rosenfeld.
+
+	* doc/Attic/manual.sgml.in: Documentation fix from Roland Rosenfeld.
+
+Sat Sep 25 07:37:51 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/zh_TW.Big5.po, po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/ko.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/el.po, po/de.po, po/cs.po:
+	post-release commit for 1.0pre3.
+
+	* VERSION, reldate.h, ChangeLog: pre-release commit for 1.0pre3.
+
+Fri Sep 24 17:51:55 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/uk.po, po/zh_TW.Big5.po, po/sk.po, po/pl.po, po/ru.po, po/it.po, po/ko.po, po/nl.po, po/fr.po, po/id.po, po/el.po, po/es.po, po/cs.po, po/de.po, ChangeLog, VERSION, reldate.h:
+	automatic post-release commit for mutt-0.96.7
+
+Thu Sep 23 21:13:55 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/el.po: New Greek tranlsation from Fanis <madf@geocities.com>.
+
+	* browser.c: [stable] Solaris snprintf vs. NULL pointers.
+
+	* browser.c:
+	Try not to pass NULL pointers to snprintf - the Solaris version
+	doesn't like them.  (Noted by Thomas.Parmelan@efrei.fr.)
+
+	* buffy.c: Brendan Cully's latest changes:
+
+	* includes all of my last patch, since it hasn't been committed yet.
+	* catches a couple segfault problems if Context is NULL.
+	* works harder to avoid sending null STORE FLAGS commands. May not
+	  be perfect yet, but also has extra debugging code.
+	* has the beginnings of a more interactive IMAP error handler.
+	  Doesn't do anything yet, I'm just including it because I want to
+	  get the rest of the patch out.
+
+	* doc/Makefile.in, Makefile.am:
+	Use $(MAKE) instead of make.  Noted by Ryan Murray
+	<rmurray@cyberhqz.com>.
+
+	* doc/Makefile.in, Makefile.am, configure.in, init.h:
+	A small portability fix related to makedoc.
+
+	* po/es.po: [stable] new spanish translation from Boris Wesslowski
+	<Boris.Wesslowski@StudBox.Uni-Stuttgart.DE>.
+
+	* alias.c: increase this limit for stable as well.
+
+	* handler.c:
+	[stable] Fix a buffer overflow and a bug helping with exploiting this
+	overflow in the text/enriched handler.
+
+	* handler.c:
+	Fix a buffer overflow and a bug helping with exploiting this
+	overflow in the text/enriched handler.
+
+	* doc/manual.sgml.head, curs_main.c: This small patch:
+
+	* catches a possible null-pointer dereference in mx_close_mailbox when
+	  logging out of the server.
+	* fixes IMAP tab-completion cosmetics (slightly broken with last
+	  Cyrus-compatibility updates)
+	* adds a bit to the IMAP part of the manual.
+
+	Brendan Cully <brendan@kublai.com>
+
+	* alias.c:
+	Increase a buffer to make larger group aliases possible.  The
+	current STRING buffer was far too small.
+
+Thu Sep 23 21:13:55 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/el.po: New Greek tranlsation from Fanis <madf@geocities.com>.
+
+	* browser.c: [stable] Solaris snprintf vs. NULL pointers.
+
+	* po/es.po: [stable] new spanish translation from Boris Wesslowski
+	<Boris.Wesslowski@StudBox.Uni-Stuttgart.DE>.
+
+	* alias.c: increase this limit for stable as well.
+
+	* handler.c:
+	[stable] Fix a buffer overflow and a bug helping with exploiting this
+	overflow in the text/enriched handler.
+
+Sun Sep 12 19:39:10 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/es.po: [stable] Updated spanish translation from Boris Wesslowski.
+
+	* po/es.po:
+	[stable] Fixes for the Spanish translation.  From Nicolás Lichtmaier
+	<nick@debian.org>.
+
+Sat Sep 11 17:04:12 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/pl.po: [stable] new polish translation from Pawel Dienkonski.
+
+	* po/es.po: [stable] New Spanish translation from Boris Wesslowski.
+
+	* configure.in: [stable] Hurd portability patch from Marcus Brinkmann.
+
+	* Attic/Muttrc.in: typos fixed by Telsa.
+
+	* doc/Attic/manual.sgml.in:
+	Small manual fix for stable.  Noted by Telsa
+	<hobbit@aloss.ukuu.org.uk>.
+
+Tue Sep  7 17:01:28 1999  Thomas Roessler  <roessler@guug.de>
+
+	* Makefile.am: Bail out if the chmod of mutt_dotlock fails.
+
+	* pgpkey.c: Fix a strtok NULL pointer problem.
+
+	* doc/Attic/manual.sgml.in: notes on how to produce secure mailcaps.
+
+Sun Sep  5 08:42:23 1999  Thomas Roessler  <roessler@guug.de>
+
+	* init.c: [stable] Fixing "unignore *".
+
+Fri Sep  3 21:42:16 1999  Thomas Roessler  <roessler@guug.de>
+
+	* contrib/sample.muttrc:
+	fix mailing list addresses.  Noted by David Benfell
+	<benfell@greybeard95a.com>.
+
+	* configure.in, strdup.c:
+	[stable] Some systems may not have strdup.  Substitute it.
+
+	* strdup.c:
+	file strdup.c was initially added on branch mutt-1-0-stable.
+
+	* browser.c: [stable] cosmetic fix from Brendan Cully.
+
+Thu Sep  2 18:50:46 1999  Thomas Roessler  <roessler@guug.de>
+
+	* acconfig.h, configure.in, init.c, init.h, main.c:
+	[stable] Improved pgp 6.5.1 support.  From Jochen Schmitt
+	<Jochen@herr-schmitt.de>.
+
+	* doc/manual.sgml.head, Makefile.am, OPS, compose.c, curs_main.c, editmsg.c, mutt.h, protos.h, send.c, sendlib.c:
+	A new edit-message feature, giving the raw message in an editor.
+
+	* dotlock.c: Remove a superfluous label.
+
+	* dotlock.c: [stable] remove a superfluous label.
+
+	* po/cs.po:
+	New czech translation.  From Jiri Pavlovsky <pavlovsk@ff.cuni.cz>.
+
+	* doc/Attic/manual.sgml.in:
+	[stable] It's www.sgmltools.org, not www.sgml-tools.org.  Noted by
+	Heiko Schlichting.
+
+Wed Sep  1 21:41:19 1999  Thomas Roessler  <roessler@guug.de>
+
+	* doc/Makefile.in, Makefile.am:
+	A couple of build process and portability fixes concerning the
+	automatically generated documentation.
+
+	* mutt.h, init.c:
+	[stable] Fix ignore/unignore.  This is a back-port from the unstable
+	branch.
+
+	* po/ko.po: New Korean translation.  From Byeong-Chan Kim
+	<redhands@linux.sarang.net>.
+
+	* curs_lib.c, edit.c, hdrline.c, sendlib.c:
+	Fix a couple of possible compilation warnings.  (Noted by "John C.
+	Place" <placej@ctcdist.com>.)
+
+	* hdrline.c, sendlib.c, curs_lib.c, edit.c:
+	[stable] Fix a couple of small warnings.  Noted by "John C. Place"
+	<placej@ctcdist.com>.
+
+	* ChangeLog: check-point commit.
+
+	* mx.c: Don't clear the error line whenever dotlocking a file.
+
+	* mx.h: adding a prototype.
+
+	* curs_main.c, mailbox.h, mx.c:
+	When the user synchronizes a mail folder, do a thorough check.
+
+Tue Aug 31 20:26:33 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/uk.po, po/zh_TW.Big5.po, po/ru.po, po/sk.po, po/ko.po, po/nl.po, po/pl.po, po/id.po, po/it.po, po/es.po, po/fr.po, VERSION, po/cs.po, po/de.po, po/el.po, reldate.h, Makefile.am, ChangeLog:
+	automatic post-release commit for mutt-0.96.6
+
+	* po/zh_TW.Big5.po, po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/ko.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/el.po, po/de.po, po/cs.po, VERSION, reldate.h, ChangeLog:
+	post-release commit for 1.0pre2.
+
+	* doc/manual.sgml.tail, doc/manual.sgml.head, protos.h, thread.c, OPS, curs_main.c, functions.h:
+	Adding a <parent-message> function. From Roland Rosenfeld
+	<roland@spinnaker.rhein.de>.
+
+Tue Aug 31 19:11:57 1999  Thomas Roessler  <roessler@guug.de>
+
+	* curs_lib.c: Fix possible signedness problem with localized
+	y/n responses.
+
+	* po/ru.po: New russian translation.  From Michael Sobolev
+	<mss@transas.com>.
+
+	* Attic/imap.c: [stable] fix IMAP caching.
+
+Mon Aug 30 16:10:45 1999  Thomas Roessler  <roessler@guug.de>
+
+	* mh.c: [stable] Back-port various fixes from unstable.
+
+	* mx.c, Attic/imap.c, buffy.c, configure.in:
+	[stable] back-port of various IMAP-related fixes.  From Brendan
+	Cully <brendan@kublai.com>.
+
+Thu Aug 26 20:26:56 1999  Thomas Roessler  <roessler@guug.de>
+
+	* doc/manual.sgml.tail:
+	Fix the sgml-tools url.  Noted by Heiko Schlichting.
+
+	* doc/Attic/manual.sgml.in:
+	Fix the URL to the sgml-tools package.  Noted by Heiko Schlichting.
+
+	* mh.c: Fixing a somewhat hypothetical error condition.
+
+	* curs_main.c, keymap.c, pager.c, recvattach.c: IRIX fixes.
+
+	* keymap.c, main.c, pager.c, recvattach.c, curs_main.c, edit.c:
+	Various fixes to make mutt compile on IRIX.  Additionally, we
+	introduce default bindings for the <enter> key which is used by xwsh
+	for "return".  Suggested by Heiko Schlichting
+	<heiko@cis.fu-berlin.de>.
+
+Wed Aug 25 06:33:37 1999  Thomas Roessler  <roessler@guug.de>
+
+	* configure.in: We need ranlib even when we don't use IMAP.
+
+	* compose.c:
+	Trivial patch to make attach-message work for IMAP folders.
+
+Tue Aug 24 21:27:20 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/de.po: Updates from Roland Rosenfeld.
+
+	* Makefile.am: Automake clean-up.  From Lars Hecking.
+
+	* po/id.po: Updates.
+
+	* doc/Makefile.in: build muttrc.man before installing it.
+
+	* reldate.h, Makefile.am, VERSION, ChangeLog:
+	automatic post-release commit for mutt-0.96.5
+
+	* po/zh_TW.Big5.po, po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/ko.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/el.po, po/de.po, po/cs.po, NEWS, VERSION, reldate.h, ChangeLog:
+	release-commit 1.0pre1.
+
+	* Makefile.am: Still more bugs in the release-building process.
+
+	* Makefile.am: *grrrr*  typos.
+
+	* po/sk.po, po/uk.po, po/zh_TW.Big5.po, po/ru.po, po/nl.po, po/pl.po, po/fr.po, po/id.po, po/it.po, po/ko.po, po/cs.po, po/de.po, po/el.po, po/es.po, ChangeLog:
+	translation update.
+
+	* Makefile.am: Some of the targets were broken.
+
+	* Makefile.am: Another tidbit.
+
+	* Makefile.am:
+	Still more build-process stuff. Let's see whether this automatically
+	builds 0.96.5.
+
+	* doc/Attic/manual.sgml, doc/Attic/muttrc.man, Attic/Muttrc:
+	Remove some auto-built files from the repository.
+
+	* Makefile.am: Further distribution process fixes.
+
+	* po/POTFILES.in:
+	Make translations fit together with actual source tree.
+
+	* doc/Makefile.in, Attic/Muttrc, ChangeLog, Makefile.am:
+	More fixes to the distribution-building process; check-point commit
+	for documentation and ChangeLog.
+
+	* doc/Attic/manual.sgml, doc/Attic/muttrc.man, doc/Makefile.in:
+	Various experimental changes to automate the distribution-building
+	process; documentation update.
+
+	* Makefile.am:
+	Various experimental changes to automate the distribution-building
+	process.
+
+Tue Aug 24 15:51:56 1999  Thomas Roessler  <roessler@guug.de>
+
+	* The first 1.0 pre-release is ready.
+
+Mon Aug 23 22:12:05 1999  Thomas Roessler  <roessler@guug.de>
+
+	* main.c: Fix a small typo affecting mutt -v's output.
+
+Fri Aug 20 08:24:13 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/fr.po: Fixed french translation.
+
+	* doc/Attic/manual.sgml.in, NEWS, copy.c, init.h, mutt.h,
+	sendlib.c: Back-port $bounce_delivered from unstable.
+
+	* po/fr.po: [stable] Small fixes.
+
+Thu Aug 19 10:11:23 1999  Thomas Roessler  <roessler@guug.de>
+
+	* charsets/Attic/Makefile.in:
+	[stable] parse_i18n doesn't need libraries.
+
+	* sendlib.c: [stable] Fix a back-porting bug.
+
+	* configure.in:
+	[stable] Albert Chin-A-Young <china@thewrittenword.com> suggests a
+	different check for -lnsl and -lsocket.
+
+	* doc/Attic/manual.sgml.in: [stable] fix the urlview url.
+
+	* main.c: copyright message cosmetics.
+
+	* Makefile.am, configure.in, prepare:
+	Remove the $output.in hack, and create a fake charmaps directory
+	instead.
+
+	* charsets/Attic/Makefile.in:
+	[stable] $(LDFLAGS) were missing when building parse_i18n.  Pointed
+	out by Lutz Jaenicke <Lutz.Jaenicke@aet.TU-Cottbus.DE>.
+
+	* acconfig.h, configure.in:
+	[stable] check signal.h for sig_atomic_t.  This should help to build
+	this version of mutt on systems such as SunOS 4.1.
+
+	* sendlib.c:
+	[stable] Force quotes around the boundary parameter's value.
+
+	* pgp.c:
+	[stable] Make sure the boundary MIME parameter is the last one on
+	multipart/signed.  Otherwise, Outlook will fail.  Pointed out by Ian
+	Bell, Turnpike.
+
+Wed Aug 18 06:54:13 1999  Thomas Roessler  <roessler@guug.de>
+
+	* doc/Attic/muttrc.man, doc/muttrc.man.head, doc/Attic/manual.sgml, NEWS:
+	documentation fixes.
+
+	* commands.c:
+	Fetch senders' keys also when decrypting a message.  There may be a
+	signature.
+
+	* main.c: Don't try to create $maildir if it's an IMAP folder.
+
+Tue Aug 17 20:04:07 1999  Thomas Roessler  <roessler@guug.de>
+
+	* reldate.h: :-(
+
+	* reldate.h: *grmbls*
+
+	* po/de.po, ChangeLog, VERSION: post-release commit for 0.96.4.
+
+	* po/de.po, VERSION, ChangeLog: post-release commit for 0.95.7.
+
+	* doc/Attic/manual.sgml, doc/Attic/muttrc.man, Attic/Muttrc:
+	ispell's default path.
+
+	* postpone.c: Fixing a mutt -p segfault.
+
+	* doc/mutt.man, main.c:
+	cosmetics; mention warranties in the manual page.
+
+Sun Aug 15 19:59:09 1999  Thomas Roessler  <roessler@guug.de>
+
+	* compose.c: Make attach-message work with IMAP folders.
+
+Sun Aug 15 19:59:09 1999  Thomas Roessler  <roessler@guug.de>
+
+	* dotlock.c: [stable] take dotlock.c from unstable.
+
+	* dotlock.c, dotlock.h:
+	[stable] Fix $save_empty even when the dotlocking code is linked
+	into mutt.
+
+Mon Aug  9 19:01:42 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/sk.po, po/uk.po, po/zh_TW.Big5.po, po/ko.po, po/nl.po, po/pl.po, po/ru.po, po/de.po, po/el.po, po/es.po, po/fr.po, po/id.po, po/it.po, po/cs.po:
+	update-po.
+
+	* po/zh_TW.Big5.po:
+	[stable] Fixing a small typo in the Chinese translation.
+
+	* po/zh_TW.Big5.po, po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/ko.po, po/it.po, po/id.po, po/fr.po, po/el.po, po/es.po, po/de.po, po/cs.po:
+	[stable] Adding the new polish translation; general "make update-po".
+
+	* Muttrc, doc/muttrc.man, doc/muttrc.man.head, main.c, po/zh_TW.Big5.po:
+	Various fixes.  Additionally, mutt will now create the $folder
+	directory when started in curses mode and if it doesn't exist.
+
+Sun Aug  8 14:57:13 1999  Thomas Roessler  <roessler@guug.de>
+
+	* po/zh_TW.Big5.po: new chinese translation.
+
+	* po/zh_TW.Big5.po: New chinese translation.
+
+	* Makefile.am: Fix order of some dependencies.
+
+	* Makefile.am: Fix keymap_defs.h dependency.
+
+	* po/it.po: Fix a translation string in it.po.
+
+	* po/it.po: Fixing a message.  From Marco.
+
+	* doc/muttrc.man, init.h:
+	Include complete documentation regardless of actual features.
+
+	* doc/Attic/manual.sgml.in, doc/Attic/mutt.man.in, doc/manual.sgml.tail, doc/mutt.man, doc/muttrc.man, doc/muttrc.man.head, doc/muttrc.man.tail, contrib/Makefile.in, contrib/gpg.rc, doc/Attic/dotlock.man.in, doc/Makefile.in, doc/devel-notes.txt, doc/dotlock.man, doc/manual.sgml, doc/manual.sgml.head, Attic/Muttrc.in, Makefile.am, Muttrc.head, NEWS, configure.in, init.h, makedoc.c:
+	Documentation updates; autogeneration of documentation from init.h.
+
+Wed Aug  4 19:58:13 1999  Thomas Roessler  <roessler@guug.de>
+
+	* NEWS: documentation to prepare the next release.
+
+	* doc/Attic/dotlock.man.in, dotlock.c, dotlock.h, mbox.c, mx.c, mx.h:
+	[stable] Fix $save_empty.
+
+	* ChangeLog: ChangeLog.
+
+	* NEWS, protos.h, send.c: Various fixes; documentation.
+
+	* doc/Attic/dotlock.man.in: Document the -d option.
+
+	* dotlock.h, mbox.c, mx.c, mx.h, dotlock.c: Fix $save_empty.
+
+Thu Jul 29 09:17:29 1999  Thomas Roessler  <roessler@guug.de>
+
+	* doc/Attic/manual.sgml.in:
+	Remove references to the old PGP configuration interface.  Noted by
+	Hanno Wagner <wagner@fitug.de>.
+
+	* browser.c, complete.c, enter.c, imap.c, imap.h, main.c, protos.h:
+	Brendan Cully's latest IMAP patches.
+
+Wed Jul 28 20:40:49 1999  Thomas Roessler  <roessler@guug.de>
+
+	* doc/Attic/manual.sgml.in:
+	Fix "lists" documentation.  From Jeremy Blosser <jblosser@firinn.org>.
+
+	* doc/Attic/manual.sgml.in:
+	Fix the description of the lists command.  Patch provided by Jeremy
+	Blosser <jblosser@firinn.org>.
+
+	* doc/PGP-Notes.txt, pgp.h, pgpinvoke.c, init.c, init.h, pgp.c:
+	PGP 6 support.
+
+	* charsets/Attic/Makefile.in:
+	Portability patch for MiNT, from Guido Flohr
+	<gufl0000@stud.uni-sb.de>.
+
+	* doc/Attic/manual.sgml.in, doc/Attic/mutt.man.in:
+	Documentation fixes from Jeremy Blosser.
+
+	* mh.c: Replarse mh message' headers when updating them.
+
+	* mh.c:
+	Re-parse mh messages when committing them to disk.  The structure
+	may have changed.
+
+	* rfc822.h, commands.c, init.h, pgp.c, pgp.h, pgpinvoke.c:
+	Add a hook which enables us to fetch PGP keys from servers on
+	demand.  Look out for pkspxy. :-)
+
+	* hdrline.c: Enable the use of %F in conditionals.  From Aaron Schrab
+	<aaron+mutt@schrab.com>.
+
+Mon Jul 26 21:04:53 1999  Thomas Roessler  <roessler@guug.de>
+
+	* dotlock.c: impose a hard limit on the number of locking attempts.
+
+	* dotlock.c: Impose a hard limit on dotlock attempts.
+
+	* recvattach.c, gnupgparse.c, pgpinvoke.c:
+	Fix an error message.  Also, close Debian bug #37394 for stable.
+
+	* acconfig.h, configure.in: Check for gpgm.
+
+	* recvattach.c:
+	Make an error message ready for translation.  From Gero Treuner.
+
+	* Makefile.am:
+	Add missing dependencies for pgpring.  Fix from David Ellement
+	<ellement@sdd.hp.com>
+
+	* Makefile.am:
+	Create keymap_defs.h when it isn't present.  Fix from Lars Hecking
+	<lhecking@nmrc.ucc.ie>.
+
+	* Makefile.am:
+	Generate keymap_defs.h when it isn't present.  Fix proposed by Lars
+	Hecking <lhecking@nmrc.ucc.ie>.
+
+	* doc/Attic/manual.sgml.in, handler.c, init.h, mutt.h, parse.c:
+	Undo the content-disposition changes.  They don't merge well with
+	operations such as printing, and need some more thought.
+
+	* doc/Attic/manual.sgml.in, init.h, mutt.h, parse.c, handler.c:
+	When an attachment's content-disposition is different from "inline",
+	and if the user sets the use_cdisp option, don't auto_view this
+	part.
+
+	* ChangeLog: checkpointing.
 
 	* flags.c, protos.h, recvattach.c:
 	When replying to message/rfc822 type attachments, Context statistics
@@ -34,24 +664,7 @@ Mon Jul 26 14:53:01 1999  Thomas Roessler  <roessler@guug.de>
 	* parse.c, rfc2047.c, rfc2231.c, rfc2231.h, sendlib.c, Makefile.am, TODO, copy.c, init.h, mutt.h:
 	Implement RFC 2231.
 
-Mon Jul 26 13:57:58 1999  Thomas Roessler  <roessler@guug.de>
-
-	* browser.h, imap.c, imap.h, mx.c, postpone.c, browser.c:
-	Assorted IMAP fixes.  From Brendan Cully <brendan@kublai.com>,
-	message <19990725150346.A19750@xanadu.kublai.com>.
-
-	* parse.c, rfc2047.c, rfc2231.c, rfc2231.h, sendlib.c, Makefile.am, TODO, copy.c, init.h, mutt.h:
-	Implement RFC 2231.
-
 	* ChangeLog: *** empty log message ***
-
-	* commands.c:
-	Fix a missing #ifdef. From Matt Armstrong <matt@lickey.com>.
-
-	* doc/devel-notes.txt:
-	Add some notes.  From Matt Armstrong <matt@lickey.com>.
-
-Mon Jul 26 10:13:38 1999  Thomas Roessler  <roessler@guug.de>
 
 	* commands.c:
 	Fix a missing #ifdef. From Matt Armstrong <matt@lickey.com>.
@@ -61,13 +674,14 @@ Mon Jul 26 10:13:38 1999  Thomas Roessler  <roessler@guug.de>
 
 Sat Jul 24 14:55:45 1999  Thomas Roessler  <roessler@guug.de>
 
-	* rfc2047.c: Add some sanity checks to the RFC 2047 decoder.
-	From "Alexander V. Lukyanov" <lav@yars.free.net>.
+	* rfc2047.c:
+	Add some sanity checks to the RFC 2047 decoder.  From "Alexander V.
+	Lukyanov" <lav@yars.free.net>.
 
 Fri Jul 23 06:31:09 1999  Thomas Roessler  <roessler@guug.de>
 
-	* parse.c: There was some code missing about TYPEMODEL.
-	Noted by Brian Salter-Duke <b_duke@lacebark.ntu.edu.au>.
+	* parse.c: There was some code missing about TYPEMODEL.  Noted by Brian
+	Salter-Duke <b_duke@lacebark.ntu.edu.au>.
 
 Thu Jul 22 14:56:44 1999  Thomas Roessler  <roessler@guug.de>
 
@@ -75,16 +689,18 @@ Thu Jul 22 14:56:44 1999  Thomas Roessler  <roessler@guug.de>
 
 Wed Jul 21 13:02:12 1999  Thomas Roessler  <roessler@guug.de>
 
-	* recvattach.c: When forwarding or replying to attachments,
-	use the proper time stamp for From_ lines of Fccs.  Note:
-	This code may need some clean-up, it's horribly slow.
+	* recvattach.c:
+	When forwarding or replying to attachments, use the proper time
+	stamp for From_ lines of Fccs.  Note: This code may need some
+	clean-up, it's horribly slow.
 
 	* buffy.c: Fix compilation problem for non-imap systems.
 
 	* compose.c: *grr* avoid a warning about /* in a comment.
 
-	* compose.c: call mutt_update_encoding() after changing an
-	attachment's content type.
+	* compose.c:
+	call mutt_update_encoding() after changing an attachment's content
+	type.
 
 Tue Jul 20 20:09:13 1999  Thomas Roessler  <roessler@guug.de>
 
@@ -134,10 +750,10 @@ Tue Jul 20 20:09:13 1999  Thomas Roessler  <roessler@guug.de>
 
 	(From: From: Brendan Cully <brendan@kublai.com>)
 
-	* doc/manual.sgml.in, globals.h, init.h, send.c, Muttrc.in:
+	* doc/Attic/manual.sgml.in, globals.h, init.h, send.c, Attic/Muttrc.in:
 	Remove the $in_reply_to configuration variable.
 
-	* doc/manual.sgml.in, globals.h, init.h, send.c, Muttrc.in:
+	* doc/Attic/manual.sgml.in, globals.h, init.h, send.c, Attic/Muttrc.in:
 	Remove the $in_reply_to configuration variable and always use the
 	message-ID for that header.
 
@@ -281,28 +897,7 @@ Thu Jun  3 20:13:22 1999  Thomas Roessler  <roessler@guug.de>
 
 	* po/pl.po, po/ko.po, po/fr.po, po/de.po, po/cs.po: Latest chagnes.
 
-	* doc/PGP-Notes.txt, contrib/pgp2.rc, contrib/pgp5.rc, pgppubring.c:
-	Hardwire some mechanisms for finding secret and public key-rings.
-	This way, we need to hard-wire less stuff in the various
-	configuration files, making the use of PGP with mutt a bit simpler
-	again.
-
-	* contrib/pgp2.rc: Another little fix.
-
-	* contrib/pgp2.rc:
-	ups, wrong order of arguments when verifying signatures.
-
-	* doc/PGP-Notes.txt: Document the new PGP configuration interface.
-
-	* contrib/gpg.rc, contrib/pgp2.rc, contrib/pgp5.rc, pgp.c, pgp.h, pgpewrap, pgpinvoke.c, pgpkey.c, pgplib.c, pgplib.h, pgppubring.c, Makefile.am, compose.c, configure.in, gnupgparse.c, init.c, init.h, mutt.h:
-	Experimental: New PGP invocation interface. The invocations are done
-	through formats, so all this should fit more cleanly into mutt now.
-
 Wed Jun  2 18:52:19 1999  Thomas Roessler  <roessler@guug.de>
-
-	* Makefile.am, extlib.c, init.c, lib.c, lib.h, mutt.h, muttlib.c, protos.h:
-	Major cutting & pasting: We now have a "real" library in lib.c which
-	can be linked against external programs without much effort.
 
 	* po/ko.po, po/pl.po, po/es.po, po/it.po, po/de.po: various updates.
 
@@ -315,62 +910,35 @@ Mon May 31 16:11:32 1999  Thomas Roessler  <roessler@guug.de>
 
 	* VERSION: Preparing pre-release for 0.95.6.
 
-	* po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/ko.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/de.po, po/cs.po:
-	translation updates
+	* po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po,
+	po/ko.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/de.po,
+	po/cs.po: translation updates
 
 	* hook.c, pattern.c, pgp.c, send.c: Backporting fixes from unstable.
-
-	* pattern.c, pgp.c, send.c, hook.c: Minor bug-fixes.
 
 Fri May 21 15:55:27 1999  Thomas Roessler  <roessler@guug.de>
 
 	* po/ko.po: Adding the Korean translation.
 
-	* configure.in, po/ko.po: Korean translation.
-
 Tue May 18 19:22:55 1999  Thomas Roessler  <roessler@guug.de>
 
 	* imap.c: Latest IMAP fixes from Brandon.
 
-	* imap.c:
-	The current code wasn't asking for the capabilities of the server in
-	the case where the user is using PREAUTH.
-
-	* imap.c:
-	The current IMAP code wasn't asking for the capabilities of the
-	server in the case where the user is using PREAUTH.
+	* imap.c: The current IMAP code wasn't asking for the
+	capabilities of the server in the case where the user is
+	using PREAUTH.
 
 Sun May 16 06:26:11 1999  Thomas Roessler  <roessler@guug.de>
 
 	* po/it.po: New IT translation.
 
-	* pgpkey.c:
-	Add a couple of token delimiters when constructing hints.  This way,
-	addresses like "Chr. xyz" <xyz@foo.bar.baz> will match key IDs like
-	xyz <xyz@bar>.
-
-	* handler.c: Fix base64 decoding.
-
-Thu May  6 08:29:17 1999  Thomas Roessler  <roessler@guug.de>
-
-	* curs_main.c, flags.c, mh.c: Fixing more maildir cursor problems.
-
 Wed May  5 20:33:57 1999  Thomas Roessler  <roessler@guug.de>
 
 	* imap.c: The latest IMAP fixes.
 
-	* imap.c: Fixing imap_check_mailbox().  From Brandon Long.
-
-	* imap.c: Mutt would lose user-set "N" flags.
-
 Mon May  3 16:17:29 1999  Thomas Roessler  <roessler@guug.de>
 
 	* gnupgparse.c: gnupg gives reasonable trust values now.
-
-	* po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/de.po, po/cs.po, keymap.c, menu.c, send.c:
-	Various fixes from last week.
-
-	* keymap.c, menu.c, pgpkey.c, send.c: Various fixes.
 
 Fri Apr 23 09:01:42 1999  Thomas Roessler  <roessler@guug.de>
 
@@ -385,30 +953,32 @@ Fri Apr 23 09:01:42 1999  Thomas Roessler  <roessler@guug.de>
 
 	* po/de.po: translation fixes from Roland and Gero.
 
-Thu Apr 22 10:21:41 1999  Thomas Roessler  <roessler@guug.de>
+Fri Apr 23 08:55:26 1999  Thomas Roessler  <roessler@guug.de>
 
-	* doc/manual.sgml.in: Document %_.
+	* po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/id.po, po/fr.po, po/es.po, po/de.po, po/cs.po:
+	New translations and typo fixes.
+
+	* OPS: Fix a documentation typo.
+
+	* po/de.po: translation fixes from Roland and Gero.
+
+Thu Apr 22 10:21:41 1999  Thomas Roessler  <roessler@guug.de>
 
 	* menu.c: Fix redraws.  Back-port from unstable.
 
-	* lib.c: Add "_" as an expando option.
-
 	* imap.h, init.h, mutt.h, mutt_socket.h, socket.c, imap.c:
 	IMAP update from Brandon Long.
-
-	* send.c: Fix FCC-related SNAFU in the ci_send_message() spaghetti.
 
 Tue Apr 20 19:26:28 1999  Thomas Roessler  <roessler@guug.de>
 
 	* sendlib.c: [stable] fix timezone snafu.
 
-	* sendlib.c: Fix a time zone snafu.
-
 	* po/ru.po, po/sk.po, po/uk.po, po/fr.po, po/id.po, po/it.po, po/nl.po, po/pl.po, po/cs.po, po/de.po, po/es.po, VERSION, reldate.h, ChangeLog:
 	Preparing 0.96.2.
 
 	* po/uk.po, po/sk.po, po/ru.po, po/pl.po, po/nl.po, po/id.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po, VERSION, reldate.h, ChangeLog:
-	preparing 0.95.5
+	preparing 0.95.5 (first take.  This one was only released to
+	the development list.)
 
 Mon Apr 12 21:02:35 1999  Thomas Roessler  <roessler@guug.de>
 
@@ -419,121 +989,20 @@ Mon Apr 12 21:02:35 1999  Thomas Roessler  <roessler@guug.de>
 	* compose.c: Clean-up, from Vikas.
 
 Mon Apr 12 21:02:35 1999  Thomas Roessler  <roessler@guug.de>
-
-	* recvattach.c: more multipart/alternative handling.
-
-	* recvattach.c: Change multipart handling when receiving messages.
-
-	* compose.c: Clean-up, from Vikas.
-
-Mon Apr 12 21:02:35 1999  Thomas Roessler  <roessler@guug.de>
-
-	* recvattach.c: more multipart/alternative handling.
-
-	* recvattach.c: Change multipart handling when receiving messages.
-
-	* compose.c: Clean-up, from Vikas.
-
-	* parse.c: typo.
-
-	* parse.c:
-	us-ascii is the default character set for text attachments we receive.
-
-	* compose.c, sendlib.c:
-	Fix default character set setting when attaching text files.
-
-	* imap.c:
-	Fix an IMAP quoting problem.  Essentially from Randall Nortman
-	<rnortman@computer.org>.
 
 	* po/sk.po, po/id.po, configure.in: new languages: id, sk.
 
 	* po/id.po, po/sk.po, configure.in: New translations: id, sk.
 
-Wed Mar 31 06:35:03 1999  Thomas Roessler  <roessler@guug.de>
-
-	* charset.c: Stupid error.
-
-	* charset.c, charset.h: Another small charset optimization.
-
-	* charset.h, handler.c, charset.c:
-	A couple of optimizations, most notably for the special case of a
-	non-prefix state.
-
 Tue Mar 30 23:50:33 1999  Thomas Roessler  <roessler@guug.de>
-
-	* charset.c, charset.h, handler.c:
-	This patch removes at least some of the horrible utf-8 kluges in
-	charset.c.  The new DECODER framework is currently only used in
-	handler.c, and there in a horribly inefficient manner.  We should
-	use greater blocks of data, which would be much more efficient than
-	what we are currently doing.
-
-	Most of the other charset-related code still uses the old
-	mutt_display_char() &friends interface, which is actually ok as long
-	as you don't try to handle multibyte character sets.
-
-	The most notable change should be the one to mutt_get_translation():
-	It will delay the loading and parsing of character set information
-	files until it's really needed, catching a huge amount of standard
-	cases.  As a side effect, this will make "iso tagged as ascii"
-	"work" again, as long as both sides use the same iso character set.
-
-	* send.c:
-	resort headers when forward-decoding them with weed switched on.
 
 	* pager.c: Fix a pager failure for long messages. From Liviu.
 
-	* pager.c:
-	Fix pager failure for long messages, changing two shorts to ints.
-	From Liviu Daia.
-
-	* recvattach.c:
-	Add some user feedback to attachment forwarding.  From Vikas.
-
-Thu Mar 25 19:46:52 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, init.h, pgpkey.c, sort.h, Muttrc.in, init.c:
-	Roland's sort_keys patch.
-
-Wed Mar 24 20:35:38 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, Muttrc.in, recvattach.c:
-	Vikas' latest version of attachment forwarding.
-
-	* recvattach.c: patch-0.96.1.vikas.forward_attachment.2
-
-	* main.c:
-	Only exit with "no recipients specified", when $auto_edit is set.
-
-Tue Mar 23 20:21:50 1999  Thomas Roessler  <roessler@guug.de>
-
-	* postpone.c, recvattach.c, init.h, mutt.h:
-	Vikas' forward_attachment patch.
-
-Mon Mar 22 16:00:39 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, pgppubring.c, gnupgparse.c, pgp.h, pgpkey.c:
-	PGP key creation time fix by Roland Rosenfeld.
-
-Wed Mar 17 14:45:10 1999  Thomas Roessler  <roessler@guug.de>
-
-	* recvattach.c: Vikas' attach_tag patch.
-
 Tue Mar 16 21:42:06 1999  Thomas Roessler  <roessler@guug.de>
-
-	* thread.c, configure.in: bug fixes.
 
 	* thread.c: Detect thread loops.
 
 Mon Mar 15 15:32:19 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, copy.c, init.h, mutt.h, sendlib.c:
-	Add $bounce_delivered.
-
-	* edit.c: another digital unix compile problem.
-
-	* main.c: _Fix_ the compile problems, don't install new ones.
 
 	* send.c: Cleanly handle fcc when the user unsets it and the message is
 	postponed.
@@ -546,32 +1015,22 @@ Mon Mar 15 15:32:19 1999  Thomas Roessler  <roessler@guug.de>
 
 Tue Mar  9 13:34:52 1999  Thomas Roessler  <roessler@guug.de>
 
-	* menu.c: another menu.c fix from Kim DeVaughn.
-
 	* send.c, menu.c, handler.c: Fixes.
-
-	* send.c, menu.c, handler.c:
-	handler.c: Properly handle message/external-body expiry.
-	menu.c: Small fix from Liviu.
-	send.c: Honor confirm_create for FCCs.
-	cvs: ----------------------------------------------------------------------
-
-Thu Mar  4 08:00:38 1999  Thomas Roessler  <roessler@guug.de>
-
-	* Makefile.am: post-postrelease commit.
 
 Wed Mar  3 20:06:33 1999  Thomas Roessler  <roessler@guug.de>
 
 	* rfc2047.c: ups.
 
-	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po, ChangeLog:
-	releasing 0.95.4.
+	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po,
+	po/fr.po, po/es.po, po/de.po, po/cs.po, ChangeLog: releasing
+	0.95.4.
 
-	* sendlib.c, rfc2047.c, reldate.h, curs_main.c, VERSION, ChangeLog:
-	releasing 0.96.1.
+	* sendlib.c, rfc2047.c, reldate.h, curs_main.c, VERSION,
+	ChangeLog: releasing 0.96.1.
 
 	* reldate.h, regex.c, VERSION, Makefile.am, ChangeLog:
-	release preparations; back-port a couple of things from unstable.
+	release preparations; back-port a couple of things from
+	unstable.
 
 	* curs_main.c: Vikas' resort_index.3.
 
@@ -592,50 +1051,30 @@ Wed Mar  3 19:44:24 1999  Thomas Roessler  <roessler@guug.de>
 
 Tue Mar  2 22:13:30 1999  Thomas Roessler  <roessler@guug.de>
 
-	* curs_main.c, charset.c: Some small fixes from Vikas.
-
-	* parse.c, init.h, imap.c, globals.h:
-	Brandon Long's latest  IMAP fixes.
-
 	* parse.c: Latest IMAP-related fix from Brandon Long.
 
-	* thread.c:
-	Correctly handle messages which have themselves in their references
-	header.
-
-	* thread.c:
-	Properly handle messages which have themselves in "References".
+	* thread.c: Properly handle messages which have themselves
+	in "References".
 
 Sun Feb 28 08:30:19 1999  Thomas Roessler  <roessler@guug.de>
 
-	* rfc822.c: Fix a memory leak.  From Liviu.
-
 	* rfc822.c: Fix a memory leak. From Liviu.
 
-	* rfc1524.c, mutt.h, lib.c, attach.c:
-	Fix the $TMPDIR raace noted by Hamish Moffat.
-
-	* rfc1524.c, mutt.h, lib.c, attach.c: Fix a $TMPDIR race condition.
-
-	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po:
-	post-snapshot commit.
-
-Fri Feb 26 15:42:07 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, send.c, regex.c, mutt.h, init.h:
-	Adding pgp_replyencrypt.
+	* rfc1524.c, mutt.h, lib.c, attach.c: Fix a $TMPDIR race
+	condition.
 
 Thu Feb 25 06:58:01 1999  Thomas Roessler  <roessler@guug.de>
 
-	* from.c:
-	parse some more from_ lines.  Before, there were problems with cases
-	like this:
+	* from.c: parse some more from_ lines.  Before, there were
+	problems with cases like this:
 
 	>From <@x400host:"/G=Bob/S=Allinson/CN=Has embedded spaces/OU=X400HOST/
 	>OU=xxxx/O=xxx/PRMD=xxxxx/ADMD=XXXXXX/C=GB/"@x400host>
 	>Tue Feb 23 09:44:52 1999
 
 	Problem noted by johnm@sirius3.demon.co.uk
+	
+	[unstable; back-ported to stable on Mar 3.]
 
 Tue Feb 23 20:38:49 1999  Thomas Roessler  <roessler@guug.de>
 
@@ -645,95 +1084,29 @@ Mon Feb 22 12:37:43 1999  Thomas Roessler  <roessler@guug.de>
 
 	* curs_main.c: Vikas' latest collapse fix.
 
-	* curs_main.c: collapse fix from Vikas.
-
-	* mbox.c, imap.c:
-	Avoid reading past actual headers when reopening mailboxes.  From
-	Daniel Eisenbud.
-
-	* mbox.c, imap.c:
-	Avoid reading past the end of actual headers when reopening folders.
-	From Daniel Eisenbud.
+	* mbox.c, imap.c: Avoid reading past the end of actual
+	headers when reopening folders. From Daniel Eisenbud.
 
 	* pgp.c: Don't override base64 by quoted-printable.
-
-	* menu.c: replace clear() by clrtobot().
-
-	* pgp.c:
-	Currently, PGP signing messages will force quoted-printable encoding
-	even if we should use base64.
 
 Fri Feb 19 07:38:17 1999  Thomas Roessler  <roessler@guug.de>
 
 	* sendlib.c: Don't qp-encode multiparts. ugh.
 
-	* sendlib.c: ... message and multipart, not just message.
-
-	* sendlib.c, mutt.h, init.h:
-	Add $encode_from: This option causes mutt to trigger
-	quoted-printable encoding for any non-multipart attachments which
-	have ^From at the beginning of a line.  Note that we don't trigger
-	on ^From_ since either procmail or sendmail is >-escaping on ^From,
-	and note that this won't help against sites where sendmail has the
-	'9' flag set on the local mailer, as these sites will inevitably
-	transform to 8bit (sic!).
-
 Thu Feb 18 23:14:36 1999  Thomas Roessler  <roessler@guug.de>
 
-	* pgp.c, mutt.h, init.h:
-	Add retainable signatures.  This should work nicely with encrypted
-	mailing lists.
-
-	* mx.c, init.h, globals.h, configure.in, acconfig.h, Makefile.am:
-	Introduce $dotlock_program: This makes the mutt_dotlock program's
-	location a run-time configuration variable.
-
-	* send.c, mutt.h, init.h:
-	Introduce $honor_followup_to.  The user will now be asked whether he
-	wants to honor mail-followup-to or not.
-
-	* curs_main.c:
-	properly handle OP_FLAG_MESSAGE when applied to tagged messages.
-
-	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po:
-	Updated translations.
+	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po,
+	po/fr.po, po/es.po, po/de.po, po/cs.po: Updated
+	translations.
 
 	* contrib/sample.mailcap: Fix the text/html entry.
 
-	* regex.c, headers.c, copy.h, configure.in:
-	copy.h: Some flags were used with multiple meanings. bad.
-	configure.in, regex.c: Make regex autoconfiguration work.
-	headers.c: expand aliases on the from header.
-
-	* headers.c: Expand aliases on the From header.
-
 Wed Feb 17 15:48:05 1999  Thomas Roessler  <roessler@guug.de>
 
-	* doc/mutt.man.in: Fix the URL.
-
-	* sendlib.c, init.h: User-Agent, not X-Mailer.
-
-	* po/fr.po: update.
-
-	* copy.h:
-	Some of the M_CM flags erroneously had been defined to have the same
-	value.  _Very_ bad.
+	* copy.h: Some of the M_CM flags erroneously had been
+	defined to have the same value.  _Very_ bad.
 
 	* contrib/sample.mailcap: Correct the netscape text/html entry.
-
-	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po, po/Makefile.in.in, sendlib.c, send.c, regex.c, pager.c, mutt.h, init.h, configure.in, acconfig.h, Muttrc.in, Makefile.am:
-	- Makefile.am: Fix the dist target to include all necessary files.
-	- po/fr.po: New French translation.  (-> stable!)
-	- Add the new options to Muttrc.in.
-	- regex.c, configure.in: include config.h from regex.c, and handle
-	  alloca in a more intelligent way than before. (Currently, we just
-	  mis-handle it.)
-	  Port this to stable and test it!
-	- po/cs.po: update cs.po.
-	- po/de.po, po/nl.po: updated versions from Roland and Boris.
-	- pager.c: Vikas' grok_ansi fix.
-	- po/Makefile.in.in: keymap_defs is always in po/..  - from Lars
-	  Hecking.
 
 Fri Feb 12 11:23:17 1999  Thomas Roessler  <roessler@guug.de>
 
@@ -752,48 +1125,25 @@ Thu Feb 11 22:52:03 1999  Thomas Roessler  <roessler@guug.de>
 
 	* imap.c, VERSION: another imap-related fix.
 
-	* pattern.c: another signal fix from liviu.
-
-	* imap.c: Remove a superfluous if statement.
-
 	* imap.c: ups, that one was bad.
-
-	* imap.c:
-	The HEADER structure doesn't have a mailcap component any more.
 
 	* imap.c:
 	The HEADER structure doesn't have a mailcap component any more.
 	Noted by Johan van Selst <johans@stack.nl>.
 
-	* signal.c, sendlib.c, pattern.c, pager.c, mutt.h, menu.c, globals.h, curs_main.c, curs_lib.c:
-	patch.mutt-0.95.1i.ld.signals.1-2.gz
-
 	* po/nl.po: new nl translation.
-
-	* pattern.c, curs_main.c: pattern.c: Collapse patch from Vikas.
-
-	* po/nl.po: New nl translation.
 
 	* pattern.c, curs_main.c:
 	curs_main.c: Check whether the user pressed a number before putting
 	it back onto the stack.  (OP_JUMP)
 	pattern.c: Vikas' latest fix.
 
-	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po:
-	Updating the po files.
-
 	* doc/manual.sgml.in, doc/Makefile.in:
 	Install README.SECURITY in the doc directory, document
 	mailcap_sanitize.
 
-	* reldate.h, prepare, configure.in, VERSION, Makefile.am, Attic/$output.in:
-	Preparing for 0.96: $output.in was real fun in the dist target.
-	*argh*
-
 	* po/uk.po, po/ru.po, po/pl.po, po/nl.po, po/it.po, po/fr.po, po/es.po, po/de.po, po/cs.po, doc/manual.sgml.in, doc/Makefile.in, reldate.h, VERSION, NEWS, Makefile.am, ChangeLog:
 	[stable] post-release commit for 0.95.2.
-
-	* README.SECURITY: Add a note on how to write mailcap files.
 
 	* README.SECURITY: Add a note on how to write mailcaps.
 
@@ -804,240 +1154,74 @@ Wed Feb 10 23:12:27 1999  Thomas Roessler  <roessler@guug.de>
 	* imap.c, browser.c:
 	Some patches Brandon Long posted to comp.mail.mutt.
 
+Wed Feb 10 23:12:27 1999  Thomas Roessler  <roessler@guug.de>
+
 	* rfc1524.c, protos.h, lib.c, handler.c, attach.c:
 	Fix the security fix.
 
 	* rfc1524.c, mutt.h, lib.c, init.h: [stable] $mailcap_sanitize
-
-	* rfc1524.c, mutt.h, lib.c, init.h: [unstable] $mailcap_sanitize.
-
-	* system.c, signal.c, sendlib.c, send.c, protos.h, mutt.h, globals.h, curs_lib.c, compose.c, commands.c, attach.c, TODO:
-	patch.mutt-0.95.1i.ld.signals.1: A major redesign of how child
-	processes are invoked.  From Liviu.
 
 Tue Feb  9 23:54:03 1999  Thomas Roessler  <roessler@guug.de>
 
 	* sort.c, mx.c, mutt.h, mh.c, mbox.c, curs_main.c, ChangeLog:
 	Vikas' latest collapse fix.
 
-	* prepare: Small prepare bug noted by vikas.
-
-	* pgppubring.c, pgpkey.c, pgp.h, main.c, gnupgparse.c, browser.h:
-	browser.h: re-insert the "tagged" component.
-	pgp support: fix handling of PGP 5 subkeys, algorithm 20.
-
 	* pgppubring.c: [stable] Alg. 16 is encrypt-only, el-gamal.
-
-	* commands.c:
-	honor hdr_order when decode-piping a message.  From Vikas.
 
 	* po/cs.po: New czech translation.
 
 	* commands.c: Reorder headers when decode-piping.
 
-	* po/cs.po, doc/manual.sgml.in, socket.c, mx.c, mutt_socket.h, mutt.h, menu.c, init.h, imap.h, imap.c, functions.h, complete.c, browser.h, browser.c, OPS:
-	Brandon's IMAP clean-up; new czech translation.
-
 Thu Feb  4 12:00:10 1999  Thomas Roessler  <roessler@guug.de>
-
-	* rfc1524.c, protos.h, pgpinvoke.c, mx.c, lib.c:
-	[unstable] Change the way mutt_quote_filename() worked.  It's not
-	too reasonable to allocate memory dynamically whenever we quote a
-	file name.  (I guess I should add "vim" to pgpinvoke.c's copyright
-	notice. :-)
-
-	* mx.c:
-	[unstable] Check for write errors when moving messages to $mbox.
 
 	* mx.c: Check for write errors when moving messages to $mbox.
 
-Wed Feb  3 22:14:18 1999  Thomas Roessler  <roessler@guug.de>
-
-	* sendlib.c, recvattach.c, postpone.c, main.c, hash.c, functions.h, compose.c, charset.h, charset.c, OPS:
-	[unstable] Produce some reasonable character set support when
-	postponing messages.
-
-	Additionally, this patch fixes a nasty pointer leak in
-	load_charset() [noted with electric fence], and a completely
-	mis-lead attempt to use bsearch().  Apparently, nobody ever tested
-	the utf8 decoder for quite some time.
-
 Tue Feb  2 21:57:44 1999  Thomas Roessler  <roessler@guug.de>
-
-	* pattern.c: merge ~v patch into unstable.
 
 	* pattern.c: small nit-fix from vikas to the ~v pattern.
 
-	* pgp.c: Thou shall not use dangling pointers.
-
-	* attach.c:
-	[unstable] Fix mutt_decode_save_attachment's handling of character
-	set conversions.
-
-	* sendlib.c, send.c, rfc2047.c, recvattach.c, protos.h, pgp.c, pattern.c, mutt.h, init.h, handler.c, globals.h, functions.h, copy.h, copy.c, compose.c, commands.c, charset.h, charset.c, attach.c, OPS:
-	Merging the external character set patch into unstable.
-	Additionally, this change introduces a M_CHARCONV state flag which
-	gives us some more control about when character set conversions are
-	actually done.  Current versions of mutt would happily apply
-	character set conversions when, e.g., saving a text/plain attachment
-	to a file.  (We had at least one corrupt russing translation file
-	due to this mis-feature.)
-
-	Additionally, we clean up some of the character set related code in
-	handler.c.  Most of that is now done by the decoder functions in
-	charset.c.
-
 	* imap.c: Brandon's imap_create patch.
-
-	* pgpkey.c:
-	[unstable] clear the message line before letting people select
-	public keys.
-
-	* imap.c, copy.c: [unstable] merging Brandon's imap fixes.
 
 	* copy.c, imap.c: A couple of IMAP fixes from Brandon Long.
 
-Sat Jan 30 17:07:30 1999  Thomas Roessler  <roessler@guug.de>
-
-	* pgpkey.c:
-	really fix the weak associations problem.  it was worse than i
-	thought.
-
-	* pgpkey.c:
-	Handle expired keys correclty, even when they are the only and exact
-	match when searching for keys by address.
-
-Fri Jan 29 11:15:15 1999  Thomas Roessler  <roessler@guug.de>
-
-	* init.h: [unstable] Change some default formats.
-
-	* remailer.c, pgpkey.c, menu.c, addrbook.c: Add generic menu searching.
-
-	* remailer.h, remailer.c, init.h, globals.h:
-	Use a user-definable format for the mixmaster menu.
-
-	* pgpkey.c, pgp.h, init.h: [unstable] add $pgp_entry_format.
-
 Thu Jan 28 09:08:47 1999  Thomas Roessler  <roessler@guug.de>
 
-	* gnupgparse.c:
-	gnupg's trust model is currently unusable.  As a work-around, we
-	don't present the user with _any_ trust information if he uses
-	gnupg.
-
-Wed Jan 27 19:53:46 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, pgpkey.c, mutt.h, init.h, gnupgparse.c:
-	Add $pgp_show_unusable.
+	* gnupgparse.c: gnupg's trust model is currently unusable.
+	As a work-around, we don't present the user with _any_ trust
+	information if he uses gnupg.
 
 Tue Jan 26 21:24:56 1999  Thomas Roessler  <roessler@guug.de>
 
-	* doc/manual.sgml.in: [unstable] document ~v.
-
 	* doc/manual.sgml.in: [stable] document ~v.
-
-	* thread.c, pattern.c, mutt.h:
-	[unstable] Add the ~v pattern.  From Vikas.
 
 	* thread.c, pattern.c, mutt.h: [stable] Add the ~v pattern.
 
-	* doc/manual.sgml.in, ChangeLog:
-	ChangeLog, documentation for implicit_autoview.
-
 	* doc/manual.sgml.in: Document $implicit_autoview.
 
-Tue Jan 26 09:51:53 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in: Document $implicit_autoview.
-
-	* compose.c:
-	Fix a segfault when users change attachment content types, and let
-	toggle-unlink honor the $resolv variable.
-
-	* compose.c:
-	$resolve should be honored when doing toggle-unlink on the compose
-	menu.
+	* compose.c: Fix a segfault when users change attachment
+	content types, and let toggle-unlink honor the $resolv
+	variable.
 
 Mon Jan 25 22:16:46 1999  Thomas Roessler  <roessler@guug.de>
 
-	* compose.c:
-	This may fix a core dump under certain circumstances.  Can't check
-	this out since I don't get the segfault.
-
-	* pgpkey.c: Fix a redraw problem when the key menu is invoked.
-
 	* po/ru.po, po/cs.po, configure.in: Russian and czech translations.
-
-	* po/cs.po: Adding a czech translation, and fixing the russian.
-
-	* po/cs.po: file cs.po was initially added on branch mutt-1-0-stable.
-
-	* configure.in: Adding a czech translation, and fixing the russian.
-
-	* po/ru.po: ru.po was badly distorted.
 
 Sat Jan 23 17:00:43 1999  Thomas Roessler  <roessler@guug.de>
 
-	* prepare:
-	when f is .../Makefile.am, `basename $f .am` is Makefile.  So I
-	should just write that. :-)
-
-	* prepare: Add the default predicate.
-
-	* from.c: A slightly optimized version of DE's y2k patch.
-
-	* prepare: Apparently, automake doesn't like our AC_OUTPUT($output)
-	construction...
-
-	* gnupgparse.c, from.c:
-	DE's patch to work around other software's possible y2k bugs.
-
 	* from.c: Try to avoid other programs' possible y2k bugs.
-
-	* enter.c: Fix the attach-multi patch.
 
 Fri Jan 22 22:12:10 1999  Thomas Roessler  <roessler@guug.de>
 
 	* lib.c: Fix a memory leak, noted by Roland Rosenfeld.
 
-	* lib.c: Fix a memory leak.  Noted by Roland Rosenfeld.
-
-	* recvattach.c, query.c, protos.h, menu.c, enter.c, curs_lib.c, compose.c, browser.c, addrbook.c:
-	Enable tagging in the file browser.
-
-	* protos.h, pgppubring.c, pgpkey.c, pgp.h, pgp.c, lib.c, handler.c, gnupgparse.c, compose.c:
-	Heavy hacking on mutt's pgp support.  We no longer read the complete
-	key ring into memory.  For gpg, performance is heavily improved due
-	to the fact that we are passing a couple of key hints to the key
-	ring parsing back-end.
-
-Thu Jan 21 05:19:42 1999  Thomas Roessler  <roessler@guug.de>
-
-	* hook.c: Fix _mutt_string_hook.
-
 Wed Jan 20 13:52:59 1999  Thomas Roessler  <roessler@guug.de>
 
 	* po/pl.po: New polish translation.
 
-	* pgppubring.c, pgpkey.c, configure.in:
-	Add heavily improved debugging capabilities to the PGP code.
-	Anyway, the problem I observed wasn't a bug in mutt, but an expired
-	key. *sigh*
-
-	* rfc1524.c: Don't segfault when MailcapPath is unset.
-
-	* rfc1524.c:
-	Fix a segmentation fault when no MailcapPath has been defined.
+	* rfc1524.c: Fix a segmentation fault when no MailcapPath
+	has been defined.
 
 Tue Jan 19 23:38:26 1999  Thomas Roessler  <roessler@guug.de>
-
-	* protos.h, mutt.h, init.h, hook.c, charset.c, Makefile.am:
-	Add the charset-hook command.
-
-	* configure.in, charset.c, acconfig.h, Makefile.am, $output.in, INSTALL:
-	Properly handle character set definition file installation.
-
-	* mx.c: Remove a confusing error message.
 
 	* mx.c: Remove confusing error message.
 
@@ -1047,74 +1231,28 @@ Tue Jan 19 23:38:26 1999  Thomas Roessler  <roessler@guug.de>
 
 Mon Jan 18 09:45:29 1999  Thomas Roessler  <roessler@guug.de>
 
-	* po/ru.po:
-	New Russian translation from Michael Sobolev <mss@transas.com>.
-
-	* po/ru.po:
-	New russian translation from Michael Sobolev <mss@transas.com>.
+	* po/ru.po: New russian translation from Michael Sobolev
+	<mss@transas.com>.
 
 Thu Jan 14 13:08:46 1999  Thomas Roessler  <roessler@guug.de>
 
-	* compose.c: Mixmaster user interface beautification.
-
-	* mx.c, curs_lib.c:
-	Fix a couple of segfaults related to using curses when it isn't there.
-
-	* mx.c: dotlocking plus curses...
+	* mx.c, curs_lib.c: Fix a couple of segfaults related to
+	using curses when it isn't there.
 
 Wed Jan 13 23:56:39 1999  Thomas Roessler  <roessler@guug.de>
 
 	* send.c, mutt.h, mbox.c, handler.c, copy.h, copy.c:
-	patch-0.95.1i.tlr.weed.1, patch-0.95.1i.tlr.dotlock.1 - These have
-	been tested with unstable so far, seem to work fine.
-
-	* mx.c: Don't use curses when we don't have it.
+	patch-0.95.1i.tlr.weed.1, patch-0.95.1i.tlr.dotlock.1 -
+	These have been tested with unstable so far, seem to work
+	fine.
 
 	* mx.c: Don't try to do mutt_yesorno if we don't have curses.
-
-	* remailer.h:
-	Mixmaster has 20 address slots, that makes _19_ remailers.
-
-	* remailer.c: Fix the "append" function.
-
-	* sendlib.c: Don't leak message dates when sending via mixmaster.
-
-	* remailer.c:
-	Add search code to the remailer chain selecting menu.  [This is
-	pretty generic - should we add that code to menu.c?]
-
-	* postpone.c: Fix postponing of PGP messages.
-
-	* send.c, remailer.c, compose.c:
-	Qualify addresses before passing them to mixmaster.
-
-	* send.c, remailer.h, protos.h, mutt.h:
-	Clean up dependencies: remailer.h is no longer included by mutt.h,
-	and the mix_* prototypes can once again go to remailer.h.
-
-	* sendlib.c, remailer.c, remailer.h, send.c, protos.h, postpone.c, mutt.h, lib.c, keymap.h, keymap.c, init.h, headers.c, globals.h, functions.h, configure.in, compose.c, OPS.MIX, acconfig.h, Makefile.am:
-	A first take at adding a mixmaster front-end to mutt.  Don't worry,
-	it's optional. ;-)
-
-Tue Jan 12 22:01:11 1999  Thomas Roessler  <roessler@guug.de>
-
-	* mbox.c: Open folders in read-only mode if mutt can't lock them.
-
-Mon Jan 11 18:12:49 1999  Thomas Roessler  <roessler@guug.de>
-
-	* send.c, mutt.h, handler.c, copy.h, copy.c:
-	When decode-forwarding messages with message/Rfc822 attachments,
-	mutt should weed the attachments' headers according to the setting
-	of $forward_weed.
 
 Sun Jan 10 09:11:36 1999  Thomas Roessler  <roessler@guug.de>
 
 	* doc/manual.sgml.in, hdrline.c: Byrial's %D time format patch.
 
 Sat Jan  9 17:53:02 1999  Thomas Roessler  <roessler@guug.de>
-
-	* doc/manual.sgml.in, recvattach.c, protos.h, lib.c:
-	Byrial's latest changes to stable.
 
 	* recvattach.c, protos.h, lib.c:
 	Ask the user whether to overwrite a file or append to it.  From
@@ -1124,20 +1262,10 @@ Sat Jan  9 17:53:02 1999  Thomas Roessler  <roessler@guug.de>
 
 Fri Jan  8 23:29:05 1999  Thomas Roessler  <roessler@guug.de>
 
-	* charset.c:
-	When doing a binary search, we may as well use bsearch (3).
-
-	* parse.c: Optimized time-zone parsing.
-
 	* parse.c: Optimize time zone parsing.  By Byrial Jensen.
 
-	* history.c:
-	Don't clear the history when the user issues a "set history=..."
-	command which doesn't change anything.
-
-	* history.c:
-	Don't clear the history when "set history=..." doesn't change the
-	buffer size.
+	* history.c: Don't clear the history when the user issues a
+	"set history=..." command which doesn't change anything.
 
 	* thread.c, curs_main.c: Threading fix from Daniel Eisenbud.
 
@@ -1145,135 +1273,87 @@ Thu Jan  7 19:01:30 1999  Thomas Roessler  <roessler@guug.de>
 
 	* init.c: Vikas' set_boolean patch.
 
-	* protos.h, handler.c, attach.c:
-	Updated implicit autoview handling from stable.
-
-	* protos.h, handler.c, attach.c:
-	Only use "implicit" autoviews (implicit_autoview or MM_NOASK) when
-	mutt is unable to handle a content type internally.  This saves us
+	* protos.h, handler.c, attach.c: Only use "implicit"
+	autoviews (implicit_autoview or MM_NOASK) when mutt is
+	unable to handle a content type internally.  This saves us
 	parsing the mailcap files for every attachment we handle.
 
-	* mx.c, mutt.h, init.h, hdrline.c, commands.c, attach.c:
-	Merge in the mailcap patch from stable.
+	* thread.c, system.c, strcasecmp.c, status.c, sort.h,
+	sort.c, socket.c, snprintf.c, signal.c, sha_locl.h,
+	sha1dgst.c, sha.h, sendlib.c, send.c, score.c, rfc822.h,
+	rfc822.c, rfc2047.h, rfc2047.c, rfc1524.h, rfc1524.c,
+	resize.c, recvattach.c, query.c, protos.h, postpone.c,
+	pop.c, pgppubring.c, pgpkey.c, pgpinvoke.c, pgp.h, pgp.c,
+	pattern.c, parse.h, parse.c, pager.h, pager.c, mx.h, mx.c,
+	mutt_socket.h, mutt_regex.h, mutt_menu.h, mutt_curses.h,
+	mutt.h, mime.h, mh.c, menu.c, mbox.c, mapping.h, main.c,
+	mailbox.h, lib.c, keymap.h, keymap.c, init.h, init.c,
+	imap.h, imap.c, hook.c, history.h, history.c, help.c,
+	headers.c, hdrline.c, hash.h, hash.c, handler.c,
+	gnupgparse.c, globals.h, getdomain.c, functions.h, from.c,
+	flags.c, filter.c, enter.c, edit.c, dotlock.h, dotlock.c,
+	date.c, curs_main.c, curs_lib.c, copy.h, copy.c, compose.c,
+	complete.c, commands.c, color.c, charset.h, charset.c,
+	buffy.h, buffy.c, browser.c, attach.h, attach.c, alias.c,
+	addrbook.c, acconfig.h: Get rid of RCS ids in source files.
+	They are getting in our way when merging changes.
 
-	* thread.c, system.c, strcasecmp.c, status.c, sort.h, sort.c, socket.c, snprintf.c, signal.c, sha_locl.h, sha1dgst.c, sha.h, sendlib.c, send.c, score.c, rfc822.h, rfc822.c, rfc2047.h, rfc2047.c, rfc1524.h, rfc1524.c, resize.c, recvattach.c, query.c, protos.h, postpone.c, pop.c, pgppubring.c, pgpkey.c, pgpinvoke.c, pgp.h, pgp.c, pattern.c, parse.h, parse.c, pager.h, pager.c, mx.h, mx.c, mutt_socket.h, mutt_regex.h, mutt_menu.h, mutt_curses.h, mutt.h, mime.h, mh.c, menu.c, mbox.c, mapping.h, main.c, mailbox.h, lib.c, keymap.h, keymap.c, init.h, init.c, imap.h, imap.c, hook.c, history.h, history.c, help.c, headers.c, hdrline.c, hash.h, hash.c, handler.c, gnupgparse.c, globals.h, getdomain.c, functions.h, from.c, flags.c, filter.c, enter.c, edit.c, dotlock.h, dotlock.c, date.c, curs_main.c, curs_lib.c, copy.h, copy.c, compose.c, complete.c, commands.c, color.c, charset.h, charset.c, buffy.h, buffy.c, browser.c, attach.h, attach.c, alias.c, addrbook.c, acconfig.h:
-	Get rid of RCS ids in source files.  They are getting in our way
-	when merging changes.
+	* configure.in: Don't add regex.c, but regex.o to the
+	LIBOBJS variable when needed.
 
-	* mx.c, mutt.h, init.h, hdrline.c, commands.c, attach.c:
-	Remove the use_mailcap variable. Instead, we introduce
-	implicit_autoview which triggers autoview for every content type
-	it's applicable to.
-
-	* thread.c, system.c, strcasecmp.c, status.c, sort.h, sort.c, socket.c, snprintf.c, signal.c, sha_locl.h, sha1dgst.c, sha.h, sendlib.c, send.c, score.c, rfc822.h, rfc822.c, rfc2047.h, rfc2047.c, rfc1524.h, rfc1524.c, resize.c, recvattach.c, query.c, protos.h, postpone.c, pop.c, pgppubring.c, pgpkey.c, pgpinvoke.c, pgp.h, pgp.c, pattern.c, parse.h, parse.c, pager.h, pager.c, mx.h, mx.c, mutt_socket.h, mutt_regex.h, mutt_menu.h, mutt_curses.h, mutt.h, mime.h, mh.c, menu.c, mbox.c, mapping.h, main.c, mailbox.h, lib.c, keymap.h, keymap.c, init.h, init.c, imap.h, imap.c, hook.c, history.h, history.c, help.c, headers.c, hdrline.c, hash.h, hash.c, handler.c, gnupgparse.c, globals.h, getdomain.c, functions.h, from.c, flags.c, filter.c, enter.c, edit.c, dotlock.h, dotlock.c, date.c, curs_main.c, curs_lib.c, copy.h, copy.c, compose.c, complete.c, commands.c, color.c, charset.h, charset.c, buffy.h, buffy.c, browser.c, attach.h, attach.c, alias.c, addrbook.c, acconfig.h:
-	Get rid of the rcsid fields.  They are getting in the way whenever I
-	merge changes into unstable.
-
-	* po/nl.po, init.h, configure.in: Merging changes from stable.
-
-	* configure.in:
-	Don't add regex.c, but regex.o to the LIBOBJS variable when needed.
-
-	* init.h: Fix default settings for use_mailcap and mime_forward.
+	* init.h: Fix default settings for use_mailcap and
+	mime_forward.
 
 Wed Jan  6 10:13:32 1999  Thomas Roessler  <roessler@guug.de>
-
-	* po/fr.po, po/de.po, sendlib.c, regex.c, protos.h, parse.c, mutt_regex.h, mbox.c, main.c, hdrline.c, from.c, date.c, configure.in, acconfig.h, _regex.h, Makefile.am, INSTALL:
-	[unstable] Merge changes from stable: rx -> regex, Byrial's timezone
-	patch, translation updates.
 
 	* sendlib.c, protos.h, parse.c, mbox.c, from.c, date.c:
 	Byrial's timezone patch, without the absurd optimizations.
 
-	* regex.c:
-	Use gnu regex instead of gnu rx.  This library is said to behave
-	better.  Additionally, it supports \<...\> patterns.  The files
-	_regex.h and regex.c included with this distribution correspond to
+	* regex.c: file regex.c was initially added on branch
+	mutt-1-0-stable.
+
+	* _regex.h: file _regex.h was initially added on branch
+	mutt-1-0-stable.
+
+	* Makefile.am, INSTALL: Use gnu regex instead of gnu rx.
+	This library is said to behave better.  Additionally, it
+	supports \<...\> patterns.  The files _regex.h and regex.c
+	included with this distribution correspond to
 	posix/regex.[ch] from the glibc 2.0.7t source tree.
 
-	* regex.c: file regex.c was initially added on branch mutt-1-0-stable.
-
-	* mutt_regex.h, main.c, configure.in, acconfig.h, _regex.h:
-	Use gnu regex instead of gnu rx.  This library is said to behave
-	better.  Additionally, it supports \<...\> patterns.  The files
-	_regex.h and regex.c included with this distribution correspond to
-	posix/regex.[ch] from the glibc 2.0.7t source tree.
-
-	* _regex.h:
-	file _regex.h was initially added on branch mutt-1-0-stable.
-
-	* Makefile.am, INSTALL:
-	Use gnu regex instead of gnu rx.  This library is said to behave
-	better.  Additionally, it supports \<...\> patterns.  The files
-	_regex.h and regex.c included with this distribution correspond to
-	posix/regex.[ch] from the glibc 2.0.7t source tree.
-
-	* po/nl.po, po/fr.po:
-	Various fixes to the NL translation; new French messages.
+	* po/nl.po, po/fr.po: Various fixes to the NL translation;
+	new French messages.
 
 Tue Jan  5 14:35:18 1999  Thomas Roessler  <roessler@guug.de>
 
-	* sendlib.c, mutt.h, main.c, configure.in, charset.h, charset.c, Makefile.am:
-	[unstable] Adding experimental new character set conversion code.
-
-	* po/de.po: Merging from stable.
-
 	* po/de.po: Fix a typo in de.po.
-
-	* po/de.po: [unstable] Merging changes from stable.
-
-	* po/nl.po, hdrline.c, curs_main.c, configure.in:
-	[unstable] merging changes from stable.
 
 	* hdrline.c: Conditionally display score and number of lines.
 
-	* po/nl.po:
-	[stable] Adding the NL translation; correcting some bugs in the DE
-	translation.
+	* po/nl.po: [stable] Adding the NL translation; correcting
+	some bugs in the DE translation.
 
-	* po/nl.po: file nl.po was initially added on branch mutt-1-0-stable.
-
-	* po/de.po, configure.in:
-	[stable] Adding the NL translation; correcting some bugs in the DE
-	translation.
+	* po/nl.po: file nl.po was initially added on branch
+	mutt-1-0-stable.
 
 Mon Jan  4 19:15:10 1999  Thomas Roessler  <roessler@guug.de>
 
-	* curs_main.c: [unstable] fix next-unread plus collapsing.
-
 	* curs_main.c: [stable] Fix next-unread when collapsing threads.
-
-	* curs_main.c: [unstable] merging changes from stable.
 
 	* curs_main.c: [stable] fix a bogus type cast.
 
-	* reldate.h, curs_main.c: [unstable] merging in changes from stable.
-
-	* curs_main.c:
-	[stable] Don't use the index elements of header structures when
-	new messages arrived on the index.
+	* curs_main.c: [stable] Don't use the index elements of
+	header structures when new messages arrived on the index.
 
 	* reldate.h: 0.95.1 should have a proper release date.
 
-	* send.c, pgp.c, handler.c, configure.in:
-	Make the experimental branch the main trunk.
+	* send.c, pgp.c, handler.c, configure.in: Make the
+	experimental branch the main trunk.
 
-	* po/uk.po, po/ru.po, po/pl.po, po/it.po, po/fr.po, po/es.po, po/de.po:
-	0.95.1 post-release commit.
-
-	* configure.in: [unstable] Create suitable version strings.
+	* po/uk.po, po/ru.po, po/pl.po, po/it.po, po/fr.po,
+	po/es.po, po/de.po: 0.95.1 post-release commit.
 
 	* VERSION, ChangeLog: [stable] Preparing 0.95.1.
-
-	* send.c: [unstable] commit changes from the stable tree.
-
-	* send.c:
-	[stable] When sending a message in batch mode failed, mutt would
-	dump core.  Patch from Byrial Jensen.
-
-	* pgp.c, handler.c: [unstable] Add multiple signature support.
-
-Mon Jan  4 12:57:55 1999  Thomas Roessler  <roessler@guug.de>
 
 	* send.c: When sending a message in batch mode failed, mutt
 	would dump core.  Patch from Byrial Jensen.

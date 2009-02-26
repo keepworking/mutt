@@ -32,25 +32,17 @@
 #include <string.h>
 #include <locale.h>
 
-static int _mutt_is_mail_list (ADDRESS *addr, LIST *p)
+int mutt_is_mail_list (ADDRESS *addr)
 {
+  LIST *p;
+
   if (addr->mailbox)
   {
-    for (;p; p = p->next)
+    for (p = MailLists; p; p = p->next)
       if (mutt_strncasecmp (addr->mailbox, p->data, mutt_strlen (p->data)) == 0)
 	return 1;
   }
   return 0;
-}
-
-int mutt_is_mail_list (ADDRESS *addr)
-{
-  return _mutt_is_mail_list (addr, MailLists);
-}
-
-int mutt_is_subscribed_list (ADDRESS *addr)
-{
-  return _mutt_is_mail_list (addr, SubscribedLists);
 }
 
 /* Search for a mailing list in the list of addresses pointed to by adr.
@@ -62,7 +54,7 @@ check_for_mailing_list (ADDRESS *adr, char *pfx, char *buf, int buflen)
 {
   for (; adr; adr = adr->next)
   {
-    if (mutt_is_subscribed_list (adr))
+    if (mutt_is_mail_list (adr))
     {
       if (pfx && buf && buflen)
 	snprintf (buf, buflen, "%s%s", pfx, mutt_get_name (adr));
@@ -81,7 +73,7 @@ check_for_mailing_list_addr (ADDRESS *adr, char *buf, int buflen)
 {
   for (; adr; adr = adr->next)
   {
-    if (mutt_is_subscribed_list (adr))
+    if (mutt_is_mail_list (adr))
     {
       if (buf && buflen)
 	snprintf (buf, buflen, "%s", adr->mailbox);
@@ -96,7 +88,7 @@ static int first_mailing_list (char *buf, size_t buflen, ADDRESS *a)
 {
   for (; a; a = a->next)
   {
-    if (mutt_is_subscribed_list (a))
+    if (mutt_is_mail_list (a))
     {
       mutt_save_path (buf, buflen, a);
       return 1;
@@ -503,7 +495,7 @@ hdr_format_str (char *dest,
 	else if (is_index && threads)
 	  snprintf (dest, destlen, buf2, " ");
 	else
-	  snprintf (dest, destlen, "");
+	  *dest = '\0';
       }
       else
       {
@@ -609,12 +601,10 @@ hdr_format_str (char *dest,
       ch = ' ';
 
 #ifdef _PGPPATH
-      if (hdr->pgp & PGPGOODSIGN)
-        ch = 'S';
-      else if (hdr->pgp & PGPENCRYPT)
+      if (hdr->pgp & PGPENCRYPT)
       	ch = 'P';
       else if (hdr->pgp & PGPSIGN)
-        ch = 's';
+        ch = 'S';
       else if (hdr->pgp & PGPKEY)
         ch = 'K';
 #endif
