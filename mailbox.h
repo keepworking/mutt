@@ -16,9 +16,6 @@
  *     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */ 
 
-#ifndef _MAILBOX_H
-#define _MAILBOX_H
-
 /* flags for mutt_open_mailbox() */
 #define M_NOSORT	(1<<0) /* do not sort the mailbox after opening it */
 #define M_APPEND	(1<<1) /* open mailbox for appending messages */
@@ -39,7 +36,10 @@ enum
 typedef struct
 {
   FILE *fp;	/* pointer to the message data */
+#ifdef USE_IMAP
+  CONTEXT *ctx;	/* context (mailbox) for this message */
   char *path;	/* path to temp file */
+#endif /* USE_IMAP */
   short magic;	/* type of mailbox this message belongs to */
   short write;	/* nonzero if message is open for writing */
 } MESSAGE;
@@ -53,8 +53,7 @@ void mx_fastclose_mailbox (CONTEXT *);
 
 int mx_close_mailbox (CONTEXT *);
 int mx_sync_mailbox (CONTEXT *);
-int mx_commit_message (MESSAGE *, CONTEXT *);
-int mx_close_message (MESSAGE **);
+int mx_close_message (MESSAGE **msg);
 int mx_get_magic (const char *);
 int mx_set_magic (const char *);
 int mx_check_mailbox (CONTEXT *, int *);
@@ -62,5 +61,3 @@ int mx_check_mailbox (CONTEXT *, int *);
 int mx_is_imap (const char *);
 #endif
 
-
-#endif
