@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -23,8 +23,7 @@
 #define M_CM_DISPLAY	(1<<3)	/* output is displayed to the user */
 #define M_CM_UPDATE	(1<<4)  /* update structs on sync */
 #define M_CM_WEED	(1<<5)  /* weed message/rfc822 attachment headers */
-#define M_CM_CHARCONV	(1<<6)  /* perform character set conversions */
-
+#define M_CM_CHARCONV	(1<<6)	/* perform character set conversions */
 
 #ifdef _PGPPATH
 #define M_CM_DECODE_PGP	(1<<7)	/* used for decoding PGP messages */

@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -18,9 +18,49 @@
 
 #include "mutt.h"
 
+
+
 #ifdef _PGPPATH
 #include "pgp.h"
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #include <sys/stat.h>
 #include <string.h>
@@ -50,7 +90,7 @@ void mutt_edit_headers (const char *editor,
     return;
   }
 
-  mutt_write_rfc822_header (ofp, msg->env, NULL, 1, 0);
+  mutt_write_rfc822_header (ofp, msg->env, NULL, 1);
   fputc ('\n', ofp);	/* tie off the header. */
 
   /* now copy the body of the message. */
@@ -108,10 +148,8 @@ void mutt_edit_headers (const char *editor,
   msg->env->reply_to = mutt_expand_aliases (msg->env->reply_to);
   msg->env->mail_followup_to = mutt_expand_aliases (msg->env->mail_followup_to);
 
-  /* search through the user defined headers added to see if either a 
-   * fcc: or attach-file: field was specified.  
-   */
-
+  /* search through the user defined headers added to see if either a * fcc:
+     or attach-file: field was specified.  */
   cur = msg->env->userhdrs;
   while (cur)
   {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -38,14 +38,12 @@ struct mapping_t Menus[] = {
  { "pager",	MENU_PAGER },
  { "postpone",	MENU_POST },
 
+  
 
 #ifdef _PGPPATH
  { "pgp",	MENU_PGP },
 #endif  
   
-#ifdef MIXMASTER
-  { "mix", 	MENU_MIX },
-#endif
   
 
  { "query",	MENU_QUERY },
@@ -380,8 +378,8 @@ int km_dokey (int menu)
       struct binding_t *bindings;
 
       /* is this a valid op for this menu? */
-      bindings = km_get_table (menu);
-      if ((func = get_func (bindings, tmp.op)))
+      if ((bindings = km_get_table (menu)) &&
+	  (func = get_func (bindings, tmp.op)))
 	return tmp.op;
 
       if (menu == MENU_EDITOR && get_func (OpEditor, tmp.op))
@@ -542,13 +540,7 @@ void km_init (void)
   create_bindings (OpPgp, MENU_PGP);
 #endif
 
-#ifdef MIXMASTER
-  create_bindings (OpMix, MENU_MIX);
-  
-  km_bindkey ("<space>", MENU_MIX, OP_GENERIC_SELECT_ENTRY);
-  km_bindkey ("h", MENU_MIX, OP_MIX_CHAIN_PREV);
-  km_bindkey ("l", MENU_MIX, OP_MIX_CHAIN_NEXT);
-#endif
+
   
   /* bindings for the line editor */
   create_bindings (OpEditor, MENU_EDITOR);
@@ -584,6 +576,8 @@ void km_init (void)
   km_bindkey ("8", MENU_GENERIC, OP_JUMP);
   km_bindkey ("9", MENU_GENERIC, OP_JUMP);
 
+  km_bindkey ("<enter>", MENU_GENERIC, OP_GENERIC_SELECT_ENTRY);
+
   /* Miscellaneous extra bindings */
   
   km_bindkey (" ", MENU_MAIN, OP_DISPLAY_MESSAGE);
@@ -592,6 +586,8 @@ void km_init (void)
   km_bindkey ("J", MENU_MAIN, OP_NEXT_ENTRY);
   km_bindkey ("K", MENU_MAIN, OP_PREV_ENTRY);
   km_bindkey ("x", MENU_MAIN, OP_EXIT);
+
+  km_bindkey ("<enter>", MENU_MAIN, OP_DISPLAY_MESSAGE);
 
   km_bindkey ("x", MENU_PAGER, OP_PAGER_EXIT);
   km_bindkey ("q", MENU_PAGER, OP_PAGER_EXIT);
@@ -614,7 +610,13 @@ void km_init (void)
   km_bindkey ("8", MENU_PAGER, OP_JUMP);
   km_bindkey ("9", MENU_PAGER, OP_JUMP);
 
+  km_bindkey ("<enter>", MENU_PAGER, OP_NEXT_LINE);
+  
   km_bindkey ("<return>", MENU_ALIAS, OP_TAG);
+  km_bindkey ("<enter>",  MENU_ALIAS, OP_TAG);
+
+  km_bindkey ("<enter>", MENU_ATTACH, OP_VIEW_ATTACH);
+  km_bindkey ("<enter>", MENU_COMPOSE, OP_VIEW_ATTACH);
 
   /* edit-to (default "t") hides generic tag-entry in Compose menu
      This will bind tag-entry to  "T" in the Compose menu */
@@ -743,10 +745,6 @@ struct binding_t *km_get_table (int menu)
 #endif
 
 
-#ifdef MIXMASTER
-    case MENU_MIX:
-      return OpMix;
-#endif
 
   }
   return NULL;

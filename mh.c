@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -528,7 +528,7 @@ int mh_commit_message (CONTEXT *ctx, MESSAGE *msg, HEADER *hdr)
   DIR *dirp;
   struct dirent *de;
   char *cp, *dep;
-  int n, hi = 0;
+  unsigned int n, hi = 0;
   char path[_POSIX_PATH_MAX];
   char tmp[16];
 
@@ -653,7 +653,7 @@ static int mh_sync_message (CONTEXT *ctx, int msgno)
       }
     }
   }
-
+  else mx_close_message (&dest);
 
   if (rc == -1)
   {

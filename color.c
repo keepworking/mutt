@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -703,8 +703,10 @@ _mutt_parse_color (BUFFER *buf, BUFFER *s, BUFFER *err,
   
 #ifdef HAVE_COLOR
 # ifdef HAVE_USE_DEFAULT_COLORS
-  if (has_colors() && use_default_colors () != OK 
-      && (fg == COLOR_DEFAULT || bg == COLOR_DEFAULT))
+  if (has_colors()
+    /* delay use_default_colors() until needed, since it initializes things */
+    && (fg == COLOR_DEFAULT || bg == COLOR_DEFAULT)
+    && use_default_colors () != OK)
   {
     strfcpy (err->data, _("default colors not supported"), err->dsize);
     return (-1);
