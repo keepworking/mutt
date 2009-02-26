@@ -44,11 +44,11 @@
 #include <errno.h>
 
 static struct mapping_t AttachHelp[] = {
-  { "Exit",  OP_EXIT },
-  { "Save",  OP_SAVE },
-  { "Pipe",  OP_PIPE },
-  { "Print", OP_PRINT },
-  { "Help",  OP_HELP },
+  { N_("Exit"),  OP_EXIT },
+  { N_("Save"),  OP_SAVE },
+  { N_("Pipe"),  OP_PIPE },
+  { N_("Print"), OP_PRINT },
+  { N_("Help"),  OP_HELP },
   { NULL }
 };
 
@@ -109,7 +109,11 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
     if (*idxlen == *idxmax)
       safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (*idxmax += 5));
 
-    if (m->type == TYPEMULTIPART && m->parts)
+    if (m->type == TYPEMULTIPART && m->parts
+#ifdef _PGPPATH
+	&& !mutt_is_multipart_encrypted(m)
+#endif
+	)
     {
       idx = mutt_gen_attach_list (m->parts, idx, idxlen, idxmax, level, compose);
     }
@@ -120,7 +124,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
       new->level = level;
 
       /* We don't support multipart messages in the compose menu yet */
-      if (!compose && mutt_is_message_type(m->type, m->subtype) && is_multipart (m->parts))
+      if (!compose && mutt_is_message_type(m->type, m->subtype))
       {
 	idx = mutt_gen_attach_list (m->parts, idx, idxlen, idxmax, level + 1, compose);
       }
@@ -170,7 +174,7 @@ const char *mutt_attach_fmt (char *dest,
       {
 	char s[SHORT_STRING];
 	_mutt_make_string (s, sizeof (s), MsgFmt, NULL, aptr->content->hdr,
-	    M_FORMAT_FORCESUBJ | M_FORMAT_MAKEPRINT);
+	    M_FORMAT_FORCESUBJ | M_FORMAT_MAKEPRINT | M_FORMAT_ARROWCURSOR);
 	if (*s)
 	{
 	  snprintf (dest, destlen, fmt, s);
@@ -243,7 +247,7 @@ const char *mutt_attach_fmt (char *dest,
 
 void attach_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 {
-  mutt_FormatString (b, blen, NONULL (AttachFormat), mutt_attach_fmt, (unsigned long) (((ATTACHPTR **)menu->data)[num]), 0);
+  mutt_FormatString (b, blen, NONULL (AttachFormat), mutt_attach_fmt, (unsigned long) (((ATTACHPTR **)menu->data)[num]), M_FORMAT_ARROWCURSOR);
 }
 
 int mutt_tag_attach (MUTTMENU *menu, int n)
@@ -275,7 +279,7 @@ static int mutt_query_save_attachment (FILE *fp, BODY *body, HEADER *hdr)
   else
     buf[0] = 0;
   
-  if (mutt_get_field ("Save to file: ", buf, sizeof (buf), M_FILE | M_CLEAR) != 0 
+  if (mutt_get_field (_("Save to file: "), buf, sizeof (buf), M_FILE | M_CLEAR) != 0
       || !buf[0])
     return -1;
 
@@ -302,10 +306,10 @@ static int mutt_query_save_attachment (FILE *fp, BODY *body, HEADER *hdr)
   else if (mutt_check_overwrite (body->filename, buf, tfile, sizeof (tfile), 0))
     return -1;
   
-  mutt_message ("Saving...");
+  mutt_message _("Saving...");
   if (mutt_save_attachment (fp, body, tfile, 0, (hdr || !is_message) ? hdr : body->hdr) == 0)
   {
-    mutt_message ("Attachment saved.");
+    mutt_message _("Attachment saved.");
     return 0;
   }
   
@@ -330,7 +334,7 @@ void mutt_save_attachment_list (FILE *fp, int tag, BODY *top, HEADER *hdr)
 	if (!buf[0])
 	{
 	  strfcpy (buf, NONULL (top->filename), sizeof (buf));
-	  if (mutt_get_field ("Save to file: ", buf, sizeof (buf),
+	  if (mutt_get_field (_("Save to file: "), buf, sizeof (buf),
 				    M_FILE | M_CLEAR) != 0 || !buf[0])
 	    return;
 	  mutt_expand_path (buf, sizeof (buf));
@@ -363,7 +367,7 @@ void mutt_save_attachment_list (FILE *fp, int tag, BODY *top, HEADER *hdr)
   }
 
   if (!option (OPTATTACHSPLIT) && (rc == 0))
-    mutt_message ("Attachment saved");
+    mutt_message _("Attachment saved");
 }
 
 static void
@@ -375,7 +379,7 @@ mutt_query_pipe_attachment (char *command, FILE *fp, BODY *body, int filter)
   if (filter)
   {
     snprintf (warning, sizeof (warning),
-	      "WARNING!  You are about to overwrite %s, continue?",
+	      _("WARNING!  You are about to overwrite %s, continue?"),
 	      body->filename);
     if (mutt_yesorno (warning, M_NO) != M_YES) {
       CLEARLINE (LINES-1);
@@ -393,7 +397,7 @@ mutt_query_pipe_attachment (char *command, FILE *fp, BODY *body, int filter)
       mutt_unlink (body->filename);
       mutt_rename_file (tfile, body->filename);
       mutt_update_encoding (body);
-      mutt_message ("Attachment filtered.");
+      mutt_message _("Attachment filtered.");
     }
   }
   else
@@ -459,8 +463,8 @@ void mutt_pipe_attachment_list (FILE *fp, int tag, BODY *top, int filter)
   buf[0] = 0;
   memset (&state, 0, sizeof (STATE));
 
-  if (mutt_get_field ((filter ? "Filter through: " : "Pipe to: "),
-				  buf, sizeof (buf), 0) != 0 || !buf[0])
+  if (mutt_get_field ((filter ? _("Filter through: ") : _("Pipe to: ")),
+				  buf, sizeof (buf), M_CMD) != 0 || !buf[0])
     return;
 
   mutt_expand_path (buf, sizeof (buf));
@@ -494,7 +498,7 @@ static int can_print (BODY *top, int tag)
 	{
 	  if (!mutt_can_decode (top))
 	  {
-	    mutt_error ("I dont know how to print %s attachments!", type);
+	    mutt_error (_("I dont know how to print %s attachments!"), type);
 	    return (0);
 	  }
 	}
@@ -557,7 +561,7 @@ static void print_attachment_list (FILE *fp, int tag, BODY *top)
 void mutt_print_attachment_list (FILE *fp, int tag, BODY *top)
 {
   pid_t thepid;
-  if (query_quadoption (OPT_PRINT, tag ? "Print tagged attachment(s)?" : "Print attachment?") != M_YES)
+  if (query_quadoption (OPT_PRINT, tag ? _("Print tagged attachment(s)?") : _("Print attachment?")) != M_YES)
     return;
 
   if (!option (OPTATTACHSPLIT))
@@ -585,7 +589,7 @@ bounce_attachment_list (ADDRESS *adr, int tag, BODY *body, HEADER *hdr)
     {
       if (!mutt_is_message_type (body->type, body->subtype))
       {
-	mutt_error ("You may only bounce message/rfc822 parts.");
+	mutt_error _("You may only bounce message/rfc822 parts.");
 	continue;
       }
       body->hdr->msgno = hdr->msgno;
@@ -606,6 +610,7 @@ static void query_bounce_attachment (int tag, BODY *top, HEADER *hdr)
   int rc;
 
   buf[0] = 0;
+  /* FIXME i18n */
   snprintf (prompt, sizeof (prompt), "Bounce %smessage%s to: ",
 	    tag ? "tagged " : "", tag ? "s" : "");
   rc = mutt_get_field (prompt, buf, sizeof (buf), M_ALIAS);
@@ -617,7 +622,8 @@ static void query_bounce_attachment (int tag, BODY *top, HEADER *hdr)
   adr = mutt_expand_aliases (adr);
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), adr);
-  snprintf (prompt, sizeof (prompt), "Bounce message%s to %s...?", (tag ? "s" : ""), buf);
+  snprintf (prompt, sizeof (prompt), tag ? _("Bounce messages to %s...?")
+	    : _("Bounce message to %s...?"), buf);
   if (mutt_yesorno (prompt, 1) != 1)
   {
     rfc822_free_address (&adr);
@@ -774,13 +780,20 @@ mutt_attach_display_loop (MUTTMENU *menu, int op, FILE *fp, ATTACHPTR **idx)
     toggle_option (OPTWEED);
 }
 
+
+#define CHECK_ATTACH if(option(OPTATTACHMSG)) \
+		     {\
+			mutt_flushinp (); \
+			mutt_error ("Function not permitted in attach-message mode."); \
+			break; \
+		     }
+
 void mutt_view_attachments (HEADER *hdr)
 {
 
 
 
 #ifdef _PGPPATH
-  char tempfile[_POSIX_PATH_MAX];
   int pgp = 0;
 #endif
 
@@ -796,6 +809,7 @@ void mutt_view_attachments (HEADER *hdr)
   short idxmax = 0;
   int flags = 0;
   int op;
+  int savedmenu = CurrentMenu;
   
   /* make sure we have parsed this message */
   mutt_parse_mime_message (Context, hdr);
@@ -806,46 +820,23 @@ void mutt_view_attachments (HEADER *hdr)
 
 
 #ifdef _PGPPATH
-  
   if((hdr->pgp & PGPENCRYPT) && !pgp_valid_passphrase())
   {
     mx_close_message(&msg);
     return;
   }
   
-  if ((hdr->pgp & PGPENCRYPT) && hdr->content->type == TYPEMULTIPART)
+  if ((hdr->pgp & PGPENCRYPT) && mutt_is_multipart_encrypted(hdr->content))
   {
-    STATE s;
-
-    memset (&s, 0, sizeof (s));
-    s.fpin = msg->fp;
-    mutt_mktemp (tempfile);
-    if ((fp = safe_fopen (tempfile, "w+")) == NULL)
+    if (pgp_decrypt_mime (msg->fp, &fp, hdr->content, &cur))
     {
-      mutt_perror (tempfile);
       mx_close_message (&msg);
       return;
     }
-    cur = pgp_decrypt_part (hdr->content->parts->next, &s, fp);
-    rewind (fp);
-
     pgp = 1;
   }
   else
 #endif /* _PGPPATH */
-
-
-
-
-
-
-
-
-
-
-
-
-
   {
     fp = msg->fp;
     cur = hdr->content;
@@ -857,8 +848,8 @@ void mutt_view_attachments (HEADER *hdr)
   menu->max = idxlen;
   menu->make_entry = attach_entry;
   menu->tag = mutt_tag_attach;
-  menu->menu = MENU_ATTACH;
-  menu->title = "Attachments";
+  menu->menu = CurrentMenu = MENU_ATTACH;
+  menu->title = _("Attachments");
   menu->data = idx;
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_ATTACH, AttachHelp);
 
@@ -913,14 +904,14 @@ void mutt_view_attachments (HEADER *hdr)
 
        if (menu->max == 1)
        {
-         mutt_message ("Only deletion of multipart attachments is supported.");
+         mutt_message _("Only deletion of multipart attachments is supported.");
        }
        else
        {
 #ifdef _PGPPATH
          if (hdr->pgp)
          {
-           mutt_message (
+           mutt_message _(
              "Deletion of attachments from PGP messages is unsupported.");
          }
          else
@@ -982,6 +973,7 @@ void mutt_view_attachments (HEADER *hdr)
        break;
 
       case OP_BOUNCE_MESSAGE:
+        CHECK_ATTACH;
 	query_bounce_attachment (menu->tagprefix, menu->tagprefix ? cur : idx[menu->current]->content, hdr);
 	break;
 
@@ -990,12 +982,12 @@ void mutt_view_attachments (HEADER *hdr)
       case OP_LIST_REPLY:
       case OP_FORWARD_MESSAGE:
 
-
+        CHECK_ATTACH;
 
 #ifdef _PGPPATH
 	if ((hdr->pgp & PGPENCRYPT) && hdr->content->type == TYPEMULTIPART)
 	{
-	  mutt_error (
+	  mutt_error _(
 	    "This operation is not currently supported for PGP messages.");
 	  break;
 	}
@@ -1046,13 +1038,13 @@ void mutt_view_attachments (HEADER *hdr)
 	{
 	  fclose (fp);
 	  mutt_free_body (&cur);
-	  unlink (tempfile);
 	}
 #endif /* _PGPPATH */
 
 
 
 	mutt_menuDestroy  (&menu);
+	CurrentMenu = savedmenu;
 	return;
     }
   }
