@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999   Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -36,20 +37,20 @@
 #include <getopt.h>
 #endif
 
-const char ReachingUs[] = N_("\
+static const char *ReachingUs = N_("\
 To contact the developers, please mail to <mutt-dev@mutt.org>.\n");
 
-const char Notice[] = N_("\
-Copyright (C) 1996-8 Michael R. Elkins and others.\n\
+static const char Notice = N_("\
+Copyright (C) 1996-9 Michael R. Elkins and others.\n\
 Mutt comes with ABSOLUTELY NO WARRANTY; for details type `mutt -vv'.\n\
 Mutt is free software, and you are welcome to redistribute it\n\
 under certain conditions; type `mutt -vv' for details.\n");
 
-const char Copyright[] = N_("\
-Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>\n\
-Copyright (C) 1997-8 Thomas Roessler <roessler@guug.de>\n\
-Copyright (C) 1998   Werner Koch <wk@isil.d.shuttle.de>\n\
-Copyright (C) 1998   Ruslan Ermilov <ru@ucb.crimea.ua>\n\
+static const char Copyright = N_("\
+Copyright (C) 1996-9 Michael R. Elkins <me@cs.hmc.edu>\n\
+Copyright (C) 1996-9 Brandon Long <blong@fiction.net>\n\
+Copyright (C) 1997-9 Thomas Roessler <roessler@guug.de>\n\
+Copyright (C) 1998-9 Werner Koch <wk@isil.d.shuttle.de>\n\
 \n\
 Lots of others not mentioned here contributed lots of code,\n\
 fixes, and suggestions.\n\
@@ -70,7 +71,7 @@ fixes, and suggestions.\n\
 ");
 #ifdef _PGPPATH
 
-const char ShaCopyright[] = N_("\n\
+const char* ShaCopyright = N_("\n\
 SHA1 implementation Copyright (C) 1995-7 Eric A. Young <eay@cryptsoft.com>\n\
 \n\
     Redistribution and use in source and binary forms, with or without\n\
@@ -130,7 +131,7 @@ static void show_version (void)
   struct utsname uts;
 
   printf ("Mutt %s (%s)\n", MUTT_VERSION, ReleaseDate);
-  puts (_(Notice));
+  puts (Notice);
 
   uname (&uts);
 
@@ -361,9 +362,10 @@ int main (int argc, char **argv)
   textdomain (PACKAGE);
 #endif
 
+  setlocale (LC_CTYPE, "");
+
   mutt_error = mutt_nocurses_error;
   SRAND (time (NULL));
-  setlocale (LC_CTYPE, "");
   umask (077);
 
   memset (Options, 0, sizeof (Options));
