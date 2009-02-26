@@ -119,6 +119,11 @@ sysexits_h[] =
 #endif /* HAVE_PGP */
 
 
+#ifdef HAVE_SMIME
+#include "smime.h"
+#endif /* HAVE_SMIME */
+
+
 
 #define DISPOSITION(X) X==DISPATTACH?"attachment":"inline"
 
@@ -441,6 +446,12 @@ int mutt_write_mime_header (BODY *a, FILE *f)
   return (ferror (f) ? -1 : 0);
 }
 
+#ifdef HAVE_PGP
+# define write_as_text_part(a) (mutt_is_text_part(a) || mutt_is_application_pgp(a))
+#else
+# define write_as_text_part(a) (mutt_is_text_part(a))
+#endif
+
 int mutt_write_mime_body (BODY *a, FILE *f)
 {
   char *p, boundary[SHORT_STRING];
@@ -495,17 +506,17 @@ int mutt_write_mime_body (BODY *a, FILE *f)
 
   if (a->type == TYPETEXT && (!a->noconv))
     fc = fgetconv_open (fpin, Charset, 
-			mutt_get_body_charset (send_charset, sizeof (send_charset), a), 
-			0);
+			mutt_get_body_charset (send_charset, sizeof (send_charset), a),
+			M_ICONV_HOOK_TO);
   else
     fc = fgetconv_open (fpin, 0, 0, 0);
 
   if (a->encoding == ENCQUOTEDPRINTABLE)
-    encode_quoted (fc, f, mutt_is_text_type (a->type, a->subtype));
+    encode_quoted (fc, f, write_as_text_part (a));
   else if (a->encoding == ENCBASE64)
-    encode_base64 (fc, f, mutt_is_text_type (a->type, a->subtype));
+    encode_base64 (fc, f, write_as_text_part (a));
   else if (a->type == TYPETEXT && (!a->noconv))
-    encode_8bit (fc, f, mutt_is_text_type (a->type, a->subtype));
+    encode_8bit (fc, f, write_as_text_part (a));
   else
     mutt_copy_stream (fpin, f);
 
@@ -514,6 +525,8 @@ int mutt_write_mime_body (BODY *a, FILE *f)
 
   return (ferror (f) ? -1 : 0);
 }
+
+#undef write_as_text_part
 
 #define BOUNDARYLEN 16
 void mutt_generate_boundary (PARAMETER **parm)
@@ -671,7 +684,6 @@ static size_t convert_file_to (FILE *file, const char *fromcode,
 			       int ncodes, const char **tocodes,
 			       int *tocode, CONTENT *info)
 {
-#ifdef HAVE_ICONV
   iconv_t cd1, *cd;
   char bufi[256], bufu[512], bufo[4 * sizeof (bufi)];
   ICONV_CONST char *ib, *ub;
@@ -682,7 +694,7 @@ static size_t convert_file_to (FILE *file, const char *fromcode,
   CONTENT_STATE *states;
   size_t *score;
 
-  cd1 = mutt_iconv_open ("UTF-8", fromcode, 0);
+  cd1 = mutt_iconv_open ("UTF-8", fromcode, M_ICONV_HOOK_FROM);
   if (cd1 == (iconv_t)(-1))
     return -1;
 
@@ -796,9 +808,6 @@ static size_t convert_file_to (FILE *file, const char *fromcode,
   safe_free ((void **) &states);
 
   return ret;
-#else
-  return -1;
-#endif /* !HAVE_ICONV */
 }
 
 /*
@@ -963,7 +972,7 @@ CONTENT *mutt_get_content_info (const char *fname, BODY *b)
  * exists.
  */
 
-static int lookup_mime_type (BODY *att, const char *path)
+int mutt_lookup_mime_type (BODY *att, const char *path)
 {
   FILE *f;
   char *p, *q, *ct;
@@ -998,7 +1007,7 @@ static int lookup_mime_type (BODY *att, const char *path)
 	strfcpy (buf, PKGDATADIR"/mime.types", sizeof (buf));
 	break;
       default:
-	dprint (1, (debugfile, "lookup_mime_type: Internal error, count = %d.\n", count));
+        dprint (1, (debugfile, "mutt_lookup_mime_type: Internal error, count = %d.\n", count));
 	goto bye;	/* shouldn't happen */
     }
 
@@ -1290,15 +1299,17 @@ BODY *mutt_make_message_attach (CONTEXT *ctx, HEADER *hdr, int attach_msg)
   BODY *body;
   FILE *fp;
   int cmflags, chflags;
-#ifdef HAVE_PGP
-  int pgp = hdr->pgp;
+#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
+  int pgp = hdr->security;
 #endif
 
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
   if ((option(OPTMIMEFORWDECODE) || option(OPTFORWDECRYPT)) &&
-      (hdr->pgp & PGPENCRYPT) && !pgp_valid_passphrase())
-    return (NULL);
-#endif /* HAVE_PGP */
+      (hdr->security & ENCRYPT)) {
+    if (!crypt_valid_passphrase(hdr->security))
+      return (NULL);
+  }
+#endif /* defined(HAVE_PGP) ||  defined(HAVE_SMIME) */
 
   mutt_mktemp (buffer);
   if ((fp = safe_fopen (buffer, "w+")) == NULL)
@@ -1325,12 +1336,16 @@ BODY *mutt_make_message_attach (CONTEXT *ctx, HEADER *hdr, int attach_msg)
 #ifdef HAVE_PGP
     pgp &= ~PGPENCRYPT;
 #endif
+#ifdef HAVE_SMIME
+    pgp &= ~SMIMEENCRYPT;
+#endif
   }
-#ifdef HAVE_PGP
+#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
   else
     if (option (OPTFORWDECRYPT)
-       && (hdr->pgp & PGPENCRYPT))
+       && (hdr->security & ENCRYPT))
   {
+#ifdef HAVE_PGP
     if (mutt_is_multipart_encrypted (hdr->content))
     {
       chflags |= CH_MIME | CH_NONEWLINE;
@@ -1343,6 +1358,18 @@ BODY *mutt_make_message_attach (CONTEXT *ctx, HEADER *hdr, int attach_msg)
       cmflags = M_CM_DECODE | M_CM_CHARCONV;
       pgp &= ~PGPENCRYPT;
     }
+#endif
+#if defined(HAVE_PGP) &&  defined(HAVE_SMIME)
+    else
+#endif
+#ifdef HAVE_SMIME
+    if (mutt_is_application_smime (hdr->content) & SMIMEENCRYPT)
+    {
+      chflags |= CH_MIME | CH_TXTPLAIN;
+      cmflags = M_CM_DECODE | M_CM_CHARCONV;
+      pgp &= ~SMIMEENCRYPT;
+    }
+#endif
   }
 #endif
 
@@ -1355,8 +1382,8 @@ BODY *mutt_make_message_attach (CONTEXT *ctx, HEADER *hdr, int attach_msg)
   body->hdr->offset = 0;
   /* we don't need the user headers here */
   body->hdr->env = mutt_read_rfc822_header(fp, body->hdr, 0, 0);
-#ifdef HAVE_PGP
-  body->hdr->pgp = pgp;
+#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
+  body->hdr->security = pgp;
 #endif /* HAVE_PGP */
   mutt_update_encoding (body);
   body->parts = body->hdr->content;
@@ -1380,7 +1407,7 @@ BODY *mutt_make_file_attach (const char *path)
 
 #if 0
   
-  if ((n = lookup_mime_type (buf, sizeof (buf), xbuf, sizeof (xbuf), path)) != TYPEOTHER 
+  if ((n = mutt_lookup_mime_type (buf, sizeof (buf), xbuf, sizeof (xbuf), path)) != TYPEOTHER 
       || *xbuf != '\0')
   {
     att->type = n;
@@ -1390,7 +1417,7 @@ BODY *mutt_make_file_attach (const char *path)
 
 #else
   
-  lookup_mime_type (att, path);
+  mutt_lookup_mime_type (att, path);
 
 #endif
   
@@ -2360,12 +2387,12 @@ int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int post, 
 
 #ifdef HAVE_PGP
   /* (postponment) if the mail is to be signed or encrypted, save this info */
-  if (post && (hdr->pgp & (PGPENCRYPT | PGPSIGN)))
+  if (post && (hdr->security & APPLICATION_PGP))
   {
     fputs ("X-Mutt-PGP: ", msg->fp);
-    if (hdr->pgp & PGPENCRYPT) 
+    if (hdr->security & ENCRYPT) 
       fputc ('E', msg->fp);
-    if (hdr->pgp & PGPSIGN)
+    if (hdr->security & SIGN)
     {
       fputc ('S', msg->fp);
       if (PgpSignAs && *PgpSignAs)
@@ -2374,6 +2401,25 @@ int mutt_write_fcc (const char *path, HEADER *hdr, const char *msgid, int post, 
     fputc ('\n', msg->fp);
   }
 #endif /* HAVE_PGP */
+
+#ifdef HAVE_SMIME
+  /* (postponment) if the mail is to be signed or encrypted, save this info */
+  if (post && (hdr->security & APPLICATION_SMIME))
+  {
+    fputs ("X-Mutt-SMIME: ", msg->fp);
+    if (hdr->security & ENCRYPT) {
+	fputc ('E', msg->fp);
+	if (SmimeCryptAlg && *SmimeCryptAlg)
+	    fprintf (msg->fp, "C<%s>", SmimeCryptAlg);
+    }
+    if (hdr->security & SIGN) {
+	fputc ('S', msg->fp);
+	if (SmimeDefaultKey && *SmimeDefaultKey)
+	    fprintf (msg->fp, "<%s>", SmimeDefaultKey);
+    }
+    fputc ('\n', msg->fp);
+  }
+#endif /* HAVE_SMIME */
 
 #ifdef MIXMASTER
   /* (postponement) if the mail is to be sent through a mixmaster 
