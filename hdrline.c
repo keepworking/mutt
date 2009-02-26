@@ -414,16 +414,8 @@ hdr_format_str (char *dest,
       break;
 
     case 'l':
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
-	snprintf (dest, destlen, fmt, (int) hdr->lines);
-      }
-      else
-      {
-	if (hdr->lines > 0)
-	  optional = 0;
-      }
+      snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+      snprintf (dest, destlen, fmt, (int) hdr->lines);
       break;
 
     case 'L':
@@ -456,16 +448,8 @@ hdr_format_str (char *dest,
       break;
 
     case 'N':
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
-	snprintf (dest, destlen, fmt, hdr->score);
-      }
-      else
-      {
-	if (hdr->score > 0)
-	  optional = 0;
-      }
+      snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+      snprintf (dest, destlen, fmt, hdr->score);
       break;
 
     case 'O':
