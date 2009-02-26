@@ -707,7 +707,7 @@ static int imap_reopen_mailbox (CONTEXT *ctx, int *index_hint)
       }
       if (!found)
       {
-	for (j = 0; j < i && j < old_msgcount; j++)
+	for (j = 0; j < i; j++)
 	{
 	  if (old_hdrs[j] == NULL)
 	    continue;
@@ -786,7 +786,7 @@ static int imap_exec (char *buf, size_t buflen,
   }
   while (mutt_strncmp (buf, seq, SEQLEN) != 0);
 
-  if (selctx && !selctx->closing && 
+  if (!selctx->closing && 
       (SELCTX_DATA->status == IMAP_NEW_MAIL || 
        SELCTX_DATA->status == IMAP_EXPUNGE))
   {
@@ -1109,9 +1109,9 @@ int imap_open_mailbox_append (CONTEXT *ctx)
       snprintf (buf, sizeof (buf), _("Create %s?"), CTX_DATA->mailbox);
       if (mutt_yesorno (buf, 1) < 1)
 	return (-1);
+      if (imap_create_mailbox (ctx) < 0)
+	return (-1);
     }
-    if (imap_create_mailbox (ctx) < 0)
-      return (-1);
   }
   else if (r == -1)
   {
@@ -1225,7 +1225,10 @@ int imap_fetch_message (MESSAGE *msg, CONTEXT *ctx, int msgno)
   /* This needs to be done in case this is a multipart message */
 #ifdef _PGPPATH
   ctx->hdrs[msgno]->pgp = pgp_query (ctx->hdrs[msgno]->content);
+  if (!ctx->hdrs[msgno]->pgp)
 #endif /* _PGPPATH */
+    if (mutt_needs_mailcap (ctx->hdrs[msgno]->content))
+      ctx->hdrs[msgno]->mailcap = 1;
 
   mutt_clear_error();
   rewind (msg->fp);
@@ -1246,7 +1249,6 @@ int imap_append_message (CONTEXT *ctx, MESSAGE *msg)
   FILE *fp;
   char seq[8];
   char buf[LONG_STRING];
-  char mbox[LONG_STRING];
   size_t len;
   int c, last;
   
@@ -1267,9 +1269,8 @@ int imap_append_message (CONTEXT *ctx, MESSAGE *msg)
   
   mutt_message _("Sending APPEND command ...");
   imap_make_sequence (seq, sizeof (seq));
-  imap_quote_string (mbox, sizeof (mbox), CTX_DATA->mailbox);
   snprintf (buf, sizeof (buf), "%s APPEND %s {%d}\r\n", seq, 
-	    mbox, len);
+      CTX_DATA->mailbox, len);
 
   mutt_socket_write (CTX_DATA->conn, buf);
 
