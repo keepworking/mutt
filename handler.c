@@ -37,10 +37,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 
 #define BUFI_SIZE 1000
 #define BUFO_SIZE 2000
@@ -83,7 +79,7 @@ static void state_prefix_put (const char *d, size_t dlen, STATE *s)
 static void convert_to_state(iconv_t cd, char *bufi, size_t *l, STATE *s)
 {
   char bufo[BUFO_SIZE];
-  const char *ib;
+  ICONV_CONST char *ib;
   char *ob;
   size_t ibl, obl;
 
@@ -1389,7 +1385,7 @@ int mutt_can_decode (BODY *a)
 
 
 
-#if defined(HAVE_PGP) ||  defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     if (ascii_strcasecmp (a->subtype, "signed") == 0 ||
 	ascii_strcasecmp (a->subtype, "encrypted") == 0)
       return (1);
@@ -1411,21 +1407,13 @@ int mutt_can_decode (BODY *a)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
   else if (a->type == TYPEAPPLICATION)
   {
-#ifdef HAVE_PGP
     if (mutt_is_application_pgp(a))
       return (1);
-#ifdef HAVE_SMIME
-    if (mutt_is_application_smime(a))
-      return (1);
-#endif
-#endif
   }
 #endif
-
-
 
 
 
@@ -1809,9 +1797,9 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     char *p;
-#endif /* HAVE_(PGP||SMIME) */
+#endif /* HAVE_PGP */
 
 
 
@@ -1820,18 +1808,21 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     else if (ascii_strcasecmp ("signed", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
         mutt_error _("Error: multipart/signed has no protocol.");
-      else if (s->flags & M_VERIFY)
-	handler = mutt_signed_handler;
+      else if (ascii_strcasecmp ("application/pgp-signature", p) == 0 ||
+	       ascii_strcasecmp ("multipart/mixed", p) == 0)
+      {
+	if (s->flags & M_VERIFY)
+	  handler = pgp_signed_handler;
+      }
     }
-#ifdef HAVE_PGP
-    else if (mutt_strcasecmp ("encrypted", b->subtype) == 0)
+    else if (ascii_strcasecmp ("encrypted", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
@@ -1841,7 +1832,7 @@ void mutt_body_handler (BODY *b, STATE *s)
         handler = pgp_encrypted_handler;
     }
 #endif /* HAVE_PGP */
-#endif /* HAVE_(PGP||SMIME) */
+
 
 
     if (!handler)
@@ -1850,20 +1841,13 @@ void mutt_body_handler (BODY *b, STATE *s)
 
 
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
   else if (b->type == TYPEAPPLICATION)
   {
-#ifdef HAVE_PGP
     if (mutt_is_application_pgp(b))
       handler = pgp_application_pgp_handler;
-#endif /* HAVE_PGP */
-#ifdef HAVE_SMIME
-    if (mutt_is_application_smime(b))
-      handler = smime_application_smime_handler;
-#endif /* HAVE_SMIME */
   }
-#endif /* HAVE_(PGP||SMIME) */
-
+#endif /* HAVE_PGP */
 
 
 
