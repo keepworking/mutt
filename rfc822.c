@@ -29,6 +29,7 @@
 #define FREE(x) safe_free(x)
 #define ISSPACE isspace
 #define strfcpy(a,b,c) {if (c) {strncpy(a,b,c);a[c-1]=0;}}
+#define STRING 128
 #include "rfc822.h"
 #endif
 
@@ -236,7 +237,7 @@ parse_route_addr (const char *s,
 		  char *comment, size_t *commentlen, size_t commentmax,
 		  ADDRESS *addr)
 {
-  char token[128];
+  char token[STRING];
   size_t tokenlen = 0;
 
   SKIPWS (s);
@@ -281,7 +282,7 @@ parse_addr_spec (const char *s,
 		 char *comment, size_t *commentlen, size_t commentmax,
 		 ADDRESS *addr)
 {
-  char token[128];
+  char token[STRING];
   size_t tokenlen = 0;
 
   s = parse_address (s, token, &tokenlen, sizeof (token) - 1, comment, commentlen, commentmax, addr);
@@ -312,7 +313,7 @@ add_addrspec (ADDRESS **top, ADDRESS **last, const char *phrase,
 ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 {
   const char *begin, *ps;
-  char comment[128], phrase[128];
+  char comment[STRING], phrase[STRING];
   size_t phraselen = 0, commentlen = 0;
   ADDRESS *cur, *last = NULL;
   
@@ -340,7 +341,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
       }
 
 #ifdef EXACT_ADDRESS
-      if (last)
+      if (last && !last->val)
 	last->val = mutt_substrdup (begin, s);
 #endif
       commentlen = 0;
@@ -390,13 +391,13 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 	phrase[phraselen] = 0;
 	add_addrspec (&top, &last, phrase, comment, &commentlen, sizeof (comment) - 1);
       }
-      else if (commentlen && !last->personal)
+      else if (commentlen && last && !last->personal)
       {
 	comment[commentlen] = 0;
 	last->personal = safe_strdup (comment);
       }
 #ifdef EXACT_ADDRESS
-      if (last)
+      if (last && !last->val)
 	last->val = mutt_substrdup (begin, s);
 #endif
 
@@ -758,7 +759,11 @@ int main (int argc, char **argv)
 {
   ADDRESS *list;
   char buf[256];
+# if 0
   char *str = "michael, Michael Elkins <me@cs.hmc.edu>, testing a really complex address: this example <@contains.a.source.route@with.multiple.hosts:address@example.com>;, lothar@of.the.hillpeople (lothar)";
+# else
+  char *str = "a b c ";
+# endif
   
   list = rfc822_parse_adrlist (NULL, str);
   buf[0] = 0;
