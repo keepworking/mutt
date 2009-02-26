@@ -33,7 +33,7 @@
  * SLcurses_waddnstr() can't take a "const char *", so this is only
  * declared "static" (sigh)
  */
-static char *EditorHelp = N_("\
+static char* EditorHelp = N_("\
 ~~		insert a line begining with a single ~\n\
 ~b users	add users to the Bcc: field\n\
 ~c users	add users to the Cc: field\n\
@@ -96,7 +96,7 @@ be_snarf_file (const char *path, char **buf, int *max, int *len, int verbose)
     buf = be_snarf_data (f, buf, max, len, 0, sb.st_size, 0);
     if (verbose)
     {
-      snprintf(tmp, sizeof(tmp), "\"%s\" %lu bytes\n", path, (unsigned long) sb.st_size);
+      snprintf(tmp, sizeof(tmp), "\"%s\" %d bytes\n", path, sb.st_size);
       addstr(tmp);
     }
     fclose (f);
