@@ -19,20 +19,7 @@
 #ifndef _CHARSET_H
 #define _CHARSET_H
 
-#ifdef HAVE_ICONV_H
 #include <iconv.h>
-#endif
-
-#ifndef HAVE_ICONV_T_DEF
-typedef void *iconv_t;
-#endif
-
-#ifndef HAVE_ICONV
-#define ICONV_CONST /**/
-iconv_t iconv_open (const char *, const char *);
-size_t iconv (iconv_t, ICONV_CONST char **, size_t *, char **, size_t *);
-int iconv_close (iconv_t);
-#endif
 
 int mutt_convert_string (char **, const char *, const char *, int);
 
@@ -43,13 +30,12 @@ typedef void * FGETCONV;
 
 FGETCONV *fgetconv_open (FILE *, const char *, const char *, int);
 int fgetconv (FGETCONV *);
+char * fgetconvs (char *, size_t, FGETCONV *);
 void fgetconv_close (FGETCONV **);
 
 void mutt_set_langinfo_charset (void);
 
 #define M_ICONV_HOOK_FROM 1
-#if 0
 #define M_ICONV_HOOK_TO   2
-#endif
 
 #endif /* _CHARSET_H */
