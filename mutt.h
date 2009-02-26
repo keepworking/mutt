@@ -28,9 +28,6 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <signal.h>
-#ifdef HAVE_WCHAR_H
-#include <wchar.h>
-#endif
 
 #ifndef _POSIX_PATH_MAX
 #include <posix1_lim.h>
@@ -202,7 +199,6 @@ enum
   M_PGP_ENCRYPT,
   M_PGP_KEY,
 #endif
-  M_XLABEL,
   
   /* Options for Mailcap lookup */
   M_EDIT,
@@ -246,7 +242,6 @@ enum
   OPT_MIMEFWD,
   OPT_MOVE,
   OPT_COPY,
-  OPT_POPDELETE,
   OPT_POSTPONE,
   OPT_QUIT,
   OPT_REPLYTO,
@@ -314,6 +309,7 @@ enum
   OPTSSLV2,
   OPTSSLV3,
   OPTTLSV1,
+  OPTSSLSYSTEMCERTS,
 #endif
   OPTIMPLICITAUTOVIEW,
   OPTMAILCAPSANITIZE,
@@ -327,6 +323,7 @@ enum
   OPTPAGERSTOP,
   OPTPIPEDECODE,
   OPTPIPESPLIT,
+  OPTPOPDELETE,
   OPTPOPLAST,
   OPTPRINTDECODE,
   OPTPROMPTAFTER,
@@ -466,7 +463,6 @@ typedef struct envelope
   char *message_id;
   char *supersedes;
   char *date;
-  char *x_label;
   LIST *references;		/* message references (in reverse order) */
   LIST *userhdrs;		/* user defined headers */
 } ENVELOPE;

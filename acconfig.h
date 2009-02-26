@@ -12,7 +12,7 @@
 #undef MUTTLOCALEDIR
 
 /* Enable debugging info */
-#define DEBUG
+#undef DEBUG
 
 /* What is your domain name? */
 #undef DOMAIN
@@ -98,9 +98,6 @@
 /* The "buffy_size" feature */
 #undef BUFFY_SIZE
 
-/* The Sun mailtool attachments support */
-#undef SUN_ATTACHMENT 
-
 /* The result of isprint() is unreliable? */
 #undef LOCALES_HACK
 
@@ -175,21 +172,3 @@
 /* Define if you have resizeterm, as a function or macro.  */
 #undef HAVE_RESIZETERM
 
-/* Some systems declare sig_atomic_t as volatile, smome others -- no.
- * This define will have value `sig_atomic_t' or `volatile sig_atomic_t'
- * accordingly. */
-#undef SIG_ATOMIC_VOLATILE_T
-
-/* Define to 'int' if system headers don't define. */
-#undef wchar_t
-
-/* Define to 'int' if system headers don't define. */
-#undef wint_t
-
-/* Define to 'int' if system headers don't define. */
-#undef mbstate_t
-
-/* Define if we are using the system's wchar_t functions. */
-#undef HAVE_WC_FUNCS
-
-  
