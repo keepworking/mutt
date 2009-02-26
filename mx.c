@@ -108,22 +108,15 @@ retry_lock:
   mutt_clear_error();
   if((r = invoke_dotlock(path, flags, retry)) == DL_EX_EXIST)
   {
-    if (!option (OPTNOCURSES))
+    char msg[LONG_STRING];
+
+    snprintf(msg, sizeof(msg), _("Lock count exceeded, remove lock for %s?"),
+	     path);
+    if(retry && mutt_yesorno(msg, 1) == 1)
     {
-      char msg[LONG_STRING];
-      
-      snprintf(msg, sizeof(msg), _("Lock count exceeded, remove lock for %s?"),
-	       path);
-      if(retry && mutt_yesorno(msg, 1) == 1)
-      {
-	flags |= DL_FL_FORCE;
-	retry--;
-	goto retry_lock;
-      }
-    } 
-    else
-    {
-      mutt_error ( _("Can't dotlock %s.\n"), path);
+      flags |= DL_FL_FORCE;
+      retry--;
+      goto retry_lock;
     }
   }
   return (r == DL_EX_OK ? 0 : -1);
