@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1998 Ruslan Ermilov <ru@ucb.crimea.ua>
+ * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -25,25 +25,75 @@
 
 typedef int CHARSET_MAP[256];
 
-typedef struct 
+typedef struct descr
 {
-  CHARSET_MAP *map;
-} 
+  char *symbol;
+  int repr;
+}
+CHARDESC;
+
+typedef struct
+{
+  char *charset;
+  char escape_char;
+  char comment_char;
+  short multbyte;
+  LIST *aliases;
+}
+CHARMAP;
+
+typedef struct
+{
+  size_t n_symb;
+  size_t u_symb;
+
+  short multbyte;
+  HASH *symb_to_repr;
+  CHARDESC **description;
+}
 CHARSET;
 
-#define mutt_unicode_char(cm,ch) (!cm ? -1 : (*cm)[ch])
+#define DECODER_BUFFSIZE 4096
+
+struct decoder_buff
+{
+  size_t size, used;
+  char buff[DECODER_BUFFSIZE];
+};
+
+typedef struct decoder
+{
+  short src_is_utf8;
+  short just_take_id;
+  short forced;
+  
+  /* used for utf-8 decoding */
+  CHARSET *chs;
+
+  /* used for 8-bit to 8-bit recoding */
+  CHARSET_MAP *chm;
+  
+  /* the buffers */
+  struct decoder_buff in;
+  struct decoder_buff out;
+  struct decoder_buff *_in;
+} 
+DECODER;
+
+DECODER *mutt_open_decoder (const char *, const char *);
+void mutt_decoder_push (DECODER *, void *, size_t, size_t *);
+void mutt_decoder_pop (DECODER *, void *, size_t, size_t *);
+void mutt_decoder_pop_to_state (DECODER *, STATE *);
+void mutt_free_decoder (DECODER **);
+int mutt_decoder_push_one (DECODER *, char);
 
 CHARSET *mutt_get_charset(const char *);
 CHARSET_MAP *mutt_get_translation(const char *, const char *);
-
-unsigned char mutt_display_char(unsigned char, CHARSET_MAP *);
-
 int mutt_display_string(char *, CHARSET_MAP *);
 int mutt_is_utf8(const char *);
-
+int mutt_recode_file (const char *, const char *, const char *);
+unsigned char mutt_display_char(unsigned char, CHARSET_MAP *);
 void mutt_decode_utf8_string(char *, CHARSET *);
-
-void state_fput_utf8(STATE *, char, CHARSET *);
 
 #endif
 

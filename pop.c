@@ -206,8 +206,8 @@ void mutt_fetchPopMail (void)
   }
   
   snprintf (msgbuf, sizeof (msgbuf),
-	    msgs > 1 ? _("Reading new messages (%d bytes)...") :
-		    _("Reading new message (%d bytes)..."), bytes);
+	    msgs > 1 ? _("Reading %d new message (%d bytes)...") :
+		    _("Reading %d new messages (%d bytes)..."), msgs - last, bytes);
   mutt_message (msgbuf);
 
   for (i = last + 1 ; i <= msgs ; i++)
@@ -304,11 +304,7 @@ void mutt_fetchPopMail (void)
       }
     }
 
-	if ( msgs > 1)
-		mutt_message (_("%s [%d of %d messages read]"), msgbuf, i, msgs);
-	else
-		mutt_message (_("%s [%d message read]"), msgbuf, msgs);
-  
+    mutt_message (_("%s [%d messages read]"), msgbuf, i);
   }
 
   if (msg)
