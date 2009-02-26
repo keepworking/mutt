@@ -807,16 +807,9 @@ int mx_close_mailbox (CONTEXT *ctx)
     {
       if (ctx->hdrs[i]->read && !ctx->hdrs[i]->deleted)
       {
-	if (mutt_append_message (&f, ctx, ctx->hdrs[i], 0, CH_UPDATE_LEN) == 0)
-	{
-	  ctx->hdrs[i]->deleted = 1;
-	  ctx->deleted++;
-	}
-	else
-	{
-	  mx_close_mailbox (&f);
-	  return -1;
-	}
+	mutt_append_message (&f, ctx, ctx->hdrs[i], 0, CH_UPDATE_LEN);
+	ctx->hdrs[i]->deleted = 1;
+	ctx->deleted++;
       }
     }
 
