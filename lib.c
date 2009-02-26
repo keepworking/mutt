@@ -155,9 +155,6 @@ void mutt_free_header (HEADER **h)
   mutt_free_body (&(*h)->content);
   safe_free ((void **) &(*h)->tree);
   safe_free ((void **) &(*h)->path);
-#ifdef MIXMASTER
-  mutt_free_list (&(*h)->chain);
-#endif
   safe_free ((void **) h);
 }
 
@@ -1234,7 +1231,7 @@ char *mutt_quote_filename(const char *f)
   
   for(i = 0, l = 3; f[i]; i++, l++)
   {
-    if(f[i] == '\'')
+    if(f[i] == '\'' || f[i] == '`')
       l += 3;
   }
   
@@ -1245,11 +1242,11 @@ char *mutt_quote_filename(const char *f)
   
   for(i = 0; f[i]; i++)
   {
-    if(f[i] == '\'')
+    if(f[i] == '\'' || f[i] == '`')
     {
       d[l++] = '\'';
       d[l++] = '\\';
-      d[l++] = '\'';
+      d[l++] = f[i];
       d[l++] = '\'';
     }
     else
@@ -1314,24 +1311,4 @@ int mutt_strncasecmp(const char *a, const char *b, size_t l)
 size_t mutt_strlen(const char *a)
 {
   return a ? strlen (a) : 0;
-}
-
-const char *mutt_stristr (const char *haystack, const char *needle)
-{
-  const char *p, *q;
-
-  if (!haystack)
-    return NULL;
-  if (!needle)
-    return (haystack);
-
-  while (*(p = haystack))
-  {
-    for (q = needle; *p && *q && tolower (*p) == tolower (*q); p++, q++)
-      ;
-    if (!*q)
-      return (haystack);
-    haystack++;
-  }
-  return NULL;
 }
