@@ -22,18 +22,10 @@
 #include "copy.h"
 #include "rfc2047.h"
 #include "parse.h"
-#include "mime.h"
-
-#ifdef _PGPPATH
-#include "pgp.h"
-#endif
-
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h> /* needed for SEEK_SET under SunOS 4.1.4 */
-
-extern char MimeSpecials[];
 
 static int copy_delete_attach(HEADER *h, HEADER *p, BODY *m, FILE *fpin,
                               FILE *fpout, int flags);
@@ -172,7 +164,8 @@ mutt_copy_hdr (FILE *in, FILE *out, long off_start, long off_end, int flags,
 	{
 	  if (!strncasecmp (buf, t->data, strlen (t->data)))
 	  {
-	    dprint(2, (debugfile, "Reorder: %s matches %s", t->data, buf));
+	    dprint(2, (debugfile, "Reorder: %s matches %s\n", t->data, 
+		       headers[x]));
 	    break;
 	  }
 	}
@@ -265,7 +258,7 @@ mutt_copy_hdr (FILE *in, FILE *out, long off_start, long off_end, int flags,
  	CH_NOSTATUS	ignore the Status: and X-Status:
  	CH_PREFIX	quote header with $indent_str
  	CH_REORDER	output header in order specified by `hdr_order'
-  	CH_TXTPLAIN	generate text/plain MIME headers [hack alert.]
+  	CH_TXTPLAIN	generate text/plain MIME headers
  	CH_UPDATE	write new Status: and X-Status:
  	CH_UPDATE_LEN	write new Content-Length: and Lines:
  	CH_XMIT		ignore Lines: and Content-Length:
@@ -278,21 +271,16 @@ mutt_copy_hdr (FILE *in, FILE *out, long off_start, long off_end, int flags,
 int
 mutt_copy_header (FILE *in, HEADER *h, FILE *out, int flags, const char *prefix)
 {
-  char buffer[SHORT_STRING];
-
   if (mutt_copy_hdr (in, out, h->offset, h->content->offset, flags, prefix) == -1)
     return (-1);
 
   if (flags & CH_TXTPLAIN)
   {
     fputs ("Mime-Version: 1.0\n", out);
+    fputs ("Content-Type: text/plain\n", out);
     fputs ("Content-Transfer-Encoding: 8bit\n", out);
-    fputs ("Content-Type: text/plain; charset=", out);
-    rfc822_cat(buffer, sizeof(buffer), Charset, MimeSpecials);
-    fputs(buffer, out);
-    fputc('\n', out);
   }
-
+  
   if (flags & CH_UPDATE)
   {
     if ((flags & CH_NOSTATUS) == 0)
@@ -349,8 +337,6 @@ mutt_copy_header (FILE *in, HEADER *h, FILE *out, int flags, const char *prefix)
 
   if ((flags & CH_NONEWLINE) == 0)
   {
-    if (flags & CH_PREFIX)
-      fputs(prefix, out);
     if (fputc ('\n', out) == EOF) /* add header terminator */
       return (-1);
   }
@@ -370,7 +356,6 @@ mutt_copy_header (FILE *in, HEADER *h, FILE *out, int flags, const char *prefix)
  	M_CM_DECODE	decode message body to text/plain
  	M_CM_DISPLAY	displaying output to the user
 	M_CM_UPDATE	update structures in memory after syncing
-	M_CM_DECODE_PGP	used for decoding PGP messages
    chflags	flags to mutt_copy_header()
  */
 
@@ -414,37 +399,17 @@ _mutt_copy_message (FILE *fpout, FILE *fpin, HEADER *hdr, BODY *body,
     if (flags & M_CM_DISPLAY)
       s.flags |= M_DISPLAY;
 
+
+
 #ifdef _PGPPATH
     if (flags & M_CM_VERIFY)
       s.flags |= M_VERIFY;
 #endif
 
+
+
     mutt_body_handler (body, &s);
   }
-#ifdef _PGPPATH
-  else if ((flags & M_CM_DECODE_PGP) && (hdr->pgp & PGPENCRYPT) &&
-      hdr->content->type == TYPEMULTIPART)
-  {
-    BODY *cur;
-    FILE *fp;
-
-    if (pgp_decrypt_mime (fpin, &fp, hdr->content, &cur))
-      return (-1);
-    fputs ("Mime-Version: 1.0\n", fpout);
-    mutt_write_mime_header (cur, fpout);
-    fputc ('\n', fpout);
-
-    fseek (fp, cur->offset, 0);
-    if (mutt_copy_bytes (fp, fpout, cur->length) == -1)
-    {
-      fclose (fp);
-      mutt_free_body (&cur);
-      return (-1);
-    }
-    mutt_free_body (&cur);
-    fclose (fp);
-  }
-#endif
   else
   {
     fseek (fpin, body->offset, 0);
@@ -566,7 +531,7 @@ static int copy_delete_attach(HEADER *h, HEADER *p, BODY *m, FILE *fpin,
   {
     if (m == NULL)
     {
-      mutt_error _("Confused when attempting to delete attachment, h & m can't be NULL");
+      mutt_error ("Confused when attempting to delete attachment, h & m can't be NULL");
       return -1;
     }
     b = m;
@@ -581,7 +546,7 @@ static int copy_delete_attach(HEADER *h, HEADER *p, BODY *m, FILE *fpin,
   /* Find first deleted attachment */
   if (b->parts == NULL)
   {
-    mutt_error _("Deleting non-multipart messages not yet supported");
+    mutt_error ("Deleting non-multipart messages not yet supported");
     return -1;
   }
   b = b->parts;

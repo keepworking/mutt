@@ -40,12 +40,12 @@ typedef struct entry
 } ENTRY;
 
 static struct mapping_t QueryHelp[] = {
-  { N_("Exit"),   OP_EXIT },
-  { N_("Mail"),   OP_MAIL },
-  { N_("New Query"),  OP_QUERY },
-  { N_("Make Alias"), OP_CREATE_ALIAS },
-  { N_("Search"), OP_SEARCH },
-  { N_("Help"),   OP_HELP },
+  { "Exit",   OP_EXIT },
+  { "Mail",   OP_MAIL },
+  { "New Query",  OP_QUERY },
+  { "Make Alias", OP_CREATE_ALIAS },
+  { "Search", OP_SEARCH },
+  { "Help",   OP_HELP },
   { NULL }
 };
 
@@ -80,7 +80,7 @@ static QUERY *run_query (char *s, int quiet)
   int l;
 
 
-  mutt_expand_file_fmt (cmd, sizeof(cmd), QueryCmd, s);
+  snprintf (cmd, sizeof (cmd), QueryCmd, s);
 
   if ((thepid = mutt_create_filter (cmd, NULL, &fp, NULL)) < 0)
   {
@@ -88,7 +88,7 @@ static QUERY *run_query (char *s, int quiet)
     return 0;
   }
   if (!quiet)
-    mutt_message _("Waiting for response...");
+    mutt_message ("Waiting for response...");
   fgets (msg, sizeof (msg) - 1, fp);
   while (fgets(buf, sizeof (buf) - 1, fp))
   {
@@ -189,7 +189,7 @@ int mutt_query_complete (char *buf, size_t buflen)
 
   if (!QueryCmd)
   {
-    mutt_error _("Query command not defined.");
+    mutt_error ("Query command not defined.");
     return 0;
   }
 
@@ -214,7 +214,7 @@ void mutt_query_menu (char *buf, size_t buflen)
 {
   if (!QueryCmd)
   {
-    mutt_error _("Query command not defined.");
+    mutt_error ("Query command not defined.");
     return;
   }
 
@@ -239,23 +239,20 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
   int i, done = 0;
   int op;
   char helpstr[SHORT_STRING];
-  char title[STRING];
-  int savedmenu = CurrentMenu;
-
-  snprintf (title, sizeof (title), _("Query")); /* FIXME */
+  char title[STRING] = "Query";
 
   menu = mutt_new_menu ();
   menu->make_entry = query_entry;
   menu->search = query_search;
   menu->tag = query_tag;
-  menu->menu = CurrentMenu = MENU_QUERY;
+  menu->menu = MENU_QUERY;
   menu->title = title;
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_QUERY, QueryHelp);
 
   if (results == NULL)
   {
     /* Prompt for Query */
-    if (mutt_get_field (_("Query: "), buf, buflen, 0) == 0 && buf[0])
+    if (mutt_get_field ("Query: ", buf, buflen, 0) == 0 && buf[0])
     {
       results = run_query (buf, 0);
     }
@@ -266,7 +263,7 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
     /* tell whoever called me to redraw the screen when I return */
     set_option (OPTNEEDREDRAW);
 
-    snprintf (title, sizeof (title), _("Query '%s'"), buf);
+    snprintf (title, sizeof (title), "Query '%s'", buf);
 
     /* count the number of results */
     for (queryp = results; queryp; queryp = queryp->next)
@@ -283,7 +280,7 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
       {
 	case OP_QUERY_APPEND:
 	case OP_QUERY:
-	  if (mutt_get_field (_("Query: "), buf, buflen, 0) == 0 && buf[0])
+	  if (mutt_get_field ("Query: ", buf, buflen, 0) == 0 && buf[0])
 	  {
 	    QUERY *newresults = NULL;
 
@@ -292,7 +289,7 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
 	    menu->redraw = REDRAW_FULL;
 	    if (newresults)
 	    {
-	      snprintf (title, sizeof (title), _("Query '%s'"), buf);
+	      snprintf (title, sizeof (title), "Query '%s'", buf);
 
 	      if (op == OP_QUERY)
 	      {
@@ -464,5 +461,4 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
   }
 
   mutt_menuDestroy (&menu);
-  CurrentMenu = savedmenu;
 }
