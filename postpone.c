@@ -241,12 +241,8 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur)
       file[0] = '\0';
       if (b->filename)
 	strfcpy (file, b->filename, sizeof (file));
-      else
-	/* avoid Content-Disposition: header with temporary filename */
-	b->use_disp = 0;
-
-      mutt_adv_mktemp (file, sizeof(file));
-      if (mutt_save_attachment (msg->fp, b, file, 0, NULL) == -1)
+      mutt_adv_mktemp (file);
+      if (mutt_save_attachment (msg->fp, b, file, 0) == -1)
       {
 	mutt_free_envelope (&hdr->env);
 	mutt_free_body (&hdr->content);
@@ -259,7 +255,6 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur)
       b->filename = safe_strdup (file);
       b->unlink = 1;
       mutt_free_body (&b->parts);
-      mutt_stamp_attachment(b);
       b = b->next;
     }
     h->content->parts = NULL;
@@ -267,7 +262,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur)
   else
   {
     mutt_mktemp (file);
-    if (mutt_save_attachment (msg->fp, h->content, file, 0, NULL) == -1)
+    if (mutt_save_attachment (msg->fp, h->content, file, 0) == -1)
     {
       mutt_free_envelope (&hdr->env);
       mx_close_message (&msg);
@@ -275,7 +270,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur)
       safe_free ((void **) &PostContext);
       return (-1);
     }
-    hdr->content = mutt_make_file_attach (file);
+    hdr->content = mutt_make_attach (file);
     hdr->content->use_disp = 0;	/* no content-disposition */
     hdr->content->unlink = 1;	/* delete when we are done */
   }
