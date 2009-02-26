@@ -67,6 +67,17 @@ alias_format_str (char *dest, size_t destlen, char op, const char *src,
   return (src);
 }
 
+int alias_search (MUTTMENU *m, regex_t *re, int n)
+{
+  char s[LONG_STRING];
+  int slen = sizeof(s);
+
+  mutt_FormatString (s, slen, NONULL (AliasFmt), alias_format_str,
+                    (unsigned long) ((ALIAS **) m->data)[n], 0);
+  return regexec (re, s, 0, NULL, 0);
+}
+
+
 void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
 {
   mutt_FormatString (s, slen, NONULL (AliasFmt), alias_format_str, (unsigned long) ((ALIAS **) m->data)[num], M_FORMAT_ARROWCURSOR);
@@ -74,7 +85,7 @@ void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
 
 int alias_tag (MUTTMENU *menu, int n)
 {
-  return ((((ALIAS **) menu->data)[n]->tagged = !((ALIAS **) menu->data)[n]->tagged) ? 1 : -1);
+  return (((ALIAS **) menu->data)[n]->tagged = !((ALIAS **) menu->data)[n]->tagged);
 }
 
 static int alias_SortAlias (const void *a, const void *b)
@@ -126,6 +137,7 @@ void mutt_alias_menu (char *buf, size_t buflen, ALIAS *aliases)
 
   menu = mutt_new_menu ();
   menu->make_entry = alias_entry;
+  menu->search = alias_search;
   menu->tag = alias_tag;
   menu->menu = MENU_ALIAS;
   menu->title = _("Aliases");
