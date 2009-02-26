@@ -18,6 +18,7 @@
 
 #include "mutt.h"
 #include "mime.h"
+#include "charset.h"
 #include "rfc2047.h"
 
 #include <ctype.h>
@@ -35,7 +36,7 @@ static void q_encode_string (char *d, size_t dlen, const unsigned char *s)
   char *wptr = d;
 
   snprintf (charset, sizeof (charset), "=?%s?Q?",
-	    strcasecmp ("us-ascii", charset) == 0 ? "unknown-8bit" : Charset);
+	    strcasecmp ("us-ascii", NONULL(Charset)) == 0 ? "unknown-8bit" : NONULL(Charset));
   cslen = strlen (charset);
 
   strcpy (wptr, charset);
@@ -110,7 +111,7 @@ static void b_encode_string (char *d, size_t dlen, const unsigned char *s)
   int cslen;
   int wordlen;
 
-  snprintf (charset, sizeof (charset), "=?%s?B?", Charset);
+  snprintf (charset, sizeof (charset), "=?%s?B?", NONULL(Charset));
   cslen = strlen (charset);
   strcpy (wptr, charset);
   wptr += cslen;
@@ -176,7 +177,7 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
   {
     if (*p & 0x80)
       count++;
-    else if (*p == '=' && *p == '?')
+    else if (*p == '=' && *(p+1) == '?')
     {
       count += 2;
       p++;
@@ -188,8 +189,8 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
     return;
   }
 
-  if (strcasecmp("us-ascii", Charset) == 0 ||
-      strncasecmp("iso-8859", Charset, 8) == 0)
+  if (strcasecmp("us-ascii", NONULL(Charset)) == 0 ||
+      strncasecmp("iso-8859", NONULL(Charset), 8) == 0)
     encoder = q_encode_string;
   else
   {
@@ -244,6 +245,7 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
   char *pp = p;
   char *pd = d;
   int enc = 0, filter = 0, count = 0, c1, c2, c3, c4;
+  char *charset;
 
   while ((pp = strtok (pp, "?")) != NULL)
   {
@@ -251,8 +253,11 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
     switch (count)
     {
       case 2:
-	if (strcasecmp (pp, Charset) != 0)
+	if (strcasecmp (pp, NONULL(Charset)) != 0)
+        {
 	  filter = 1;
+	  charset = pp;
+	}
 	break;
       case 3:
 	if (toupper (*pp) == 'Q')
@@ -319,17 +324,20 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
     }
     pp = 0;
   }
-  safe_free ((void **) &p);
   if (filter)
   {
-    pd = d;
-    while (*pd)
+    if (mutt_display_string(d, mutt_get_charset(charset), mutt_get_charset(Charset)) == -1)
     {
-      if (!IsPrint (*pd))
-	*pd = '?';
-      pd++;
+      pd = d;
+      while (*pd)
+      {
+        if (!IsPrint (*pd))
+	  *pd = '?';
+        pd++;
+      }
     }
   }
+  safe_free ((void **) &p);
   return (0);
 }
 
