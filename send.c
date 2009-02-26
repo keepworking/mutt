@@ -969,12 +969,15 @@ static void encode_descriptions (BODY *b, short recurse)
 static void decode_descriptions (BODY *b)
 {
   BODY *t;
+  char tmp[LONG_STRING];
   
   for (t = b; t; t = t->next)
   {
     if (t->description)
     {
-      rfc2047_decode (&t->description);
+      /* this should really have the same interface as rfc2047_encode_string. */
+      rfc2047_decode (tmp, t->description, sizeof (tmp));
+      mutt_str_replace (&t->description, tmp);
     }
     if (t->parts)
       decode_descriptions (t->parts);
@@ -1148,7 +1151,7 @@ ci_send_message (int flags,		/* send mode */
 
     /* change settings based upon recipients */
     
-    mutt_message_hook (msg, M_SENDHOOK);
+    mutt_send_hook (msg);
 
     if (killfrom)
     {

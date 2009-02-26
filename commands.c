@@ -42,6 +42,14 @@
 
 
 
+
+
+
+
+
+
+
+
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -106,8 +114,6 @@ int mutt_display_message (HEADER *cur)
     mutt_error _("Could not create temporary file!");
     return (0);
   }
-
-   mutt_message_hook (cur, M_DISPLAYHOOK);
 
   if (!Pager || mutt_strcmp (Pager, "builtin") == 0)
     builtin = 1;
@@ -211,17 +217,9 @@ void ci_bounce_message (HEADER *h, int *redraw)
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), adr);
 
-#define extra_space (15 + 7 + 2)
-  /*
-   * This is the printing width of "...? ([y=yes]/n=no): ?" plus 2
-   * for good measure. This is not ideal. FIXME.
-   */
-  snprintf (prompt, sizeof (prompt),
+  snprintf (prompt, (COLS > sizeof(prompt) ? sizeof(prompt) : COLS) - 13, 
            (h ? _("Bounce message to %s") : _("Bounce messages to %s")), buf);
-  mutt_format_string (prompt, sizeof (prompt),
-		      0, COLS-extra_space, 0, 0,
-		      prompt, sizeof (prompt));
-  strcat (prompt, "...?");
+  strcat(prompt, "...?");
   if (mutt_yesorno (prompt, 1) != 1)
   {
     rfc822_free_address (&adr);
