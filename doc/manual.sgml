@@ -135,7 +135,7 @@ You can remap the <em/editor/ functions using the <ref id="bind" name="bind">
 command.  For example, to make the <em/Delete/ key delete the character in
 front of the cursor rather than under, you could use
 
-<tt/bind editor delete backspace/
+<tt/bind editor &lt;delete&gt; backspace/
 
 <sect1>Reading Mail - The Index and Pager
 <p>
@@ -671,6 +671,7 @@ defined maps are:
 <item>compose
 <item>pager
 <item>pgp
+<item>postpone
 </itemize>
 
 <em/key/ is the key (or key sequence) you wish to bind.  To specify a
@@ -748,7 +749,7 @@ folder-hook . set sort=date-sent
 
 <sect1>Keyboard macros<label id="macro">
 <p>
-Usage: <tt/macro/ <em/menu/ <em/key/ <em/sequence/
+Usage: <tt/macro/ <em/menu/ <em/key/ <em/sequence/ &lsqb; <em/description/ &rsqb;
 
 Macros are useful when you would like a single key to perform a series of
 actions.  When you press <em/key/ in menu <em/menu/, Mutt will behave as if
@@ -760,6 +761,9 @@ key.
 id="bind" name="key bindings">, with the addition that control
 characters in <em/sequence/ can also be specified as <em/&circ;x/.  In
 order to get a caret (``&circ;'') you need to use <em/&circ;&circ;/.
+
+Optionally you can specify a descriptive text, which is shown in the
+help screens.
 
 <bf/Note:/ Macro definitions (if any) listed in the help screen(s), are
 silently truncated at the screen width, and are not wrapped.   
@@ -991,6 +995,10 @@ Usage: <tt/hdr&lowbar;order/ <em/header1/ <em/header2/ <em/header3/
 
 With this command, you can specify an order in which mutt will attempt
 to present headers to you when viewing messages.
+
+``unhdr_order *'' will clear all previous headers from the order list,
+thus removing the header order effects set by the system-wide startup
+file.
 
 <tscreen><verb>
 hdr&lowbar;order From Date: From: To: Cc: Subject:
@@ -1381,7 +1389,8 @@ messages:
 Where EXPR, USER, ID, and SUBJECT are 
 <ref id="regexp" name="regular expressions">.
 
-*) The forms <tt/&lt;[MAX]/, <tt/&gt;[MIN]/, <tt/[MIN]-/ and <tt/-[MAX]/
+*) The forms <tt/&lt;&lsqb;MAX&rsqb;/, <tt/&gt;&lsqb;MIN&rsqb;/,
+<tt/&lsqb;MIN&rsqb;-/ and <tt/-&lsqb;MAX&rsqb;/
 are allowed, too.
 
 <sect2>Complex Patterns
@@ -2266,6 +2275,8 @@ The following are the commands understood by mutt.
 <item>
 <tt><ref id="hdr_order" name="hdr&lowbar;order"></tt> <em/header/ &lsqb; <em/header/ ... &rsqb;
 <item>
+<tt><ref id="hdr_order" name="unhdr&lowbar;order"></tt> <em/header/ &lsqb; <em/header/ ... &rsqb;
+<item>
 <tt><ref id="lists" name="lists"></tt> <em/address/ &lsqb; <em/address/ ... &rsqb; 
 <item>
 <tt><ref id="lists" name="unlists"></tt> <em/address/ &lsqb; <em/address/ ... &rsqb; 
@@ -2397,6 +2408,30 @@ Default: unset
 
 If set, Mutt will prompt you for carbon-copy (Cc) recipients before editing
 the body of an outgoing message.
+
+<sect2>attach&lowbar;format<label id="attach_format">
+<p>
+Type: format string<newline>
+Default: &dquot;&percnt;u&percnt;D&percnt;t&percnt;2n &percnt;T&percnt;.40d&percnt;&gt; &lsqb;&percnt;.7m/&percnt;.10M, &percnt;.6e, &percnt;s&rsqb;&nbsp;&dquot;
+
+This variable describes the format of the `attachment' menu.  The
+following printf-style sequences are understood:
+
+<tscreen><verb>
+%D      deleted flag
+%d      description
+%e      MIME content-transfer-encoding
+%f      filename
+%m      major MIME type
+%M      MIME subtype
+%n      attachment number
+%s      size
+%t      tagged flag
+%u      unlink (=to delete) flag
+
+%>X     right justify the rest of the string and pad with character "X"
+%|X     pad to the end of the line with character "X"
+</verb></tscreen>
 
 <sect2>attribution<label id="attribution">
 <p>
@@ -2690,11 +2725,23 @@ Type: boolean<newline>
 Default: set
 
 Controls the decoding of complex MIME messages into text/plain when
-forwarding a message and the message header is also RFC2047 decoded.
+forwarding a message.  The message header is also RFC2047 decoded.
 This variable is only used, if <ref id="mime_forward"
 name="mime&lowbar;forward"> is <em/unset/, otherwise <ref
-id="mime_forward_decode" name="mime&lowbar;forward&lowbar;decode"> is
-used instead.
+id="mime_forward_decode" name="mime&lowbar;forward&lowbar;decode">
+is used instead.
+
+<sect2>forward&lowbar;decrypt<label id="forward_decrypt">
+<p>
+Type: boolean<newline>
+Default: unset
+
+Controls the handling of encrypted messages when forwarding a
+message.  When set, the outer layer of encryption is stripped off.
+This variable is only used if <ref id="mime_forward"
+name="mime&lowbar;forward"> is <em/set/ and <ref
+id="mime_forward_decode" name="mime&lowbar;forward&lowbar;decode">
+is <em/unset/.
 
 <sect2>forward&lowbar;format<label id="forward_format">
 <p>
@@ -2745,6 +2792,17 @@ bound to a sequence rather than a single keystroke.  Also, the help line
 may not be updated if a binding is changed while Mutt is running.  Since
 this variable is primarily aimed at new users, neither of these should
 present a major problem.
+
+<sect2>hidden&lowbar;host<label id="hidden_host">
+<p>
+Type: boolean<newline>
+Default: unset
+
+When set, mutt will skip the host name part of <ref
+id="hostname" name="hostname"> variable when adding the
+domain part to addresses.  This variable does not affect
+the generation, and it will not lead to the cut-off of
+first-level domains.
 
 <sect2>history<label id="history">
 <p>
@@ -2940,10 +2998,15 @@ the <ref id="smart_wrap" name="&dollar;smart&lowbar;wrap"> variable.
 <sect2>mask<label id="mask">
 <p>
 Type: string<newline>
-Default: "^(&bsol;.&bsol;.&dollar;|&lsqb;^.&rsqb;)"
+Default: "!^&bsol;.&lsqb;^.&rsqb;"
 
-A regular expression used in the file browser. Files whose names don't
-match this mask will not be shown.
+A regular expression used in the file browser, optionally preceded by
+the <em/not/ operator ``!''. Files whose names don't match this mask
+will not be shown. The match is always case-sensitive.
+
+<bf/Note:/ if you need ``!'' at the beginning of the regular expression
+you should enclose it in paranthesis, in order to distinguish it from
+the logical <em/not/ operator for the expression.
 
 <sect2>mbox<label id="mbox">
 <p>
@@ -2992,6 +3055,16 @@ the high bit removed.  For example, if the key pressed has an ASCII value of
 0xf4, then this is treated as if the user had pressed ESC then ``x''.  This
 is because the result of removing the high bit from ``0xf4'' is ``0x74'',
 which is the ASCII character ``x''.
+
+<sect2>mh&lowbar;purge<label id="mh_purge">
+<p>
+Type: boolean<newline>
+Default: unset
+
+When unset, mutt will mimic mh's behaviour and rename deleted
+messages to <em/,&lt;old file name&gt;/ in mh folders instead of
+really deleting them.  If the variable is set, the message files
+will simply be deleted.
 
 <sect2>mime&lowbar;forward<label id="mime_forward">
 <p>
@@ -3636,8 +3709,8 @@ Type: string<newline>
 Default: /usr/lib/sendmail -oi -oem
 
 Specifies the program and arguments used to deliver mail sent by Mutt.
-Mutt expects that the specified program will read the message header for
-recipients.
+Mutt expects that the specified program interprets
+additional arguments as recipient addresses.
 
 <sect2>sendmail&lowbar;wait<label id="sendmail_wait">
 <p>
@@ -3712,6 +3785,15 @@ Controls the display of lines longer then the screen width in the
 internal pager. If set, long lines are wrapped at a word boundary.
 If unset, lines are simply wrapped at the screen edge. Also see the
 <ref id="markers" name="&dollar;markers"> variable.
+
+<sect2>smileys<label id="smileys">
+<p>
+Type: string<newline>
+Default: (&gt;From)|(:&lsqb;-^&rsqb;?&lsqb;&rsqb;&lsqb;)(&gt;&lt;}{|/DP&rsqb;)
+
+The <em/pager/ uses this variable to catch some common false
+positives of <ref id="quote_regexp" name="quote&lowbar;regexp">,
+most notably smileys in the beginning of a line
 
 <sect2>sort<label id="sort">
 <p>
@@ -4071,6 +4153,15 @@ a single message will be displayed before writing a mailbox.
 
 Also see the <ref id="read_inc" name="&dollar;read&lowbar;inc"> variable.
 
+<sect2>write&lowbar;bcc<label id="write_bcc">
+<p>
+Type: boolean<newline>
+Default: set
+
+Controls whether mutt writes out the Bcc header when
+preparing messages to be sent.  Exim users may wish to use
+this.
+
 <sect1>Functions<label id="functions">
 <p>
 The following is the list of available functions listed by the mapping
@@ -4330,7 +4421,7 @@ send-message               y   send the message
 toggle-unlink              u   toggle whether to delete file after sending it
 view-attach              RET   view attachment using mailcap entry if necessary
 </verb>
-<sect2>postponed
+<sect2>postpone
 <p>
 <verb>
 delete-entry               d   delete the current entry
@@ -4380,14 +4471,14 @@ quote-char                ^V   quote the next typed key
 
 <sect1>Acknowledgements
 <p>
-Kari Hurrta
+Kari Hurtta
 <htmlurl url="mailto:kari.hurtta@fmi.fi" name="&lt;kari.hurtta@fmi.fi&gt;">
 co-developed the original MIME parsing code back in the ELM-ME days.
 
 The following people have been very helpful to the development of Mutt:
 
-Francois Berjon <htmlurl url="mailto:Francois.Berjon@aar.alcatel-alsthom.fr"
-name="&lt;Francois.Berjon@aar.alcatel-alsthom.fr&gt;">,<newline>
+Vikas Agnihotri <htmlurl url="mailto:VikasA@att.com" name="&lt;VikasA@att.com&gt;">,<newline>
+Francois Berjon <htmlurl url="mailto:Francois.Berjon@aar.alcatel-alsthom.fr" name="&lt;Francois.Berjon@aar.alcatel-alsthom.fr&gt;">,<newline>
 Aric Blumer <htmlurl url="mailto:aric@fore.com" name="&lt;aric@fore.com&gt;">,<newline>
 John Capo <htmlurl url="mailto:jc@irbs.com" name="&lt;jc@irbs.com&gt;">,<newline>
 Liviu Daia <htmlurl url="mailto:daia@stoilow.imar.ro" name="&lt;daia@stoilow.imar.ro&gt;">,<newline>
@@ -4397,10 +4488,12 @@ Michael Finken <htmlurl url="mailto:finken@conware.de" name="&lt;finken@conware.
 Sven Guckes <htmlurl url="mailto:guckes@math.fu-berlin.de" name="&lt;guckes@math.fu-berlin.de&gt;">,<newline>
 Mark Holloman <htmlurl url="mailto:holloman@nando.net" name="&lt;holloman@nando.net&gt;">,<newline>
 Andreas Holzmann <htmlurl url="mailto:holzmann@fmi.uni-passau.de" name="&lt;holzmann@fmi.uni-passau.de&gt;">,<newline>
+Byrial Jensen <htmlurl url="mailto:byrial@post3.tele.dk" name="&lt;byrial@post3.tele.dk&gt;">,<newline>
 David Jeske <htmlurl url="mailto:jeske@igcom.net" name="&lt;jeske@igcom.net&gt;">,<newline>
 Christophe Kalt <htmlurl url="mailto:kalt@hugo.int-evry.fr" name="&lt;kalt@hugo.int-evry.fr&gt;">,<newline>
 Felix von Leitner (a.k.a ``Fefe'') <htmlurl url="mailto:leitner@math.fu-berlin.de" name="&lt;leitner@math.fu-berlin.de&gt;">,<newline>
 Brandon Long <htmlurl url="mailto:blong@fiction.net" name="&lt;blong@fiction.net&gt;">,<newline>
+Jimmy Mäkelä <htmlurl url="mailto:jmy@flashback.net" name="&lt;jmy@flashback.net&gt;">,<newline>
 Lars Marowsky-Bree <htmlurl url="mailto:lmb@pointer.in-minden.de" name="&lt;lmb@pointer.in-minden.de&gt;">,<newline>
 Thomas ``Mike'' Michlmayr <htmlurl url="mailto:mike@cosy.sbg.ac.at" name="&lt;mike@cosy.sbg.ac.at&gt;">,<newline>
 David O'Brien <htmlurl url="mailto:obrien@Nuxi.cs.ucdavis.edu" name="&lt;obrien@Nuxi.cs.ucdavis.edu&gt;">,<newline>
@@ -4408,8 +4501,9 @@ Clint Olsen <htmlurl url="mailto:olsenc@ichips.intel.com" name="&lt;olsenc@ichip
 Park Myeong Seok <htmlurl url="mailto:pms@romance.kaist.ac.kr" name="&lt;pms@romance.kaist.ac.kr&gt;">,<newline>
 Thomas Parmelan <htmlurl url="mailto:tom@ankh.fr.eu.org" name="&lt;tom@ankh.fr.eu.org&gt;">,<newline>
 Ollivier Robert <htmlurl url="mailto:roberto@keltia.freenix.fr" name="&lt;roberto@keltia.freenix.fr&gt;">,<newline>
-Thomas Roessler <htmlurl url="mailto:roessler@guug.de" name="&lt;roessler@guug.de&gt;">,<newline>
+Roland Rosenfeld <htmlurl url="roland@spinnaker.rhein.de" name="&lt;roland@spinnaker.rhein.de&gt;">,<newline>
 Allain Thivillon <htmlurl url="mailto:Allain.Thivillon@alma.fr" name="&lt;Allain.Thivillon@alma.fr&gt;">,<newline>
+Gero Treuner <htmlurl url="mailto:gero@faveve.uni-stuttgart.de" name="&lt;gero@faveve.uni-stuttgart.de&gt;">,<newline>
 Ken Weinert <htmlurl url="mailto:kenw@ihs.com" name="&lt;kenw@ihs.com&gt;">
 
 <sect1>About this document
