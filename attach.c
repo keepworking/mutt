@@ -40,47 +40,6 @@
 #include <string.h>
 #include <errno.h>
 
-int mutt_get_tmp_attachment (BODY *a)
-{
-  char type[STRING];
-  char tempfile[_POSIX_PATH_MAX];
-  rfc1524_entry *entry = rfc1524_new_entry();
-  FILE *fpin = NULL, *fpout = NULL;
-  struct stat st;
-  
-  if(a->unlink)
-    return 0;
-
-  snprintf(type, sizeof(type), "%s/%s", TYPE(a), a->subtype);
-  rfc1524_mailcap_lookup(a, type, entry, 0);
-  rfc1524_expand_filename(entry->nametemplate, a->filename, 
-			  tempfile, sizeof(tempfile));
-  
-  rfc1524_free_entry(&entry);
-
-  if(stat(a->filename, &st) == -1)
-    return -1;
-  
-  if((fpin = fopen(a->filename, "r")) && (fpout = safe_fopen(tempfile, "w")))
-  {
-    mutt_copy_stream (fpin, fpout);
-    FREE(&a->filename);
-    a->filename = safe_strdup(tempfile);
-    a->unlink = 1;
-
-    if(a->stamp >= st.st_mtime)
-      mutt_stamp_attachment(a);
-  }
-  else
-    mutt_perror(fpin ? tempfile : a->filename);
-  
-  if(fpin)  fclose(fpin);
-  if(fpout) fclose(fpout);
-  
-  return a->unlink ? 0 : -1;
-}
-
-
 /* return 1 if require full screen redraw, 0 otherwise */
 int mutt_compose_attachment (BODY *a)
 {
@@ -106,9 +65,9 @@ int mutt_compose_attachment (BODY *a)
       {
 	dprint(1, (debugfile, "oldfile: %s\t newfile: %s\n",
 				  a->filename, newfile));
-	if (safe_symlink (a->filename, newfile) == -1)
+	if (symlink (a->filename, newfile) == -1)
 	{
-	  if (!mutt_yesorno (_("Can't match nametemplate, continue?"), 1))
+	  if (!mutt_yesorno ("Can't match nametemplate, continue?", 1))
 	    goto bailout;
 	}
 	unlink_newfile = 1;
@@ -120,7 +79,7 @@ int mutt_compose_attachment (BODY *a)
 				      command, sizeof (command)))
       {
 	/* For now, editing requires a file, no piping */
-	mutt_error _("Mailcap compose entry requires %%s");
+	mutt_error ("Mailcap compose entry requires %%s");
       }
       else
       {
@@ -134,7 +93,7 @@ int mutt_compose_attachment (BODY *a)
 
 	  if ((fp = safe_fopen (a->filename, "r")) == NULL)
 	  {
-	    mutt_perror _("Failure to open file to parse headers.");
+	    mutt_perror ("Failure to open file to parse headers.");
 	    goto bailout;
 	  }
 
@@ -165,7 +124,7 @@ int mutt_compose_attachment (BODY *a)
 	    mutt_mktemp (tempfile);
 	    if ((tfp = safe_fopen (tempfile, "w")) == NULL)
 	    {
-	      mutt_perror _("Failure to open file to strip headers.");
+	      mutt_perror ("Failure to open file to strip headers.");
 	      goto bailout;
 	    }
 	    mutt_copy_stream (fp, tfp);
@@ -183,8 +142,7 @@ int mutt_compose_attachment (BODY *a)
   else
   {
     rfc1524_free_entry (&entry);
-    mutt_message (_("No mailcap compose entry for %s, creating empty file."),
-		   type);
+    mutt_message ("No mailcap compose entry for %s, creating empty file.",type);
     return 1;
   }
 
@@ -229,9 +187,9 @@ int mutt_edit_attachment (BODY *a)
       {
 	dprint(1, (debugfile, "oldfile: %s\t newfile: %s\n",
 				  a->filename, newfile));
-	if (safe_symlink (a->filename, newfile) == -1)
+	if (symlink (a->filename, newfile) == -1)
 	{
-	  if (!mutt_yesorno (_("Can't match nametemplate, continue?"), 1))
+	  if (!mutt_yesorno ("Can't match nametemplate, continue?", 1))
 	    goto bailout;
 	}
 	unlink_newfile = 1;
@@ -243,7 +201,7 @@ int mutt_edit_attachment (BODY *a)
 				      command, sizeof (command)))
       {
 	/* For now, editing requires a file, no piping */
-	mutt_error _("Mailcap Edit entry requires %%s");
+	mutt_error ("Mailcap Edit entry requires %%s");
       }
       else
       {
@@ -261,7 +219,7 @@ int mutt_edit_attachment (BODY *a)
   else
   {
     rfc1524_free_entry (&entry);
-    mutt_error (_("No mailcap edit entry for %s"),type);
+    mutt_error ("No mailcap edit entry for %s",type);
     return 0;
   }
 
@@ -329,7 +287,7 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
       {
 	/* fallback to view as text */
 	rfc1524_free_entry (&entry);
-	mutt_error _("No matching mailcap entry found.  Viewing as text.");
+	mutt_error ("No matching mailcap entry found.  Viewing as text.");
 	flag = M_AS_TEXT;
 	use_mailcap = 0;
       }
@@ -342,7 +300,7 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
   {
     if (!entry->command)
     {
-      mutt_error _("MIME type not defined.  Cannot view attachment.");
+      mutt_error ("MIME type not defined.  Cannot view attachment.");
       goto return_error;
     }
     strfcpy (command, entry->command, sizeof (command));
@@ -358,12 +316,12 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
     if (rfc1524_expand_filename (entry->nametemplate, fname,
 				 tempfile, sizeof (tempfile)))
     {
-      if (fp == NULL && strcmp(tempfile, a->filename))
+      if (fp == NULL)
       {
 	/* send case: the file is already there */
-	if (safe_symlink (a->filename, tempfile) == -1)
+	if (symlink (a->filename, tempfile) == -1)
 	{
-	  if (mutt_yesorno (_("Can't match nametemplate, continue?"), 1) == M_YES)
+	  if (mutt_yesorno ("Can't match nametemplate, continue?", 1) == M_YES)
 	    strfcpy (tempfile, a->filename, sizeof (tempfile));
 	  else
 	    goto return_error;
@@ -403,41 +361,51 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
   if (use_mailcap)
   {
     pid_t thepid = 0;
-    int tempfd = -1, pagerfd = -1;
-    
+    FILE *pagerfp = NULL;
+    FILE *tempfp = NULL;
+    FILE *filter_in;
+    FILE *filter_out;
+
     if (!use_pager)
       endwin ();
 
     if (use_pager || use_pipe)
     {
-      if (use_pager && ((pagerfd = safe_open (pagerfile, O_CREAT | O_EXCL | O_WRONLY)) == -1))
+      if (use_pager && ((pagerfp = safe_fopen (pagerfile, "w")) == NULL))
       {
-	mutt_perror ("open");
+	mutt_perror ("fopen");
 	goto return_error;
       }
-      if (use_pipe && ((tempfd = open (tempfile, 0)) == -1))
+      if (use_pipe && ((tempfp = fopen (tempfile, "r")) == NULL))
       {
-	if(pagerfd != -1)
-	  close(pagerfd);
-	mutt_perror ("open");
-	goto return_error;
-      }
-
-      if ((thepid = mutt_create_filter_fd (command, NULL, NULL, NULL,
-					   use_pipe ? tempfd : -1, use_pager ? pagerfd : -1, -1)) == -1)
-      {
-	if(pagerfd != -1)
-	  close(pagerfd);
-	
-	if(tempfd != -1)
-	  close(tempfd);
-
-	mutt_error _("Cannot create filter");
+	if (pagerfp)
+	  fclose (pagerfp);
+	mutt_perror ("fopen");
 	goto return_error;
       }
 
+      if ((thepid = mutt_create_filter (command, use_pipe ? &filter_in : NULL,
+					use_pager ? &filter_out : NULL, NULL)) == -1)
+      {
+	if (pagerfp)
+	  fclose (pagerfp);
+	if (tempfp)
+	  fclose (tempfp);
+	mutt_error ("Cannot create filter");
+	goto return_error;
+      }
+
+      if (use_pipe)
+      {
+	mutt_copy_stream (tempfp, filter_in);
+	fclose (tempfp);
+	fclose (filter_in);
+      }
       if (use_pager)
       {
+	mutt_copy_stream (filter_out, pagerfp);
+	fclose (filter_out);
+	fclose (pagerfp);
 	if (a->description)
 	  snprintf (descrip, sizeof (descrip),
 		    "---Command: %-20.20s Description: %s",
@@ -450,10 +418,6 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag)
       if ((mutt_wait_filter (thepid) || (entry->needsterminal &&
 	  option (OPTWAITKEY))) && !use_pager)
 	mutt_any_key_to_continue (NULL);
-      
-      close(tempfd);
-      close(pagerfd);
-      
     }
     else
     {
@@ -633,7 +597,7 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
 	chflags = CH_FROM;
       chflags |= (ctx.magic == M_MAILDIR ? CH_NOSTATUS : CH_UPDATE);
       if ((r = _mutt_copy_message (msg->fp, fp, hn, hn->content, 0, chflags)) == 0)
-	mutt_message _("Attachment saved.");
+	mutt_message("Attachment saved.");
 	
       mx_close_message (&msg);
       mx_close_mailbox(&ctx);
@@ -686,7 +650,7 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
 
     if (mutt_copy_stream (ofp, nfp) == -1)
     {
-      mutt_error _("Write fault!");
+      mutt_error ("Write fault!");
       fclose (ofp);
       fclose (nfp);
       return (-1);
@@ -802,9 +766,9 @@ int mutt_print_attachment (FILE *fp, BODY *a)
     {
       if (!fp)
       {
-	if (safe_symlink(a->filename, newfile) == -1)
+	if (symlink(a->filename, newfile) == -1)
 	{
-	  if (mutt_yesorno (_("Can't match nametemplate, continue?"), 1) != M_YES)
+	  if (mutt_yesorno ("Can't match nametemplate, continue?", 1) != M_YES)
 	  {
 	    rfc1524_free_entry (&entry);
 	    return 0;
@@ -888,7 +852,7 @@ int mutt_print_attachment (FILE *fp, BODY *a)
   }
   else
   {
-    mutt_error _("I don't know how to print that!");
+    mutt_error ("I don't know how to print that!");
     return 0;
   }
 }

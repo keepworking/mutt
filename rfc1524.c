@@ -75,22 +75,18 @@ int rfc1524_expand_command (BODY *a, char *filename, char *type,
 	  param[z++] = command[x++];
 	param[z] = '\0';
 	dprint(2,(debugfile,"Parameter: %s  Returns: %s\n",param,ret));
-	ret = mutt_quote_filename(mutt_get_parameter(param,a->parameter));
+	ret = mutt_get_parameter(param,a->parameter);
 	dprint(2,(debugfile,"Parameter: %s  Returns: %s\n",param,ret));
 	z = 0;
 	while (ret && ret[z] && y<sizeof(buf))
 	  buf[y++] = ret[z++];
-	FREE(&ret);
       }
       else if (command[x] == 's' && filename != NULL)
       {
-	char *fn = mutt_quote_filename(filename);
-	int i;
-	
-	for(i = 0; fn[i] && y < sizeof(buf); i++)
-	  buf[y++] = fn[i];
-	
-	FREE(&fn);
+	char *fn = filename;
+
+	while (*fn && y < sizeof (buf))
+	  buf[y++] = *fn++;
 	needspipe = FALSE;
       }
       else if (command[x] == 't')
@@ -154,7 +150,7 @@ static int get_field_text (char *field, char **entry,
   }
   else 
   {
-    mutt_error (_("Improperly formated entry for type %s in \"%s\" line %d"),
+    mutt_error ("Improperly formated entry for type %s in \"%s\" line %d",
 		type, filename, line);
     return 0;
   }
@@ -386,7 +382,7 @@ int rfc1524_mailcap_lookup (BODY *a, char *type, rfc1524_entry *entry, int opt)
    */
   if (!*curr)
   {
-    mutt_error _("No mailcap path specified");
+    mutt_error ("No mailcap path specified");
     return 0;
   }
 
@@ -412,7 +408,7 @@ int rfc1524_mailcap_lookup (BODY *a, char *type, rfc1524_entry *entry, int opt)
   }
 
   if (entry && !found)
-    mutt_error (_("mailcap entry for type %s not found"), type);
+    mutt_error ("mailcap entry for type %s not found", type);
 
   return found;
 }
