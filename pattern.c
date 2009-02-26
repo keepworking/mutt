@@ -108,7 +108,7 @@ int mutt_which_case (const char *s)
 {
   while (*s)
   {
-    if (isalpha ((unsigned char) *s) && isupper ((unsigned char) *s))
+    if (isalpha (*s) && isupper (*s))
       return 0; /* case-sensitive */
     s++;
   }
@@ -242,17 +242,14 @@ int eat_regexp (pattern_t *pat, BUFFER *s, BUFFER *err)
 int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
 {
   char *tmp;
-  int do_exclusive = 0;
-  
-  if (*s->dptr == '<')
-    do_exclusive = 1;
+
   if ((*s->dptr != '-') && (*s->dptr != '<'))
   {
     /* range minimum */
     if (*s->dptr == '>')
     {
       pat->max = M_MAXRANGE;
-      pat->min = strtol (s->dptr + 1, &tmp, 0) + 1; /* exclusive range */
+      pat->min = strtol (s->dptr + 1, &tmp, 0);
     }
     else
       pat->min = strtol (s->dptr, &tmp, 0);
@@ -286,7 +283,7 @@ int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
     tmp = s->dptr;
   }
   
-  if (isdigit ((unsigned char) *tmp))
+  if (isdigit (*tmp))
   {
     /* range maximum */
     pat->max = strtol (tmp, &tmp, 0);
@@ -300,8 +297,6 @@ int eat_range (pattern_t *pat, BUFFER *s, BUFFER *err)
       pat->max *= 1048576;
       tmp++;
     }
-    if (do_exclusive)
-      (pat->max)--;
   }
   else
     pat->max = M_MAXRANGE;
@@ -797,7 +792,7 @@ mutt_pattern_exec (struct pattern_t *pat, pattern_exec_flag flags, CONTEXT *ctx,
       return (pat->not ^ (h->score >= pat->min && (pat->max == M_MAXRANGE ||
 						   h->score <= pat->max)));
     case M_SIZE:
-      return (pat->not ^ (h->content->length >= pat->min && (pat->max == M_MAXRANGE || h->content->length <= pat->max)));
+      return (pat->not ^ (h->content->length > pat->min && (pat->max == M_MAXRANGE || h->content->length < pat->max)));
     case M_REFERENCE:
       return (pat->not ^ match_reference (pat->rx, h->env->references));
     case M_ADDRESS:
@@ -870,7 +865,7 @@ void mutt_check_simple (char *s, size_t len, const char *simple)
   }
 }
 
-int mutt_pattern_func (int op, char *prompt)
+int mutt_pattern_func (int op, char *prompt, HEADER *hdr)
 {
   pattern_t *pat;
   char buf[LONG_STRING] = "", *simple, error[STRING];

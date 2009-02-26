@@ -20,7 +20,6 @@
 #include "mutt_curses.h"
 #include "mutt_menu.h"
 #include "mailbox.h"
-#include "mapping.h"
 #include "sort.h"
 #include "buffy.h"
 
@@ -86,16 +85,7 @@ void index_make_entry (char *s, size_t l, MUTTMENU *menu, int num)
       flag |= M_FORMAT_FORCESUBJ;
     else
     {
-      if (reverse)
-      {
-       if (menu->top + menu->pagelen > menu->max)
-         edgemsgno = Context->v2r[menu->max - 1];
-       else
-         edgemsgno = Context->v2r[menu->top + menu->pagelen - 1];
-      }
-      else
-       edgemsgno = Context->v2r[menu->top];
-
+      edgemsgno = Context->v2r[menu->top + (reverse ? menu->pagelen - 1 : 0)];
       for (tmp = h->parent; tmp; tmp = tmp->parent)
       {
 	if ((reverse && tmp->msgno > edgemsgno)
@@ -230,9 +220,9 @@ struct mapping_t IndexHelp[] = {
 /* This function handles the message index window as well as commands returned
  * from the pager (MENU_PAGER).
  */
-int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
+void mutt_index_menu (void)
 {
-  char buf[LONG_STRING], attach_msg_status[LONG_STRING] = "", helpstr[SHORT_STRING];
+  char buf[LONG_STRING], helpstr[SHORT_STRING];
   int op = OP_NULL;                 /* function to execute */
   int done = 0;                /* controls when to exit the "event" loop */
   int i = 0, j;
@@ -244,7 +234,6 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
   char *cp;                    /* temporary variable. */
   int index_hint;   /* used to restore cursor position */
   int do_buffy_notify = 1;
-  int close = 0; /* did we OP_QUIT or OP_EXIT out of this menu? */
 
   menu = mutt_new_menu ();
   menu->menu = MENU_MAIN;
@@ -255,8 +244,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
   menu->current = ci_first_message ();
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_MAIN, IndexHelp);
   
-  if (!attach_msg) 
-    mutt_buffy_check(1); /* force the buffy check after we enter the folder */
+  mutt_buffy_check(1); /* force the buffy check after we enter the folder */
 
   FOREVER
   {
@@ -265,7 +253,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
     menu->max = Context ? Context->vcount : 0;
     oldcount = Context ? Context->msgcount : 0;
 
-    if (Context && !attach_msg)
+    if (Context)
     {
       /* check for new mail in the mailbox.  If nonzero, then something has
        * changed about the file (either we got new mail or the file was
@@ -357,20 +345,17 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
       }
     }
 
-    if (!attach_msg)
+    /* check for new mail in the incoming folders */
+    oldcount = newcount;
+    if ((newcount = mutt_buffy_check (0)) != oldcount)
+      menu->redraw |= REDRAW_STATUS;
+    if (do_buffy_notify)
     {
-     /* check for new mail in the incoming folders */
-     oldcount = newcount;
-     if ((newcount = mutt_buffy_check (0)) != oldcount)
-       menu->redraw |= REDRAW_STATUS;
-     if (do_buffy_notify)
-     {
-       if (mutt_buffy_notify () && option (OPTBEEPNEW))
- 	beep ();
-     }
-     else
-       do_buffy_notify = 1;
+      if (mutt_buffy_notify () && option (OPTBEEPNEW))
+	beep ();
     }
+    else
+      do_buffy_notify = 1;
 
     mutt_curs_set (0);
 
@@ -399,19 +384,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
       if (menu->redraw & REDRAW_STATUS) 
       {
-	if (attach_msg)
-	{
-	 char from_folder [STRING];
-	 strfcpy(from_folder, Context->path, sizeof (from_folder));
-	 mutt_pretty_mailbox (from_folder);
-	 snprintf (attach_msg_status, sizeof (attach_msg_status), 
-	           "Folder: %s Tagged messages will be attached upon exiting", 
-		   from_folder);
-	 snprintf (buf, sizeof (buf), M_MODEFMT, attach_msg_status);
-	}
-	else
-	 menu_status_line (buf, sizeof (buf), menu, NONULL (Status));
-
+	menu_status_line (buf, sizeof (buf), menu, NONULL (Status));
 	CLEARLINE (option (OPTSTATUSONTOP) ? 0 : LINES-2);
 	SETCOLOR (MT_COLOR_STATUS);
 	printw ("%-*.*s", COLS, COLS, buf);
@@ -554,7 +527,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 	    !buf[0])
 	  break;
 
-	if (! isdigit ((unsigned char) buf[0]))
+	if (! isdigit (buf[0]))
 	{
 	  mutt_error ("Argument must be a message number.");
 	  break;
@@ -604,7 +577,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
-	mutt_pattern_func (M_DELETE, "Delete messages matching: ");
+	mutt_pattern_func (M_DELETE, "Delete messages matching: ", CURHDR);
 	menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
@@ -638,7 +611,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
 	CHECK_MSGCOUNT;
 	menu->oldcurrent = Context->vcount ? CURHDR->index : -1;
-	if (mutt_pattern_func (M_LIMIT, "Limit to messages matching: ") == 0)
+	if (mutt_pattern_func (M_LIMIT, "Limit to messages matching: ", CURHDR) == 0)
 	{
 	  if (menu->oldcurrent >= 0)
 	  {
@@ -660,13 +633,6 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 	break;	  
 
       case OP_QUIT:
-
-	close = op;
-	if (attach_msg)
-	{
-	 done = 1;
-	 break;
-	}
 
 	if (query_quadoption (OPT_QUIT, "Quit Mutt?") == M_YES)
 	{ 
@@ -736,15 +702,13 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 	  if (mx_sync_mailbox (Context) == 0)
 	  {
 	    if (Context->vcount != oldvcount)
+	    {
 	      menu->current -= dcount;
+	      if (menu->current < 0 || menu->current >= Context->vcount)
+		menu->current = ci_first_message ();
+	    }
 	    set_option (OPTSEARCHINVALID);
 	  }
-	  
-	  /* do a sanity check even if mx_sync_mailbox failed.
-	   */
-
-	  if (menu->current < 0 || menu->current >= Context->vcount)
-	    menu->current = ci_first_message ();
 	}
 
 	/* check for a fatal error, or all messages deleted */
@@ -779,7 +743,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
       case OP_MAIN_TAG_PATTERN:
 
 	CHECK_MSGCOUNT;
-	mutt_pattern_func (M_TAG, "Tag messages matching: ");
+	mutt_pattern_func (M_TAG, "Tag messages matching: ", CURHDR);
 	menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
@@ -787,14 +751,14 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
 	CHECK_MSGCOUNT;
 	CHECK_READONLY;
-	if (mutt_pattern_func (M_UNDELETE, "Undelete messages matching: ") == 0)
+	if (mutt_pattern_func (M_UNDELETE, "Undelete messages matching: ", CURHDR) == 0)
 	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
       case OP_MAIN_UNTAG_PATTERN:
 
 	CHECK_MSGCOUNT;
-	if (mutt_pattern_func (M_UNTAG, "Untag messages matching: ") == 0)
+	if (mutt_pattern_func (M_UNTAG, "Untag messages matching: ", CURHDR) == 0)
 	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
 	break;
 
@@ -804,7 +768,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
       case OP_MAIN_CHANGE_FOLDER:
       
-	if (attach_msg || option (OPTREADONLY))
+	if (option (OPTREADONLY))
 	  op = OP_MAIN_CHANGE_FOLDER_READONLY;
 
 	/* fallback to the readonly case */
@@ -883,7 +847,7 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
 	unset_option (OPTNEEDRESORT);
 
-	if ((op = mutt_display_message (CURHDR, attach_msg_status)) == -1)
+	if ((op = mutt_display_message (CURHDR)) == -1)
 	{
 	  unset_option (OPTNEEDRESORT);
 	  break;
@@ -909,17 +873,17 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
 
       case OP_EXIT:
 
-	close = op;
-	if (menu->menu == MENU_MAIN && attach_msg)
-	{
-	 done = 1;
-	 break;
-	}
-
 	if ((menu->menu == MENU_MAIN)
 	    && (query_quadoption (OPT_QUIT, 
 				  "Exit Mutt without saving?") == M_YES))
+	{
+	  if (Context)
+	  {
+	    mx_fastclose_mailbox (Context);
+	    safe_free ((void **)&Context);
+	  }
 	  done = 1;
+	}
 	break;
 
       case OP_MAIN_NEXT_UNDELETED:
@@ -1166,6 +1130,12 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
       case OP_MAIN_PREV_SUBTHREAD:
 
 	CHECK_MSGCOUNT;
+	if (Context->msgcount != Context->vcount)
+	{
+	  mutt_error ("No threads in limit mode.");
+	  break;
+	}
+
 	switch (op)
 	{
 	  case OP_MAIN_NEXT_THREAD:
@@ -1541,7 +1511,6 @@ int mutt_index_menu (int attach_msg /* invoked while attaching a message */)
   }
 
   mutt_menuDestroy (&menu);
-  return (close);
 }
 
 void mutt_set_header_color (CONTEXT *ctx, HEADER *curhdr)

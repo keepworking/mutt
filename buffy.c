@@ -20,16 +20,12 @@
 #include "buffy.h"
 #include "mx.h"
 #include "mailbox.h"
-#ifdef USE_IMAP
-#include "imap.h"
-#endif
 
 #include <string.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <utime.h>
 #include <ctype.h>
-#include <unistd.h>
 
 #include <stdio.h>
 
@@ -245,13 +241,6 @@ int mutt_buffy_check (int force)
   {
     tmp->new = 0;
 
-#ifdef USE_IMAP
-    if ((tmp->magic == M_IMAP) || mx_is_imap (tmp->path))
-    {
-      tmp->magic = M_IMAP;
-    }
-    else
-#endif
     if (stat (tmp->path, &sb) != 0 ||
 	(!tmp->magic && (tmp->magic = mx_get_magic (tmp->path)) <= 0))
     {
@@ -326,16 +315,6 @@ int mutt_buffy_check (int force)
 	  tmp->magic = 0;
 	}
 	break;
-
-#ifdef USE_IMAP
-      case M_IMAP:
-	if (imap_buffy_check (tmp->path) > 0)
-	{
-	  BuffyCount++;
-	  tmp->new = 1;
-	}
-	break;
-#endif
       }
     }
 #ifdef BUFFY_SIZE
