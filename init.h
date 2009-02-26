@@ -806,12 +806,6 @@ struct option_t MuttVars[] = {
   ** %u      user (login) name of the author
   ** %v      first name of the author, or the 
   ** .       recipient if the message is from you
-  ** %y	     `x-label:' field, if present
-  ** %Y	     `x-label' field, if present, and 
-  ** .       (1) not at part of a thread tree,
-  ** .       (2) at the top of a thread, or
-  ** . 	     (3) `x-label' is different from preceding
-  ** .       message's `x-label'.
   ** %Z      message status flags
   ** %{fmt}  the date and time of the message is
   ** .       converted to sender's time zone, and 
@@ -1404,7 +1398,7 @@ struct option_t MuttVars[] = {
   ** messages to an external Unix command.
   */
 #ifdef USE_POP
-  { "pop_delete",	DT_QUAD, R_NONE, OPTPOPDELETE, M_ASKNO },
+  { "pop_delete",	DT_BOOL, R_NONE, OPTPOPDELETE, 0 },
   /*
   ** .pp
   ** If set, Mutt will delete successfully downloaded messages from the POP
