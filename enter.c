@@ -124,11 +124,8 @@ int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	  j = begin;
       }
       move (y, x + j - begin);
-      {
-	int n = (lastchar < begin + width) ? lastchar : begin + width;
-	n = (n > j) ? n - j : 0;
-	addnstr ((char *)&buf[j], n);
-      }
+      for (; j < lastchar && j < begin + width; j++)
+	ADDCH (buf[j]);
       clrtoeol ();
       if (redraw != M_REDRAW_INIT)
 	move (y, x + curpos - begin);
@@ -324,19 +321,6 @@ int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	    }
 	  }
 	  break;
-
-	case OP_EDITOR_KILL_EOW:
-	  /* delete to end of word */
-	  for (j = curpos; j < lastchar && ISSPACE (buf[j]); j++)
-	    ;
-	  for (          ; j < lastchar && !ISSPACE (buf[j]); j++)
-	    ;
-	  for (ch = curpos; j < lastchar; j++, ch++)
-	    buf[ch] = buf[j];
-	  lastchar = ch;
-	  redraw = M_REDRAW_EOL;
-	  break;
-
 	case OP_EDITOR_BUFFY_CYCLE:
 	  if (flags & M_EFILE)
 	  {
@@ -496,29 +480,6 @@ int _mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	    move (y, x + curpos - begin);
 	    goto self_insert;
 	  }
-
-	case OP_EDITOR_TRANSPOSE_CHARS:
-	  j = buf[curpos];
-	  if(curpos == 0) 
-	  {
-	    buf[curpos] = buf[1];
-	    buf[1] = j;
-	  }
-	  else if (curpos == lastchar) 
-	  {
-	    j = buf[curpos-1];
-	    buf[curpos-1] = buf[curpos-2];
-	    buf[curpos-2] = j;
-	  }
-	  else 
-	  {
-	    buf[curpos] = buf[curpos-1];
-	    buf[curpos-1] = j;
-	  }
-	  if (curpos < lastchar)
-	    curpos++;
-	  redraw = M_REDRAW_LINE;
-	  break;
 
 	default:
 	  BEEP ();
