@@ -51,24 +51,28 @@
 #define IsAttach(x) (x && (x)->bdy)
 #define IsHeader(x) (x && (x)->hdr)
 
+static const char *Not_available_in_this_menu = N_("Not available in this menu.");
+static const char *Mailbox_is_read_only = N_("Mailbox is read-only.");
+static const char *Function_not_permitted_in_attach_message_mode = N_("Function not permitted in attach-message mode.");
+
 #define CHECK_MODE(x)	if (!(x)) \
 			{ \
 			  	mutt_flushinp (); \
-				mutt_error _("Not available in this menu."); \
+				mutt_error _(Not_available_in_this_menu); \
 				break; \
 			}
 
 #define CHECK_READONLY	if (Context->readonly) \
 			{ \
 				mutt_flushinp (); \
-				mutt_error _("Mailbox is read-only.");	\
+				mutt_error _(Mailbox_is_read_only);	\
 				break; \
 			}
 
 #define CHECK_ATTACH if(option(OPTATTACHMSG)) \
 		     {\
 			mutt_flushinp (); \
-			mutt_error _("Function not permitted in attach-message mode."); \
+			mutt_error _(Function_not_permitted_in_attach_message_mode); \
 			break; \
 		     }
 
@@ -887,13 +891,6 @@ fill_buffer (FILE *f, long *last_pos, long offset, unsigned char *buf,
   return b_read;
 }
 
-static int is_ansi (unsigned char *buf)
-{
-  while (buf && (isdigit(*buf) || *buf == ';'))
-    buf++;
-  return (*buf == 'm');
-}
-
 static int grok_ansi(unsigned char *buf, int pos, ansi_attr *a)
 {
   int x = pos;
@@ -1128,7 +1125,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
       c = buf[cnt];
     }
 
-    if (*buf_ptr == '\033' && *(buf_ptr + 1) && *(buf_ptr + 1) == '[' && is_ansi (buf_ptr+2))
+    if (*buf_ptr == '\033' && *(buf_ptr + 1) && *(buf_ptr + 1) == '[')
     {
       cnt = grok_ansi(buf, cnt+3, NULL);
       cnt++;
@@ -1259,7 +1256,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     }
 
     /* Handle ANSI sequences */
-    if (c == '\033' && buf[ch+1] == '[' && is_ansi (buf+ch+2))
+    if (c == '\033' && buf[ch+1] == '[')
     {
       ch = grok_ansi(buf, ch+2, &a);
       c = buf[ch];
@@ -2091,7 +2088,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 
       case OP_DISPLAY_ADDRESS:
 	CHECK_MODE(IsHeader (extra));
-	mutt_display_address (extra->hdr->env);
+	mutt_display_address (extra->hdr->env->from);
 	break;
 
       case OP_ENTER_COMMAND:
