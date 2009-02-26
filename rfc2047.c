@@ -24,12 +24,15 @@
 #include <ctype.h>
 #include <string.h>
 
-typedef void encode_t (char *, size_t, const unsigned char *);
+typedef void encode_t (char *, size_t, const unsigned char *, const char *);
 
 extern char MimeSpecials[];
 extern char B64Chars[];
 
-static void q_encode_string (char *d, size_t dlen, const unsigned char *s)
+static void q_encode_string (char *d, 
+			     size_t dlen, 
+			     const unsigned char *s,
+			     const char *send_charset)
 {
   char charset[SHORT_STRING];
   size_t cslen, wordlen;
@@ -115,14 +118,16 @@ static void q_encode_string (char *d, size_t dlen, const unsigned char *s)
   strcpy (wptr, "?=");
 }
 
-static void b_encode_string (char *d, size_t dlen, const unsigned char *s)
+static void b_encode_string (char *d, size_t dlen, 
+			     const unsigned char *s, 
+			     const char *send_charset)
 {
   char charset[SHORT_STRING];
   char *wptr = d;
   int cslen;
   int wordlen;
 
-  snprintf (charset, sizeof (charset), "=?%s?B?", NONULL(Charset));
+  snprintf (charset, sizeof (charset), "=?%s?B?", NONULL(send_charset));
   cslen = mutt_strlen (charset);
   strcpy (wptr, charset);
   wptr += cslen;
@@ -182,7 +187,16 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
   int len;
   const unsigned char *p = s;
   encode_t *encoder;
-
+  char send_charset[SHORT_STRING];
+  unsigned char scratch[LONG_STRING]; 
+  
+  /* attention: this function will fail for
+   * strings longer then LONG_STRING.  But lots
+   * of code in mutt will anyway...
+   */
+  
+  mutt_get_send_charset(send_charset, sizeof(send_charset), NULL, 0);
+  
   /* First check to see if there are any 8-bit characters */
   for (; *p; p++)
   {
@@ -200,8 +214,8 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
     return;
   }
 
-  if (mutt_strcasecmp("us-ascii", Charset) == 0 ||
-      mutt_strncasecmp("iso-8859", Charset, 8) == 0)
+  if (mutt_strcasecmp("us-ascii", send_charset) == 0 ||
+      mutt_strncasecmp("iso-8859", send_charset, 8) == 0)
     encoder = q_encode_string;
   else
   {
@@ -230,7 +244,11 @@ void rfc2047_encode_string (char *d, size_t dlen, const unsigned char *s)
     s += 5;
   }
 
-  (*encoder) (d, dlen, s);
+  strfcpy((char *)scratch, (const char *) s, sizeof(scratch));
+  if (*send_charset && mutt_strcasecmp("us-ascii", send_charset))
+    mutt_display_string((char *)scratch, mutt_get_translation(Charset, send_charset));
+  
+  (*encoder) (d, dlen, scratch, send_charset);
 }
 
 void rfc2047_encode_adrlist (ADDRESS *addr)
@@ -298,8 +316,6 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
 	    }
 	    else if (*pp == '=')
 	    {
-	      if (pp[1] == 0 || pp[2] == 0)
-		break;	/* something wrong */
 	      *pd++ = (hexval(pp[1]) << 4) | hexval(pp[2]);
 	      len--;
 	      pp += 2;
@@ -317,21 +333,19 @@ static int rfc2047_decode_word (char *d, const char *s, size_t len)
 	{
 	  while (*pp && len > 0)
 	  {
-	    if (pp[0] == '=' || pp[1] == 0 || pp[1] == '=')
-	      break;  /* something wrong */
 	    c1 = base64val(pp[0]);
 	    c2 = base64val(pp[1]);
 	    *pd++ = (c1 << 2) | ((c2 >> 4) & 0x3);
 	    if (--len == 0) break;
 	    
-	    if (pp[2] == 0 || pp[2] == '=') break;
+	    if (pp[2] == '=') break;
 
 	    c3 = base64val(pp[2]);
 	    *pd++ = ((c2 & 0xf) << 4) | ((c3 >> 2) & 0xf);
 	    if (--len == 0)
 	      break;
 
-	    if (pp[3] == 0 || pp[3] == '=')
+	    if (pp[3] == '=')
 	      break;
 
 	    c4 = base64val(pp[3]);
