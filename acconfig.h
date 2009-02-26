@@ -12,7 +12,7 @@
 #undef MUTTLOCALEDIR
 
 /* Enable debugging info */
-#undef DEBUG
+#define DEBUG
 
 /* What is your domain name? */
 #undef DOMAIN
