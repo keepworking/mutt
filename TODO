@@ -1,48 +1,52 @@
-Problems are listed in approximate order of priority.
-
-- re-add support for .mh_sequences files
-
-- Fix the "unexpected EXPUNGE" IMAP bug.
-
-- Ask IMAP servers for hierarchy separators. (-> Brandon's
-  note from Aug 18)
-
-  
-- In the "attachment" menu, assume this:
-
-	1 [text/plain, 7bit, 1.1K]           <no description>
-	2 [message/rfc822, 7bit, 6.1K]       A test message
-	3 [text/plain, 7bit, 0.1K]           |-><no description>
-	4 [message/rfc822, base64, 2.5K]     |-><no description>
-	5 [message/rfc822, base64, 2.7K]     `-><no description>
-
-  (please note the "message/rfc822" attachments encoded as
-  Base64; that's illegal, but Sun's Mailtool sends that
-  kind of messages); then go to, say, attachment "4",
-  delete it, and go to the main menu; you won't be able to
-  quit the mailbox (ok, 'x' works, but 'q' doesn't).
-
-  The problem here lies in the fact that mutt uses mailbox
-  handling functions to access message/rfc822 type
-  attachments.  We'd need to perform an additional
-  decoding step before using these functions to fix this
-  bug.
-
-  Please note that mutt's just assuming RFC-compliant mail
-  here.  Fixing this stuff may become a PITA.
-
-
-
-
-- BODY struct should probably have a pointer to its
-  corresponding HEADER struct.  this is needed for
-  mh/maildir mailboxes so the correct pathname can be
-  found.  Or perhaps all we need is a .hdr member of the
-  STATE struct so that all of the MIME handlers can look
-  up the corresponding HEADERs if need be?
+- Other than multipart/mixed and PGP/MIME, Mutt should allow the user to
+  specify what to do with other types of multipart messages (i.e., so a user
+  can deal with S/MIME messages reasonably)
 
 - option to not include attachments in replies
 
 - handle message/external-body in some fashion
 
 - handle message/partial reconstruction
+
+- not possible to view the header of a single part message which contains
+  something that requires a mailcap entry to view
+
+- need to clean up the error recovery when running out of space when syncing
+  a mbox/mmdf mailbox
+
+- BODY struct should probably have a pointer to its corresponding HEADER
+  struct.  this is needed for mh/maildir mailboxes so the correct pathname
+  can be found.  Or perhaps all we need is a .hdr member of the STATE struct
+  so that all of the MIME handlers can look up the corresponding HEADERs if
+  need be?
+
+- mailbox resync code for mh and maildir mailboxes
+
+- fold long user-defined header fields
+
+- history classes
+
+- document honored environment variables
+
+- add -v flag to pass to sendmail...
+
+- ordered tag
+
+- rfc822 parser needs to do something with the @host1@host2: portion of the
+  route-addr
+
+- command completion for `enter-command'
+
+- new forward command to include first attachment in the editor and attach
+  other attachments to the message
+
+- adjust the names of *adr() and *adrlist() and calling routines for
+  consistency
+
+- mbox-hook entries should override $move?
+
+- add a preserved flag to messages
+
+- use an external lockfile(1) look-alike for dotlocking.
+  This would remove the requirement for certain sites to
+  install mutt setgid mail.
