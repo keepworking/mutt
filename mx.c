@@ -1006,7 +1006,9 @@ int mx_sync_mailbox (CONTEXT *ctx)
     }
 
     mx_update_tables(ctx, 1);
+    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, 1); /* rethread from scratch */
+    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (rc);
