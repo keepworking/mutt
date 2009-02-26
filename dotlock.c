@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1998-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1998-9 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -91,7 +91,7 @@ extern int snprintf (char *, size_t, const char *, ...);
 #endif /* DL_STANDALONE */
 
 static int DotlockFlags;
-static int Retry = MAXLOCKATTEMPT;
+static int   Retry = MAXLOCKATTEMPT;
 
 #ifdef DL_STANDALONE
 static char *Hostname;
@@ -129,7 +129,7 @@ static int dotlock_lock (const char *);
 
 #ifdef DL_STANDALONE
 
-#define check_flags(a) if (a & DL_FL_ACTIONS) usage (argv[0])
+#define check_flags (a) if (a & DL_FL_ACTIONS) usage (argv[0])
 
 int main (int argc, char **argv)
 {
@@ -153,6 +153,7 @@ int main (int argc, char **argv)
 
 
   /* parse the command line options. */
+  
   DotlockFlags = 0;
   
   while ((i = getopt (argc, argv, "dtfupr:")) != EOF)
@@ -175,9 +176,9 @@ int main (int argc, char **argv)
 
   if (optind == argc || Retry < 0)
     usage (argv[0]);
-
+  
   return dotlock_dispatch (argv[optind]);
-}
+  }
 
 
 /* 
@@ -226,7 +227,7 @@ int dotlock_invoke (const char *path, int flags, int retry)
   
   if ((currdir = open (".", O_RDONLY)) == -1)
     return DL_EX_ERROR;
-
+  
   if (!(DotlockFlags & DL_FL_RETRY) || retry)
     Retry = MAXLOCKATTEMPT;
   else
@@ -234,14 +235,17 @@ int dotlock_invoke (const char *path, int flags, int retry)
   
   r = dotlock_dispatch (path);
   
+ bail:
+  
   fchdir (currdir);
   close (currdir);
   
   return r;
 }
-
+    
 #endif  /* DL_STANDALONE */
-
+  
+  
 
 static int dotlock_dispatch (const char *f)
 {
@@ -707,15 +711,37 @@ dotlock_unlock (const char *realpath)
 static int
 dotlock_unlink (const char *realpath)
 {
-  struct stat lsb;
+  struct stat fsb, lsb;
+  int fd = -1;
   int i = -1;
+  char dummy;
 
   if (dotlock_lock (realpath) != DL_EX_OK)
     return DL_EX_ERROR;
+  
+  if ((fd = open (realpath, O_RDONLY)) == -1)
+    goto bail;
+  
+  if ((i = fstat (fd, &fsb)) == -1)
+    goto bail;
+  
+  if ((i = lstat (realpath, &lsb)) == -1)
+    goto bail;
+  
+  if ((i = dotlock_check_stats (&fsb, &lsb)) == -1)
+    goto bail;
+  
+  /* 
+   * don't _really_ trust stat here, but actually try to read one
+   * character from the supposedly empty file. 
+   */
 
-  if ((i = lstat (realpath, &lsb)) == 0 && lsb.st_size == 0)
+  if ((fsb.st_size == 0) && (read (fd, &dummy, 1) != 1))
     unlink (realpath);
-
+  
+  bail:
+  
+  if (fd != -1) close (fd);
   dotlock_unlock (realpath);
 
   return (i == 0) ?  DL_EX_OK : DL_EX_ERROR;

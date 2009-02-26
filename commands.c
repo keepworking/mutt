@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -73,7 +73,6 @@ int mutt_display_message (HEADER *cur)
   mutt_parse_mime_message (Context, cur);
 
 
-
 #ifdef _PGPPATH
   /* see if PGP is needed for this message.  if so, we should exit curses */
   if (cur->pgp)
@@ -84,7 +83,6 @@ int mutt_display_message (HEADER *cur)
 	return 0;
 
       cmflags |= M_CM_VERIFY;
-      mutt_message _("Invoking PGP...");
     }
     else if (cur->pgp & PGPSIGN)
     {
@@ -92,17 +90,19 @@ int mutt_display_message (HEADER *cur)
       if (query_quadoption (OPT_VERIFYSIG, _("Verify PGP signature?")) == M_YES)
       {
 	cmflags |= M_CM_VERIFY;
-	mutt_message _("Invoking PGP...");
       }
     }
   }
+  
+  if (cmflags & M_CM_VERIFY)
+  {
+    if (cur->env->from)
+      pgp_invoke_getkeys (cur->env->from);
+
+    mutt_message _("Invoking PGP...");
+  }
+
 #endif
-
-
-
-
-
-
 
   mutt_mktemp (tempfile);
   if ((fpout = safe_fopen (tempfile, "w")) == NULL)
@@ -135,10 +135,20 @@ int mutt_display_message (HEADER *cur)
     return (0);
   }
 
+#ifdef _PGPPATH
+  /* update PGP information for this message */
+  cur->pgp |= pgp_query (cur->content);
+#endif
+
   if (builtin)
   {
     pager_t info;
-    
+
+#ifdef _PGPPATH
+    if (cur->pgp & PGPGOODSIGN)
+      mutt_message _("PGP signature successfully verified.");
+#endif
+
     /* Invoke the builtin pager */
     memset (&info, 0, sizeof (pager_t));
     info.hdr = cur;
@@ -220,11 +230,26 @@ void ci_bounce_message (HEADER *h, int *redraw)
 
 void mutt_pipe_message_to_state (HEADER *h, STATE *s)
 {
+  int cmflags = 0;
+  int chflags = CH_FROM;
+  
+  if (option (OPTPIPEDECODE))
+  {
+    cmflags |= M_CM_DECODE | M_CM_CHARCONV;
+    chflags |= CH_DECODE | CH_REORDER;
+    
+    if (option (OPTWEED))
+    {
+      chflags |= CH_WEED;
+      cmflags |= M_CM_WEED;
+    }
+  }
+  
   if (option (OPTPIPEDECODE))
     mutt_parse_mime_message (Context, h);
+
   mutt_copy_message (s->fpout, Context, h,
-		     option (OPTPIPEDECODE) ? M_CM_DECODE | M_CM_CHARCONV: 0,
-		     option (OPTPIPEDECODE) ? CH_FROM | CH_WEED | CH_DECODE | CH_REORDER : CH_FROM);
+		     cmflags, chflags);
 }
 
 int mutt_pipe_message (HEADER *h)
@@ -437,13 +462,19 @@ void mutt_enter_command (void)
     set_option (OPTNEEDRESORT);
 }
 
-void mutt_display_address (ADDRESS *adr)
+void mutt_display_address (ENVELOPE *env)
 {
+  char *pfx = NULL;
   char buf[SHORT_STRING];
+  ADDRESS *adr = NULL;
+
+  adr = mutt_get_address (env, &pfx);
+
+  if (!adr) return;
 
   buf[0] = 0;
   rfc822_write_address (buf, sizeof (buf), adr);
-  mutt_message ("%s", buf);
+  mutt_message ("%s: %s", pfx, buf);
 }
 
 static void set_copy_flags(HEADER *hdr, int decode, int decrypt, int *cmflags, int *chflags)
@@ -452,14 +483,14 @@ static void set_copy_flags(HEADER *hdr, int decode, int decrypt, int *cmflags, i
   *chflags = CH_UPDATE_LEN;
   
 #ifdef _PGPPATH
-  if(!decode && decrypt && (hdr->pgp & PGPENCRYPT))
+  if (!decode && decrypt && (hdr->pgp & PGPENCRYPT))
   {
-    if(mutt_is_multipart_encrypted(hdr->content))
+    if (mutt_is_multipart_encrypted(hdr->content))
     {
       *chflags = CH_NONEWLINE | CH_XMIT | CH_MIME;
       *cmflags = M_CM_DECODE_PGP;
     }
-    else if(mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
+    else if (mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
       decode = 1;
   }
 #endif
@@ -625,8 +656,14 @@ int mutt_save_message (HEADER *h, int delete, int decode, int decrypt, int *redr
 
 static void print_msg (FILE *fp, CONTEXT *ctx, HEADER *h)
 {
-  
+  int cmflags = M_CM_DECODE | M_CM_CHARCONV;
+  int chflags = CH_DECODE | CH_REORDER;
 
+  if (option (OPTWEED))
+  {
+    cmflags |= M_CM_WEED;
+    chflags |= CH_WEED;
+  }
 
 #ifdef _PGPPATH
   if (h->pgp & PGPENCRYPT)
@@ -637,10 +674,8 @@ static void print_msg (FILE *fp, CONTEXT *ctx, HEADER *h)
   }
 #endif
 
-
-
   mutt_parse_mime_message (ctx, h);
-  mutt_copy_message (fp, ctx, h, M_CM_DECODE | M_CM_CHARCONV, CH_WEED | CH_DECODE | CH_REORDER);
+  mutt_copy_message (fp, ctx, h, cmflags, chflags);
 }
 
 void mutt_print_message (HEADER *h)

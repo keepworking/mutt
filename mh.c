@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -528,7 +528,7 @@ int mh_commit_message (CONTEXT *ctx, MESSAGE *msg, HEADER *hdr)
   DIR *dirp;
   struct dirent *de;
   char *cp, *dep;
-  unsigned int n, hi = 0;
+  int n, hi = 0;
   char path[_POSIX_PATH_MAX];
   char tmp[16];
 
@@ -606,10 +606,8 @@ static int mh_sync_message (CONTEXT *ctx, int msgno)
   char newpath[_POSIX_PATH_MAX];
   char partpath[_POSIX_PATH_MAX];
 
-  long old_body_offset = h->content->offset;
-  long old_body_length = h->content->length;
-  long old_hdr_lines   = h->lines;
-
+  FILE *f;
+  
   if ((dest = mx_open_new_message (ctx, h, 0)) == NULL)
     return -1;
 
@@ -622,9 +620,6 @@ static int mh_sync_message (CONTEXT *ctx, int msgno)
       rc = maildir_commit_message (ctx, dest, h);
     else
       rc = mh_commit_message (ctx, dest, h);
-    
-    mx_close_message (&dest);
-
     if (rc == 0)
       unlink (oldpath);
 
@@ -646,23 +641,29 @@ static int mh_sync_message (CONTEXT *ctx, int msgno)
     if (ctx->magic == M_MH && rc == 0)
     {
       snprintf (newpath, _POSIX_PATH_MAX, "%s/%s", ctx->path, h->path);
-      if ((rc = safe_rename (newpath, oldpath)) == 0)
+      if (safe_rename (newpath, oldpath) == 0)
       {
 	FREE (&h->path);
 	h->path = safe_strdup (partpath);
       }
     }
   }
-  else mx_close_message (&dest);
 
-  if (rc == -1)
+  mx_close_message (&dest);
+
+  /* 
+   * The message structure and offsets may have changed, so free it
+   * here.
+   */
+
+  mutt_free_body (&h->content);
+  if ((f = fopen (oldpath, "r")))
   {
-    h->content->offset = old_body_offset;
-    h->content->length = old_body_length;
-    h->lines           = old_hdr_lines;
+    mutt_free_envelope (&h->env);
+    h->env = mutt_read_rfc822_header (f, h, 0);
+    fclose (f);
   }
 
-  mutt_free_body (&h->content->parts);
   return rc;
 }
 
