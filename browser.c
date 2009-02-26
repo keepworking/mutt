@@ -27,15 +27,11 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
-
-/* HP-UX and ConvexOS don't have this macro */
-#ifndef S_ISLNK
-#define S_ISLNK(x) (((x) & S_IFMT) == S_IFLNK ? 1 : 0)
-#endif
 
 struct folder_file
 {
@@ -54,10 +50,10 @@ struct browser_state
 };
 
 static struct mapping_t FolderHelp[] = {
-  { "Exit",  OP_EXIT },
-  { "Chdir", OP_CHANGE_DIRECTORY },
-  { "Mask",  OP_ENTER_MASK },
-  { "Help",  OP_HELP },
+  { N_("Exit"),  OP_EXIT },
+  { N_("Chdir"), OP_CHANGE_DIRECTORY },
+  { N_("Mask"),  OP_ENTER_MASK },
+  { N_("Help"),  OP_HELP },
   { NULL }
 };
 
@@ -294,8 +290,9 @@ static void add_folder (MUTTMENU *m, struct browser_state *state,
   folder.name = name;
   folder.f = s;
   folder.new = new;
-  mutt_FormatString (buffer, sizeof (buffer), NONULL(FolderFormat), folder_format_str,
-		     (unsigned long) &folder, 0);
+  mutt_FormatString (buffer, sizeof (buffer), NONULL(FolderFormat),
+		     folder_format_str, (unsigned long) &folder,
+		     M_FORMAT_ARROWCURSOR);
 
   if (state->entrylen == state->entrymax)
   {
@@ -344,7 +341,7 @@ static int examine_directory (MUTTMENU *menu, struct browser_state *state,
 
   if (!S_ISDIR (s.st_mode))
   {
-    mutt_error ("%s is not a directory", d);
+    mutt_error (_("%s is not a directory."), d);
     return (-1);
   }
 
@@ -365,7 +362,7 @@ static int examine_directory (MUTTMENU *menu, struct browser_state *state,
     
     if (prefix && *prefix && strncmp (prefix, de->d_name, strlen (prefix)) != 0)
       continue;
-    if (regexec (Mask.rx, de->d_name, 0, NULL, 0) != 0)
+    if (!((regexec (Mask.rx, de->d_name, 0, NULL, 0) == 0) ^ Mask.not))
       continue;
 
     snprintf (buffer, sizeof (buffer), "%s/%s", d, de->d_name);
@@ -447,12 +444,12 @@ static void init_menu (struct browser_state *state, MUTTMENU *menu, char *title,
     menu->current = 0;
 
   if (buffy)
-    snprintf (title, titlelen, "Mailboxes [%d]", mutt_buffy_check (0));
+    snprintf (title, titlelen, _("Mailboxes [%d]"), mutt_buffy_check (0));
   else
   {
     strfcpy (path, LastDir, sizeof (path));
     mutt_pretty_mailbox (path);
-    snprintf (title, titlelen, "Directory [%s], File mask: %s",
+    snprintf (title, titlelen, _("Directory [%s], File mask: %s"),
 	      path, Mask.pattern);
   }
   menu->redraw = REDRAW_FULL;
@@ -536,7 +533,7 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 
 	if (!state.entrylen)
 	{
-	  mutt_error ("No files match the file mask");
+	  mutt_error _("No files match the file mask");
 	  break;
 	}
 
@@ -629,6 +626,11 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	mutt_menuDestroy (&menu);
 	return;
 
+      case OP_BROWSER_TELL:
+        if(state.entrylen)
+	  mutt_message(state.entry[menu->current].name);
+        break;
+      
       case OP_CHANGE_DIRECTORY:
 
 	strfcpy (buf, LastDir, sizeof (buf));
@@ -638,7 +640,7 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	  buf[len]='/';
 	}
 
-	if (mutt_get_field ("Chdir to: ", buf, sizeof (buf), M_FILE) == 0 &&
+	if (mutt_get_field (_("Chdir to: "), buf, sizeof (buf), M_FILE) == 0 &&
 	    buf[0])
 	{
 	  buffy = 0;	  
@@ -657,14 +659,14 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	      }
 	      else
 	      {
-		mutt_error ("Error scanning directory.");
+		mutt_error _("Error scanning directory.");
 		destroy_state (&state);
 		mutt_menuDestroy (&menu);
 		return;
 	      }
 	    }
 	    else
-	      mutt_error ("%s is not a directory.", buf);
+	      mutt_error (_("%s is not a directory."), buf);
 	  }
 	  else
 	    mutt_perror (buf);
@@ -675,17 +677,25 @@ void mutt_select_file (char *f, size_t flen, int buffy)
       case OP_ENTER_MASK:
 
 	strfcpy (buf, Mask.pattern, sizeof (buf));
-	if (mutt_get_field ("File Mask: ", buf, sizeof (buf), 0) == 0)
+	if (mutt_get_field (_("File Mask: "), buf, sizeof (buf), 0) == 0)
 	{
 	  regex_t *rx = (regex_t *) safe_malloc (sizeof (regex_t));
-	  int err;
+	  char *s = buf;
+	  int not = 0, err;
 
 	  buffy = 0;
 	  /* assume that the user wants to see everything */
 	  if (!buf[0])
 	    strfcpy (buf, ".", sizeof (buf));
+	  SKIPWS (s);
+	  if (*s == '!')
+	  {
+	    s++;
+	    SKIPWS (s);
+	    not = 1;
+	  }
 
-	  if ((err = REGCOMP (rx, buf, REG_NOSUB | mutt_which_case (buf))) != 0)
+	  if ((err = REGCOMP (rx, s, REG_NOSUB)) != 0)
 	  {
 	    regerror (err, rx, buf, sizeof (buf));
 	    regfree (rx);
@@ -699,20 +709,21 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	    safe_free ((void **) &Mask.rx);
 	    Mask.pattern = safe_strdup (buf);
 	    Mask.rx = rx;
+	    Mask.not = not;
 
 	    destroy_state (&state);
 	    if (examine_directory (menu, &state, LastDir, NULL) == 0)
 	      init_menu (&state, menu, title, sizeof (title), buffy);
 	    else
 	    {
-	      mutt_error ("Error scanning directory.");
+	      mutt_error _("Error scanning directory.");
 	      mutt_menuDestroy (&menu);
 	      return;
 	    }
 	    killPrefix = 0;
 	    if (!state.entrylen)
 	    {
-	      mutt_error ("No files match the file mask");
+	      mutt_error _("No files match the file mask");
 	      break;
 	    }
 	  }
@@ -730,9 +741,10 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	  if (i == OP_SORT_REVERSE)
 	  {
 	    reverse = SORT_REVERSE;
-	    addstr ("Reverse ");
+	    addstr (_("Reverse sort by (d)ate, (a)lpha, si(z)e or do(n)'t sort? "));
+	  } else {
+	    addstr (_("Sort by (d)ate, (a)lpha, si(z)e or do(n)'t sort? "));
 	  }
-	  addstr ("Sort by (d)ate, (a)lpha, si(z)e or do(n)'t sort? ");
 	  clrtoeol ();
 
 	  while ((i = mutt_getch ()) != EOF && i != 'a' && i != 'd' && i != 'z'
@@ -788,7 +800,7 @@ void mutt_select_file (char *f, size_t flen, int buffy)
       case OP_BROWSER_NEW_FILE:
 
 	snprintf (buf, sizeof (buf), "%s/", LastDir);
-	if (mutt_get_field ("New file name: ", buf, sizeof (buf), M_FILE) == 0)
+	if (mutt_get_field (_("New file name: "), buf, sizeof (buf), M_FILE) == 0)
 	{
 	  strfcpy (f, buf, flen);
 	  destroy_state (&state);
@@ -801,7 +813,7 @@ void mutt_select_file (char *f, size_t flen, int buffy)
       case OP_BROWSER_VIEW_FILE:
 	if (!state.entrylen)
 	{
-	  mutt_error ("No files match the file mask");
+	  mutt_error _("No files match the file mask");
 	  break;
 	}
 
@@ -809,7 +821,7 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	    (S_ISLNK (state.entry[menu->current].mode) &&
 	    link_is_dir (state.entry[menu->current].name)))
 	{
-	  mutt_error ("Can't view a directory");
+	  mutt_error _("Can't view a directory");
 	  break;
 	} 
 	else
@@ -827,7 +839,7 @@ void mutt_select_file (char *f, size_t flen, int buffy)
 	    menu->redraw = REDRAW_FULL;
 	  }
 	  else
-	    mutt_error ("Error trying to view file");
+	    mutt_error _("Error trying to view file");
 	}
     }
   }

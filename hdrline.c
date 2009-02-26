@@ -18,7 +18,7 @@
 
 #include "mutt.h"
 #include "mutt_curses.h"
-
+#include "sort.h"
 
 
 #ifdef _PGPPATH
@@ -145,7 +145,7 @@ static void make_from_addr (ENVELOPE *hdr, char *buf, size_t len, int do_lists)
     *buf = 0;
 }
 
-int mutt_user_is_recipient (ADDRESS *a)
+static int user_in_addr (ADDRESS *a)
 {
   for (; a; a = a->next)
     if (mutt_addr_is_user (a))
@@ -160,23 +160,30 @@ int mutt_user_is_recipient (ADDRESS *a)
  * 3: user is in the CC list
  * 4: user is originator
  */
-static int user_is_recipient (ENVELOPE *hdr)
+static int user_is_recipient (HEADER *h)
 {
-  if (mutt_addr_is_user (hdr->from))
-    return 4;
+  ENVELOPE *hdr = h->env;
 
-  if (mutt_user_is_recipient (hdr->to))
+  if(!h->recip_valid)
   {
-    if (hdr->to->next || hdr->cc)
-      return 2; /* non-unique recipient */
+    h->recip_valid = 1;
+    
+    if (mutt_addr_is_user (hdr->from))
+      h->recipient = 4;
+    else if (user_in_addr (hdr->to))
+    {
+      if (hdr->to->next || hdr->cc)
+	h->recipient = 2; /* non-unique recipient */
+      else
+	h->recipient = 1; /* unique recipient */
+    }
+    else if (user_in_addr (hdr->cc))
+      h->recipient = 3;
     else
-      return 1; /* unique recipient */
+      h->recipient = 0;
   }
-
-  if (mutt_user_is_recipient (hdr->cc))
-    return 3;
-
-  return (0);
+  
+  return h->recipient;
 }
 
 /* %a = address of author
@@ -199,6 +206,7 @@ static int user_is_recipient (ENVELOPE *hdr)
  * %t = `to:' field (recipients)
  * %T = $to_chars
  * %u = user (login) name of author
+ * %v = first name of author, unless from self
  * %Z = status flags	*/
 
 struct hdr_format_info
@@ -224,6 +232,10 @@ hdr_format_str (char *dest,
   char fmt[SHORT_STRING], buf2[SHORT_STRING], ch, *p;
   int do_locales, i;
   int optional = (flags & M_FORMAT_OPTIONAL);
+  int threads = ((Sort & SORT_MASK) == SORT_THREADS);
+  int is_index = (flags & M_FORMAT_INDEX);
+#define THREAD_NEW (threads && hdr->collapsed && hdr->num_hidden > 1 && mutt_thread_contains_unread (ctx, hdr) == 1)
+#define THREAD_OLD (threads && hdr->collapsed && hdr->num_hidden > 1 && mutt_thread_contains_unread (ctx, hdr) == 2)
   size_t len;
 
   hdr = hfi->hdr;
@@ -445,23 +457,40 @@ hdr_format_str (char *dest,
       }
       break;
 
+    case 'M':
+      snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+      snprintf (buf2, sizeof (buf2), "%%%ss", prefix);
+      if (!optional)
+      {
+	if (threads && is_index && hdr->collapsed && hdr->num_hidden > 1)
+	  snprintf (dest, destlen, fmt, hdr->num_hidden);
+	else if (is_index && threads)
+	  snprintf (dest, destlen, buf2, " ");
+	else
+	  snprintf (dest, destlen, "");
+      }
+      else
+      {
+	if (!(threads && is_index && hdr->collapsed && hdr->num_hidden > 1))
+	  optional = 0;
+      }
+      break;
+
     case 's':
+      
       snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
       if (flags & M_FORMAT_TREE)
       {
 	if (flags & M_FORMAT_FORCESUBJ)
 	{
-	  snprintf (buf2, sizeof (buf2), "%s%s", hdr->tree,
-		    hdr->env->subject ? hdr->env->subject : "");
+	  snprintf (buf2, sizeof (buf2), "%s%s", hdr->tree, NONULL (hdr->env->subject));
 	  snprintf (dest, destlen, fmt, buf2);
 	}
 	else
 	  snprintf (dest, destlen, fmt, hdr->tree);
       }
       else
-      {
-	snprintf (dest, destlen, fmt, hdr->env->subject ? hdr->env->subject : "");
-      }
+	snprintf (dest, destlen, fmt, NONULL (hdr->env->subject));
       break;
 
     case 'S':
@@ -505,7 +534,7 @@ hdr_format_str (char *dest,
     case 'T':
       snprintf (fmt, sizeof (fmt), "%%%sc", prefix);
       snprintf (dest, destlen, fmt,
-		(Tochars && ((i = user_is_recipient (hdr->env))) < strlen (Tochars)) ? Tochars[i] : ' ');
+		(Tochars && ((i = user_is_recipient (hdr))) < strlen (Tochars)) ? Tochars[i] : ' ');
       break;
 
     case 'u':
@@ -518,6 +547,24 @@ hdr_format_str (char *dest,
       else
 	buf2[0] = 0;
       snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+      snprintf (dest, destlen, fmt, buf2);
+      break;
+
+    case 'v':
+      snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+      if (mutt_addr_is_user (hdr->env->from)) 
+      {
+	if (hdr->env->to)
+	  snprintf (buf2, sizeof (buf2), fmt, mutt_get_name (hdr->env->to));
+	else if (hdr->env->cc)
+	  snprintf (buf2, sizeof (buf2), fmt, mutt_get_name (hdr->env->cc));
+	else
+	  *buf2 = 0;
+      }
+      else
+	snprintf (buf2, sizeof (buf2), fmt, mutt_get_name (hdr->env->from));
+      if ((p = strpbrk (buf2, " %@")))
+	*p = 0;
       snprintf (dest, destlen, fmt, buf2);
       break;
 
@@ -542,13 +589,13 @@ hdr_format_str (char *dest,
 	ch = ' ';
       snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
       snprintf (buf2, sizeof (buf2),
-		"%c%c%c",
-		(hdr->read && (ctx && ctx->msgnotreadyet != hdr->msgno))
-		? (hdr->replied ? 'r' : ' ') : (hdr->old ? 'O' : 'N'),
+		"%c%c%c", (THREAD_NEW ? 'n' : (THREAD_OLD ? 'o' : 
+		((hdr->read && (ctx && ctx->msgnotreadyet != hdr->msgno))
+		? (hdr->replied ? 'r' : ' ') : (hdr->old ? 'O' : 'N')))),
 		hdr->deleted ? 'D' : (hdr->attach_del ? 'd' : ch),
 		hdr->tagged ? '*' :
 		(hdr->flagged ? '!' :
-		 (Tochars && ((i = user_is_recipient (hdr->env)) < strlen (Tochars)) ? Tochars[user_is_recipient (hdr->env)] : ' ')));
+		 (Tochars && ((i = user_is_recipient (hdr)) < strlen (Tochars)) ? Tochars[i] : ' ')));
       snprintf (dest, destlen, fmt, buf2);
       break;
 
@@ -563,6 +610,8 @@ hdr_format_str (char *dest,
     mutt_FormatString (dest, destlen, elsestring, hdr_format_str, (unsigned long) hfi, flags);
 
   return (src);
+#undef THREAD_NEW
+#undef THREAD_OLD
 }
 
 void
