@@ -140,8 +140,9 @@ typedef enum
 #define M_SENDHOOK	(1<<2)
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
+#define M_CHARSETHOOK	(1<<5)
 #ifdef _PGPPATH
-#define M_PGPHOOK	(1<<5)
+#define M_PGPHOOK	(1<<6)
 #endif
 
 /* tree characters for linearize_tree and print_enriched_string */
@@ -192,7 +193,6 @@ enum
   M_OR,
   M_TO,
   M_CC,
-  M_COLLAPSED,
   M_SUBJECT,
   M_FROM,
   M_DATE,
@@ -464,7 +464,6 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
-  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
@@ -577,6 +576,10 @@ typedef struct header
   struct header *last_sort; /* last message in subthread, for secondary SORT_LAST */
   char *tree;            /* character string to print thread tree */
 
+#ifdef MIXMASTER
+  LIST *chain;
+#endif
+  
 } HEADER;
 
 #include "mutt_regex.h"
