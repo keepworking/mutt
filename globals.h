@@ -52,12 +52,6 @@ WHERE char *Locale;
 WHERE char *MailcapPath;
 WHERE char *Maildir;
 WHERE char *MsgFmt;
-
-#ifdef MIXMASTER
-WHERE char *Mixmaster;
-WHERE char *MixEntryFormat;
-#endif
-
 WHERE char *Muttrc INITVAL (NULL);
 WHERE char *Outbox;
 WHERE char *Pager;
