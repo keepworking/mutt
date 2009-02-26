@@ -295,26 +295,6 @@ static void start_curses (void)
 #define M_RO      (1<<3)	/* -R */
 #define M_SELECT  (1<<4)	/* -y */
 
-#ifdef USE_SLANG_CURSES
-
-static void check_slang(void)
-{
-  char *term = getenv("TERM");
-
-  /* slang < 1.2x */
-  
-  if(SLANG_VERSION < 12000)
-  {
-    if(term && strlen(term) > 100)
-    {
-      fputs("Sorry, your TERM variable's value is too long.\n", stderr);
-      exit(1);
-    }
-  }
-}
-
-#endif
-
 int main (int argc, char **argv)
 {
   char folder[_POSIX_PATH_MAX] = "";
@@ -332,36 +312,17 @@ int main (int argc, char **argv)
   extern char *optarg;
   extern int optind;
 
-  mutt_error = mutt_nocurses_error;
-
-#ifdef USE_SETGID
-  /* Determine the user's default gid and the gid to use for locking the spool
-   * mailbox on those systems which require setgid "mail" to write to the
-   * directory.  This function also resets the gid to "normal" since the
-   * effective gid will be "mail" when we start (Mutt attempts to run
-   * non-setgid whenever possible to reduce the possibility of security holes).
-   */
-
-  /* Get the default gid for the user */
-  UserGid = getgid ();
-
-  /* it is assumed that we are setgid to the correct gid to begin with */
-  MailGid = getegid ();
-
-  /* reset the effective gid to the normal gid */
-  if (SETEGID (UserGid) != 0)
+  /* sanity check against stupid administrators */
+  
+  if(getegid() != getgid())
   {
-    perror ("setegid");
-    exit (0);
+    fprintf(stderr, "%s: I don't want to run with privileges!\n",
+	    argv[0]);
+    exit(1);
   }
-#endif
 
-#ifdef USE_SLANG_CURSES
 
-  check_slang();
-  
-#endif
-  
+  mutt_error = mutt_nocurses_error;
   SRAND (time (NULL));
   setlocale (LC_CTYPE, "");
   umask (077);
