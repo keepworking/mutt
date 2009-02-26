@@ -124,8 +124,6 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
       new->content = m;
       new->parent_type = parent_type;
       new->level = level;
-      /* called when creating new menu, so clear the tagged indicator */
-      m->tagged = 0;
 
       /* We don't support multipart messages in the compose menu yet */
       if (!compose && mutt_is_message_type(m->type, m->subtype))
@@ -141,7 +139,9 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
   return (idx);
 }
 
-/* %D = deleted flag
+/* %c = character set: convert?
+ * %C = character set
+ * %D = deleted flag
  * %d = description
  * %e = MIME content-transfer-encoding
  * %f = filename
@@ -164,12 +164,38 @@ const char *mutt_attach_fmt (char *dest,
 {
   char fmt[16];
   char tmp[SHORT_STRING];
+  char charset[SHORT_STRING];
   ATTACHPTR *aptr = (ATTACHPTR *) data;
   int optional = (flags & M_FORMAT_OPTIONAL);
   size_t l;
   
   switch (op)
   {
+    case 'C':
+      if (!optional)
+      {
+	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+	if (mutt_is_text_type (aptr->content->type, aptr->content->subtype) &&
+	    mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
+	  snprintf (dest, destlen, fmt, charset);
+	else
+	  snprintf (dest, destlen, fmt, "");
+      }
+      else if (!mutt_is_text_type (aptr->content->type, aptr->content->subtype) ||
+	       !mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
+        optional = 0;
+      break;
+    case 'c':
+      /* XXX */
+      if (!optional)
+      {
+	snprintf (fmt, sizeof (fmt), "%%%sc", prefix);
+	snprintf (dest, destlen, fmt, aptr->content->type != TYPETEXT ||
+		  aptr->content->noconv ? 'n' : 'c');
+      }
+      else if (aptr->content->type != TYPETEXT || aptr->content->noconv)
+        optional = 0;
+      break;
     case 'd':
       if(!optional)
       {
@@ -315,7 +341,7 @@ void attach_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 
 int mutt_tag_attach (MUTTMENU *menu, int n)
 {
-  return (((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged);
+  return ((((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged) ? 1 : -1);
 }
 
 int mutt_is_message_type (int type, const char *subtype)
@@ -709,14 +735,14 @@ copy_tagged_attachments (FILE *fpout, FILE *fpin, const char *boundary, BODY *bd
 {
   for (; bdy; bdy = bdy->next)
   {
-    if (bdy->parts)
-      copy_tagged_attachments (fpout, fpin, boundary, bdy->parts);
-    else if (bdy->tagged)
+    if (bdy->tagged)
     {
-      fprintf (fpout, "\n--%s\n", boundary);
+      fprintf (fpout, "--%s\n", boundary);
       fseek (fpin, bdy->hdr_offset, 0);
       mutt_copy_bytes (fpin, fpout, bdy->length + bdy->offset - bdy->hdr_offset);
     }
+    else if (bdy->parts)
+      copy_tagged_attachments (fpout, fpin, boundary, bdy->parts);
   }
 }
 
