@@ -27,6 +27,7 @@
 #include <time.h>
 #include <limits.h>
 #include <stdarg.h>
+#include <signal.h>
 
 #ifndef _POSIX_PATH_MAX
 #include <posix1_lim.h>
@@ -140,8 +141,9 @@ typedef enum
 #define M_SENDHOOK	(1<<2)
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
+#define M_CHARSETHOOK	(1<<5)
 #ifdef _PGPPATH
-#define M_PGPHOOK	(1<<5)
+#define M_PGPHOOK	(1<<6)
 #endif
 
 /* tree characters for linearize_tree and print_enriched_string */
@@ -227,8 +229,7 @@ enum
   M_NEW_SOCKET,
 
   /* Options for mutt_save_attachment */
-  M_SAVE_APPEND,
-  M_SAVE_OVERWRITE
+  M_SAVE_APPEND
 };
 
 /* possible arguments to set_quadoption() */
@@ -304,7 +305,8 @@ enum
   OPTHIDDENHOST,
   OPTIGNORELISTREPLYTO,
 #ifdef USE_IMAP
-    OPTIMAPPASSIVE,
+  OPTIMAPLSUB,
+  OPTIMAPPASSIVE,
 #endif
   OPTIMPLICITAUTOVIEW,
   OPTMAILCAPSANITIZE,
@@ -357,6 +359,7 @@ enum
   OPTPGPENCRYPTSELF,
   OPTPGPSTRICTENC,
   OPTFORWDECRYPT,
+  OPTPGPSHOWUNUSABLE,
 #endif
 
   /* pseudo options */
@@ -370,6 +373,7 @@ enum
   OPTMSGERR,		/* (pseudo) used by mutt_error/mutt_message */
   OPTSEARCHINVALID,	/* (pseudo) used to invalidate the search pat */
   OPTSIGNALSBLOCKED,	/* (pseudo) using by mutt_block_signals () */
+  OPTSYSSIGNALSBLOCKED,	/* (pseudo) using by mutt_block_signals_system () */
   OPTNEEDRESORT,	/* (pseudo) used to force a re-sort */
   OPTVIEWATTACH,	/* (pseudo) signals that we are viewing attachments */
   OPTFORCEREDRAWINDEX,	/* (pseudo) used to force a redraw in the main index */
@@ -402,9 +406,13 @@ enum
 #define option(x) mutt_bit_isset(Options,x)
 
 /* Bit fields for ``Signals'' */
-#define S_INTERRUPT (1<<1)
-#define S_SIGWINCH  (1<<2)
-#define S_ALARM     (1<<3)
+#define S_INTERRUPT (1<<0)
+#define S_SIGWINCH  (1<<1)
+#define S_ALARM     (1<<2)
+
+/* Exit values used in send_msg() */
+#define S_ERR 127
+#define S_BKG 126
 
 typedef struct list_t
 {
@@ -468,7 +476,6 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
-  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
@@ -516,7 +523,7 @@ typedef struct body
 				 */
   unsigned int tagged : 1;
   unsigned int deleted : 1;	/* attachment marked for deletion */
-
+  unsigned int noconv : 1;	/* don't do character set conversion */
 } BODY;
 
 typedef struct header
@@ -581,6 +588,10 @@ typedef struct header
   struct header *last_sort; /* last message in subthread, for secondary SORT_LAST */
   char *tree;            /* character string to print thread tree */
 
+#ifdef MIXMASTER
+  LIST *chain;
+#endif
+  
 } HEADER;
 
 #include "mutt_regex.h"
@@ -676,6 +687,7 @@ typedef struct
 
 #define M_PENDINGPREFIX (1<<2) /* prefix to write, but character must follow */
 #define M_WEED          (1<<3) /* weed headers even when not in display mode */
+#define M_CHARCONV	(1<<4) /* Do character set conversions */
 
 #define state_set_prefix(s) ((s)->flags |= M_PENDINGPREFIX)
 #define state_reset_prefix(s) ((s)->flags &= ~M_PENDINGPREFIX)
