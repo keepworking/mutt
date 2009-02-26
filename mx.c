@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 1996-8 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -66,28 +65,31 @@
 
 #ifdef DL_STANDALONE
 
-static int invoke_dotlock (const char *path, int flags, int retry)
+static int invoke_dotlock(const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
-  char f[SHORT_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
+  char *f;
   
-  if (flags & DL_FL_RETRY)
-    snprintf (r, sizeof (r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
+  if(flags & DL_FL_RETRY)
+    snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
   
-  mutt_quote_filename (f, sizeof (f), path);
+  f = mutt_quote_filename(path);
   
-  snprintf (cmd, sizeof (cmd),
-	    "%s %s%s%s%s%s%s",
-	    NONULL (MuttDotlock),
-	    flags & DL_FL_TRY ? "-t " : "",
-	    flags & DL_FL_UNLOCK ? "-u " : "",
-	    flags & DL_FL_USEPRIV ? "-p " : "",
-	    flags & DL_FL_FORCE ? "-f " : "",
-	    flags & DL_FL_RETRY ? r : "",
-	    f);
+  snprintf(cmd, sizeof(cmd),
+	   "%s %s%s%s%s%s%s%s",
+	   DOTLOCK,
+	   flags & DL_FL_TRY ? "-t " : "",
+	   flags & DL_FL_UNLOCK ? "-u " : "",
+	   flags & DL_FL_USEPRIV ? "-p " : "",
+	   flags & DL_FL_FORCE ? "-f " : "",
+	   flags & DL_FL_UNLINK ? "-d " : "",
+	   flags & DL_FL_RETRY ? r : "",
+	   f);
   
-  return mutt_system (cmd);
+  FREE(&f);
+
+  return mutt_system(cmd);
 }
 
 #else 
@@ -250,7 +252,7 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
   return 0;
 }
 
-int mx_unlock_file (const char *path, int fd)
+int mx_unlock_file (const char *path, int fd, int dot)
 {
 #ifdef USE_FCNTL
   struct flock unlockit = { F_UNLCK, 0, 0, 0 };
@@ -266,7 +268,8 @@ int mx_unlock_file (const char *path, int fd)
 #endif
 
 #ifdef USE_DOTLOCK
-  undotlock_file (path);
+  if (dot)
+    undotlock_file (path);
 #endif
   
   return 0;
@@ -287,6 +290,32 @@ FILE *mx_open_file_lock (const char *path, const char *mode)
   }
 
   return (f);
+}
+
+void mx_unlink_empty (const char *path)
+{
+  int fd;
+#ifndef USE_DOTLOCK
+  char b;
+#endif
+
+  if ((fd = open (path, O_RDWR)) == -1)
+    return;
+  
+  if (mx_lock_file (path, fd, 1, 0, 1) == -1)
+  {
+    close (fd);
+    return;
+  }
+
+#ifdef USE_DOTLOCK
+  invoke_dotlock (path, DL_FL_UNLINK, 1);
+#else
+  if  (read (fd, &b, 1) != 1)
+    unlink (path);
+#endif
+
+  mx_unlock_file (path, fd, 0);
 }
 
 /* try to figure out what type of mailbox ``path'' is
@@ -787,7 +816,7 @@ int mx_close_mailbox (CONTEXT *ctx)
   }
 
 #ifdef USE_IMAP
-  /* IMAP doesn't support an OLD flag */
+  /* IMAP servers managed the OLD flag themselves */
   if (ctx->magic != M_IMAP)
 #endif
   if (option (OPTMARKOLD))
@@ -855,7 +884,7 @@ int mx_close_mailbox (CONTEXT *ctx)
   if (ctx->msgcount == ctx->deleted &&
       (ctx->magic == M_MMDF || ctx->magic == M_MBOX) &&
       !mutt_is_spool(ctx->path) && !option (OPTSAVEEMPTY))
-    unlink (ctx->path);
+    mx_unlink_empty (ctx->path);
 
   mx_fastclose_mailbox (ctx);
 
@@ -1015,70 +1044,8 @@ int mx_sync_mailbox (CONTEXT *ctx)
   return (rc);
 }
 
-int mh_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
-{
-  int hi = 0;
-  int fd, n;
-  char *cp;
-  char path[_POSIX_PATH_MAX];
-  DIR *dirp;
-  struct dirent *de;
 
-  do
-  {
-    if ((dirp = opendir (dest->path)) == NULL)
-    {
-      mutt_perror (dest->path);
-      return (-1);
-    }
-
-    /* figure out what the next message number is */
-    while ((de = readdir (dirp)) != NULL)
-    {
-      cp = de->d_name;
-      while (*cp)
-      {
-	if (!isdigit ((unsigned char) *cp))
-	  break;
-	cp++;
-      }
-      if (!*cp)
-      {
-	n = atoi (de->d_name);
-	if (n > hi)
-	  hi = n;
-      }
-    }
-    closedir (dirp);
-    hi++;
-    snprintf (path, sizeof (path), "%s/%d", dest->path, hi);
-    if ((fd = open (path, O_WRONLY | O_EXCL | O_CREAT, 0600)) == -1)
-    {
-      if (errno != EEXIST)
-      {
-	mutt_perror (path);
-	return (-1);
-      }
-    }
-  }
-  while (fd < 0);
-
-  if ((msg->fp = fdopen (fd, "w")) == NULL)
-    return (-1);
-
-  return 0;
-}
-
-int maildir_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
-{
-  char tmp[_POSIX_PATH_MAX];
-  char path[_POSIX_PATH_MAX];
-
-  maildir_create_filename (dest->path, hdr, path, tmp);
-  if ((msg->fp = safe_fopen (tmp, "w")) == NULL)
-    return (-1);
-  return 0;
-}
+/* {maildir,mh}_open_new_message are in mh.c. */
 
 int mbox_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
 {
@@ -1095,7 +1062,6 @@ int imap_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
   if ((msg->fp = safe_fopen (tmp, "w")) == NULL)
     return (-1);
   msg->path = safe_strdup(tmp);
-  msg->ctx = dest;
   return 0;
 }
 #endif
@@ -1213,30 +1179,31 @@ MESSAGE *mx_open_message (CONTEXT *ctx, int msgno)
 
     case M_MH:
     case M_MAILDIR:
+    {
+      HEADER *cur = ctx->hdrs[msgno];
+      char path[_POSIX_PATH_MAX];
+      
+      snprintf (path, sizeof (path), "%s/%s", ctx->path, cur->path);
+      if ((msg->fp = fopen (path, "r")) == NULL)
       {
-	HEADER *cur = ctx->hdrs[msgno];
-	char path[_POSIX_PATH_MAX];
-
-	snprintf (path, sizeof (path), "%s/%s", ctx->path, cur->path);
-	if ((msg->fp = fopen (path, "r")) == NULL)
-	{
-	  mutt_perror (path);
-	  dprint (1, (debugfile, "mx_open_message: fopen: %s: %s (errno %d).\n",
-		      path, strerror (errno), errno));
-	  FREE (&msg);
-	}
+	mutt_perror (path);
+	dprint (1, (debugfile, "mx_open_message: fopen: %s: %s (errno %d).\n",
+		    path, strerror (errno), errno));
+	FREE (&msg);
       }
-      break;
-
+    }
+    break;
+    
 #ifdef USE_IMAP
     case M_IMAP:
+    {
       if (imap_fetch_message (msg, ctx, msgno) != 0)
 	FREE (&msg);
       break;
+    }
 #endif /* USE_IMAP */
 
     default:
-
       dprint (1, (debugfile, "mx_open_message(): function not implemented for mailbox type %d.\n", ctx->magic));
       FREE (&msg);
       break;
@@ -1244,45 +1211,87 @@ MESSAGE *mx_open_message (CONTEXT *ctx, int msgno)
   return (msg);
 }
 
+/* commit a message to a folder */
+
+int mx_commit_message (MESSAGE *msg, CONTEXT *ctx)
+{
+  int r = 0;
+
+  if (!(msg->write && ctx->append))
+  {
+    dprint (1, (debugfile, "mx_commit_message(): msg->write = %d, ctx->append = %d\n",
+		msg->write, ctx->append));
+    return -1;
+  }
+
+  switch (msg->magic)
+  {
+    case M_MMDF:
+    {
+      fputs (MMDF_SEP, msg->fp);
+      break;
+    }
+    
+    case M_MBOX:
+    {
+      fputc ('\n', msg->fp);
+      break;
+    }
+
+    case M_KENDRA:
+    {
+      fputs (KENDRA_SEP, msg->fp);
+      break;
+    }
+
+#ifdef USE_IMAP
+    case M_IMAP:
+    {
+      if ((r = safe_fclose (&msg->fp)) == 0)
+	r = imap_append_message (ctx, msg);
+      break;
+    }
+#endif
+    
+    case M_MAILDIR:
+    {
+      if ((r = safe_fclose (&msg->fp)) == 0)
+	r = maildir_commit_message (ctx, msg, NULL);
+      break;
+    }
+    
+    case M_MH:
+    {
+      if ((r = safe_fclose (&msg->fp)) == 0)
+	r = mh_commit_message (ctx, msg, NULL);
+      break;
+    }
+  }
+  return r;
+}
+
 /* close a pointer to a message */
 int mx_close_message (MESSAGE **msg)
 {
   int r = 0;
 
-  if ((*msg)->write)
-  {
-    /* add the message terminator */
-    switch ((*msg)->magic)
-    {
-      case M_MMDF:
-	fputs (MMDF_SEP, (*msg)->fp);
-	break;
-
-      case M_MBOX:
-	fputc ('\n', (*msg)->fp);
-	break;
-    }
-  }
-
-  switch ((*msg)->magic) 
-  {
-    case M_MH:
-    case M_MAILDIR:
-      r = fclose ((*msg)->fp);
-      break;
-
+  if ((*msg)->magic == M_MH || (*msg)->magic == M_MAILDIR
 #ifdef USE_IMAP
-    case M_IMAP:
-      r = fclose ((*msg)->fp);
-      if ((*msg)->write && (*msg)->ctx->append)
-      {
-	r = imap_append_message ((*msg)->ctx, *msg);
-	unlink ((*msg)->path);
-      }
+      || (*msg)->magic == M_IMAP
 #endif
+      )
+  {
+    r = safe_fclose (&(*msg)->fp);
+  }
+  else
+    (*msg)->fp = NULL;
 
-    default:
-      break;
+  if ((*msg)->path)
+  {
+    dprint (1, (debugfile, "mx_close_message (): unlinking %s\n",
+		(*msg)->path));
+    unlink ((*msg)->path);
+    FREE (&(*msg)->path);
   }
 
   FREE (msg);
