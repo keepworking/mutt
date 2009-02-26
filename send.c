@@ -41,10 +41,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 #ifdef MIXMASTER
 #include "remailer.h"
 #endif
@@ -347,12 +343,12 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
   mutt_message_hook (ctx, cur, M_MESSAGEHOOK);
 
 #ifdef HAVE_PGP
-  if ((cur->security & ENCRYPT) && option (OPTFORWDECODE))
+  if ((cur->pgp & PGPENCRYPT) && option (OPTFORWDECODE))
   {
     /* make sure we have the user's passphrase before proceeding... */
-    crypt_valid_passphrase (cur->security);
+    pgp_valid_passphrase ();
   }
-#endif /* HAVE_SMIME */
+#endif /* HAVE_PGP */
 
   mutt_forward_intro (out, cur);
 
@@ -401,12 +397,15 @@ static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
   int chflags = CH_DECODE;
 
 #ifdef HAVE_PGP
-    if (cur->security & ENCRYPT)
+  if (cur->pgp)
+  {
+    if (cur->pgp & PGPENCRYPT)
     {
       /* make sure we have the user's passphrase before proceeding... */
-      crypt_valid_passphrase (cur->security);
+      pgp_valid_passphrase ();
     }
-#endif /* HAVE_SMIME */
+  }
+#endif /* HAVE_PGP */
 
   mutt_parse_mime_message (ctx, cur);
   mutt_message_hook (ctx, cur, M_MESSAGEHOOK);
@@ -802,15 +801,12 @@ generate_body (FILE *tempfp,	/* stream for outgoing message */
 
 
 
-#if defined(HAVE_PGP)
-/*  || defined(HAVE_SMIME) */
+#ifdef HAVE_PGP
   else if (flags & SENDKEY) 
   {
     BODY *tmp;
-#ifdef HAVE_PGP
     if ((tmp = pgp_make_key_attachment (NULL)) == NULL)
       return -1;
-#endif
 
     tmp->next = msg->content;
     msg->content = tmp;
@@ -1025,6 +1021,46 @@ int mutt_resend_message (FILE *fp, CONTEXT *ctx, HEADER *cur)
   return ci_send_message (SENDRESEND, msg, NULL, ctx, cur);
 }
 
+#ifdef HAVE_PGP
+
+static int _set_pgp_flags (HEADER *cur)
+{
+  int flags = 0;
+  
+  if (option (OPTPGPREPLYENCRYPT) && cur && cur->pgp & PGPENCRYPT)
+    flags |= PGPENCRYPT;
+  if (option (OPTPGPREPLYSIGN) && cur && cur->pgp & PGPSIGN)
+    flags |= PGPSIGN;
+  if (option (OPTPGPREPLYSIGNENCRYPTED) && cur && cur->pgp & PGPENCRYPT)
+    flags |= PGPSIGN;
+
+  return flags;
+
+}
+
+static int set_pgp_flags (HEADER *cur, CONTEXT *ctx)
+{
+  int i;
+  int flags = 0;
+  
+  if (cur) 
+    return _set_pgp_flags (cur);
+  
+  if (!ctx)
+    return 0;
+    
+  for (i = 0; i < ctx->vcount; i++)
+  {
+    cur = ctx->hdrs[ctx->v2r[i]];
+    if (cur->tagged)
+      flags |= _set_pgp_flags (cur);
+  }
+
+  return flags;
+}
+
+#endif /* HAVE_PGP */
+
 int
 ci_send_message (int flags,		/* send mode */
 		 HEADER *msg,		/* template to use for new message */
@@ -1038,7 +1074,7 @@ ci_send_message (int flags,		/* send mode */
   BODY *pbody;
   int i, killfrom = 0;
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
   BODY *save_content = NULL;
   BODY *clear_content = NULL;
   char *pgpkeylist = NULL;
@@ -1208,38 +1244,19 @@ ci_send_message (int flags,		/* send mode */
      * can take effect.
      */
 
-#if defined(HAVE_PGP)|| defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     if (! (flags & SENDMAILX))
     {
-      if (option (OPTCRYPTAUTOSIGN))
-	msg->security |= SIGN;
-      if (option (OPTCRYPTAUTOENCRYPT))
-	msg->security |= ENCRYPT;
-      if (option (OPTCRYPTREPLYENCRYPT) && cur && cur->security & ENCRYPT)
-	msg->security |= ENCRYPT;
-      if (option (OPTCRYPTREPLYSIGN) && cur && cur->security & SIGN)
-	msg->security |= SIGN;
-      if (option (OPTCRYPTREPLYSIGNENCRYPTED) && cur && cur->security & ENCRYPT)
-	msg->security |= SIGN;
+      if (option (OPTPGPAUTOSIGN))
+	msg->pgp |= PGPSIGN;
+      if (option (OPTPGPAUTOENCRYPT))
+	msg->pgp |= PGPENCRYPT;
       
-#ifdef HAVE_PGP
-      if (msg->security)
-	msg->security |= APPLICATION_PGP;   // default is PGP
-#endif
-
-#ifdef HAVE_SMIME
-      if (msg->security && ((cur && cur->security & APPLICATION_SMIME) ||
-	  option (OPTSMIMEISDEFAULT)))
-      {
-#ifdef HAVE_PGP
-    /* if not both.. */
-	msg->security ^= APPLICATION_PGP;
-#endif
-	msg->security |= APPLICATION_SMIME;
-      }
-#endif /* HAVE_SMIME */
+      msg->pgp |= set_pgp_flags (cur, ctx);
     }
-#endif /* HAVE_PGP || HAVE_SMIME */
+
+#endif /* HAVE_PGP */
+      
 
 
 
@@ -1397,14 +1414,14 @@ main_loop:
 
   encode_descriptions (msg->content, 1);
   
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-  if (msg->security)  
+#ifdef HAVE_PGP
+  if (msg->pgp)
   {
     /* save the decrypted attachments */
     clear_content = msg->content;
 
-    if ((crypt_get_keys (msg, &pgpkeylist) == -1) ||
-	mutt_protect (msg, pgpkeylist) == -1)
+    if ((pgp_get_keys (msg, &pgpkeylist) == -1) ||
+	(pgp_protect (msg, pgpkeylist) == -1))
     {
       msg->content = mutt_remove_multipart (msg->content);
       
@@ -1455,26 +1472,26 @@ main_loop:
   if (*fcc && mutt_strcmp ("/dev/null", fcc) != 0)
   {
     BODY *tmpbody = msg->content;
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     BODY *save_sig = NULL;
     BODY *save_parts = NULL;
 #endif /* HAVE_PGP */
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-    if (msg->security && option (OPTFCCCLEAR))
+#ifdef HAVE_PGP
+    if (msg->pgp && option (OPTFCCCLEAR))
       msg->content = clear_content;
 #endif
 
     /* check to see if the user wants copies of all attachments */
     if (!option (OPTFCCATTACH) && msg->content->type == TYPEMULTIPART)
     {
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
       if (mutt_strcmp (msg->content->subtype, "encrypted") == 0 ||
 	  mutt_strcmp (msg->content->subtype, "signed") == 0)
       {
 	if (clear_content->type == TYPEMULTIPART)
 	{
-	  if(!(msg->security & ENCRYPT) && (msg->security & SIGN))
+	  if (!(msg->pgp & PGPENCRYPT) && (msg->pgp & PGPSIGN))
 	  {
 	    /* save initial signature and attachments */
 	    save_sig = msg->content->parts->next;
@@ -1484,7 +1501,7 @@ main_loop:
 	  /* this means writing only the main part */
 	  msg->content = clear_content->parts;
 
-	  if (mutt_protect (msg, pgpkeylist) == -1)
+	  if (pgp_protect (msg, pgpkeylist) == -1)
 	  {
 	    /* we can't do much about it at this point, so
 	     * fallback to saving the whole thing to fcc
@@ -1498,19 +1515,19 @@ main_loop:
 	}
       }
       else
-#endif /* HAVE_PGP || HAVE_SMIME */
+#endif /* HAVE_PGP */
 	msg->content = msg->content->parts;
     }
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
 full_fcc:
-#endif /* HAVE_PGP || HAVE_SMIME */
+#endif /* HAVE_PGP */
     if (msg->content)
       mutt_write_fcc (fcc, msg, NULL, 0, NULL);
 
     msg->content = tmpbody;
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
+#ifdef HAVE_PGP
     if (save_sig)
     {
       /* cleanup the second signature structures */
@@ -1531,7 +1548,7 @@ full_fcc:
       mutt_free_body (&save_content);
     }
       
-#endif /* HAVE_PGP || HAVE_SMIME */
+#endif /* HAVE_PGP */
   }
 
 
@@ -1539,14 +1556,14 @@ full_fcc:
   {
     if (!(flags & SENDBATCH))
     {
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-      if ((msg->security & ENCRYPT) || 
-	  ((msg->security & SIGN)  && msg->content->type == TYPEAPPLICATION))
+#ifdef HAVE_PGP
+      if ((msg->pgp & PGPENCRYPT) || 
+	  ((msg->pgp & PGPSIGN) && msg->content->type == TYPEAPPLICATION))
       {
 	mutt_free_body (&msg->content); /* destroy PGP data */
 	msg->content = clear_content;	/* restore clear text. */
       }
-      else if ((msg->security & SIGN) && msg->content->type == TYPEMULTIPART)
+      else if ((msg->pgp & PGPSIGN) && msg->content->type == TYPEMULTIPART)
       {
 	mutt_free_body (&msg->content->parts->next);		/* destroy sig */
 	msg->content = mutt_remove_multipart (msg->content);	/* remove multipart */
@@ -1566,14 +1583,14 @@ full_fcc:
   else if (!option (OPTNOCURSES) && ! (flags & SENDMAILX))
     mutt_message (i == 0 ? _("Mail sent.") : _("Sending in background."));
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-  if (msg->security & ENCRYPT)
+#ifdef HAVE_PGP
+  if (msg->pgp & PGPENCRYPT)
   {
     /* cleanup structures from the first encryption */
     mutt_free_body (&clear_content);
     FREE (&pgpkeylist);
   }
-#endif
+#endif /* HAVE_PGP */
 
   if (flags & SENDREPLY)
   {
