@@ -240,6 +240,8 @@ int mutt_check_mime_type (const char *s)
     return TYPEAUDIO;
   else if (mutt_strcasecmp ("video", s) == 0)
     return TYPEVIDEO;
+  else if (mutt_strcasecmp ("model", s) == 0)
+    return TYPEMODEL;
   else
     return TYPEOTHER;
 }
@@ -833,7 +835,6 @@ void mutt_parse_mime_message (CONTEXT *ctx, HEADER *cur)
 #endif /* _PGPPATH */
 
 
-
     mx_close_message (&msg);
   }
 }
@@ -865,13 +866,16 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs)
 
   if (hdr)
   {
-    hdr->content = mutt_new_body ();
+    if (hdr->content == NULL)
+    {
+      hdr->content = mutt_new_body ();
 
-    /* set the defaults from RFC1521 */
-    hdr->content->type = TYPETEXT;
-    hdr->content->subtype = safe_strdup ("plain");
-    hdr->content->encoding = ENC7BIT;
-    hdr->content->length = -1;
+      /* set the defaults from RFC1521 */
+      hdr->content->type = TYPETEXT;
+      hdr->content->subtype = safe_strdup ("plain");
+      hdr->content->encoding = ENC7BIT;
+      hdr->content->length = -1;
+    }
   }
 
   loc = ftell (f);
