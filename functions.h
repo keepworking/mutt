@@ -68,8 +68,6 @@ struct binding_t OpMain[] = {
   { "bounce-message",		OP_BOUNCE_MESSAGE,		"b" },
   { "change-folder",		OP_MAIN_CHANGE_FOLDER,		"c" },
   { "change-folder-readonly",	OP_MAIN_CHANGE_FOLDER_READONLY,	"\033c" },
-  { "collapse-thread",		OP_MAIN_COLLAPSE_THREAD,	"\033v" },
-  { "collapse-all",		OP_MAIN_COLLAPSE_ALL,		"\033V" },
   { "copy-message",		OP_COPY_MESSAGE,		"C" },
   { "decode-copy",		OP_DECODE_COPY,			"\033C" },
   { "decode-save",		OP_DECODE_SAVE,			"\033s" },
@@ -77,7 +75,6 @@ struct binding_t OpMain[] = {
   { "delete-pattern",		OP_MAIN_DELETE_PATTERN,		"D" },
   { "delete-thread",		OP_DELETE_THREAD,		"\004" },
   { "delete-subthread",		OP_DELETE_SUBTHREAD,		"\033d" },
-  { "edit-message",		OP_EDIT_MESSAGE,		"e" },
   { "forward-message",		OP_FORWARD_MESSAGE,		"f" },
   { "flag-message",		OP_FLAG_MESSAGE,		"F" },
   { "group-reply",		OP_GROUP_REPLY,			"g" },
@@ -134,8 +131,6 @@ struct binding_t OpMain[] = {
   { "extract-keys",		OP_EXTRACT_KEYS,		"\013" },
   { "forget-passphrase",	OP_FORGET_PASSPHRASE,		"\006" },
   { "mail-key",			OP_MAIL_KEY,			"\033k" },
-  { "decrypt-copy",		OP_DECRYPT_COPY,		NULL },
-  { "decrypt-save",		OP_DECRYPT_SAVE,		NULL },
 #endif
 
 
@@ -153,7 +148,6 @@ struct binding_t OpPager[] = {
   { "delete-message",	OP_DELETE,			"d" },
   { "delete-thread",	OP_DELETE_THREAD,		"\004" },
   { "delete-subthread",	OP_DELETE_SUBTHREAD,		"\033d" },
-  { "edit-message",	OP_EDIT_MESSAGE,		"e" },
   { "forward-message",	OP_FORWARD_MESSAGE,		"f" },
   { "flag-message",	OP_FLAG_MESSAGE,		"F" },
   { "group-reply",	OP_GROUP_REPLY,			"g" },
@@ -215,13 +209,68 @@ struct binding_t OpPager[] = {
 
 
 
+
+
+
+
+
+
+
 #ifdef _PGPPATH
   { "extract-keys",	OP_EXTRACT_KEYS,		"\013" },
   { "forget-passphrase",OP_FORGET_PASSPHRASE,		"\006" },
   { "mail-key",		OP_MAIL_KEY,			"\033k" },
-  { "decrypt-copy",		OP_DECRYPT_COPY,		NULL },
-  { "decrypt-save",		OP_DECRYPT_SAVE,		NULL },
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -258,7 +307,6 @@ struct binding_t OpAttach[] = {
 
 struct binding_t OpCompose[] = {
   { "attach-file",	OP_COMPOSE_ATTACH_FILE,		"a" },
-  { "attach-message",	OP_COMPOSE_ATTACH_MESSAGE,	"A" },
   { "edit-bcc",		OP_COMPOSE_EDIT_BCC,		"b" },
   { "edit-cc",		OP_COMPOSE_EDIT_CC,		"c" },
   { "copy-file",	OP_SAVE,			"C" },
@@ -271,8 +319,7 @@ struct binding_t OpCompose[] = {
   { "edit-encoding",	OP_COMPOSE_EDIT_ENCODING,	"\005" },
   { "edit-from",	OP_COMPOSE_EDIT_FROM,		"\033f" },
   { "edit-fcc",		OP_COMPOSE_EDIT_FCC,		"f" },
-  { "filter-entry",	OP_FILTER,			"F" },
-  { "get-attachment",	OP_COMPOSE_GET_ATTACHMENT,	"G" },
+  { "filter-entry",	OP_FILTER,			"F" }, 
   { "ispell",		OP_COMPOSE_ISPELL,		"i" },
   { "print-entry",	OP_PRINT,			"l" },
   { "redraw-screen",	OP_REDRAW,			"\014" },
@@ -284,9 +331,7 @@ struct binding_t OpCompose[] = {
   { "edit-subject",	OP_COMPOSE_EDIT_SUBJECT,	"s" },
   { "edit-to",		OP_COMPOSE_EDIT_TO,		"t" },
   { "edit-type",	OP_COMPOSE_EDIT_TYPE,		"\024" },
-  { "write-fcc",	OP_COMPOSE_WRITE_MESSAGE,	"w" },
   { "toggle-unlink",	OP_COMPOSE_TOGGLE_UNLINK,	"u" },
-  { "update-encoding",	OP_COMPOSE_UPDATE_ENCODING,	"U" },
   { "view-attach",	OP_VIEW_ATTACH,			M_ENTER_S },
   { "send-message",	OP_COMPOSE_SEND_MESSAGE,	"y" },
   { "pipe-entry",	OP_PIPE,			"|" },
@@ -309,7 +354,6 @@ struct binding_t OpPost[] = {
 /* The file browser */
 struct binding_t OpBrowser[] = {
   { "change-dir",	OP_CHANGE_DIRECTORY,	"c" },
-  { "display-filename",	OP_BROWSER_TELL,	"@" },
   { "enter-mask",	OP_ENTER_MASK,		"m" },
   { "sort",		OP_SORT,		"o" },
   { "sort-reverse",	OP_SORT_REVERSE,	"O" },
