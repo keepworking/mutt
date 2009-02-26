@@ -128,7 +128,6 @@ int mutt_copy_body (FILE *fp, BODY **tgt, BODY *src)
   memcpy (b, src, sizeof (BODY));
   b->parts = NULL;
   b->next  = NULL;
-  b->hdr = NULL;
 
   b->filename = safe_strdup (tmp);
   b->use_disp = use_disp;
@@ -143,7 +142,6 @@ int mutt_copy_body (FILE *fp, BODY **tgt, BODY *src)
   b->filename = safe_strdup (b->filename);
   b->d_filename = safe_strdup (b->d_filename);
   b->description = safe_strdup (b->description);
-
   
   /* copy parameters */
   for (par = b->parameter, ppar = &b->parameter; par; ppar = &(*ppar)->next, par = par->next)
@@ -337,15 +335,11 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
 	  struct passwd *pw;
 	  if ((t = strchr (s + 1, '/'))) 
 	    *t = 0;
-
 	  if ((pw = getpwnam (s + 1)))
 	  {
 	    strfcpy (p, pw->pw_dir, sizeof (p));
 	    if (t)
-	    {
-	      *t = '/';
-	      tail = t;
-	    }
+	      tail = t + 1;
 	    else
 	      tail = "";
 	  }
@@ -402,14 +396,14 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       
       case '>':
       {
-	strfcpy (p, NONULL(Inbox), sizeof (p));
+	strfcpy (p, Inbox, sizeof (p));
 	tail = s + 1;
       }
       break;
       
       case '<':
       {
-	strfcpy (p, NONULL(Outbox), sizeof (p));
+	strfcpy (p, Outbox, sizeof (p));
 	tail = s + 1;
       }
       break;
@@ -418,12 +412,12 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       {
 	if (*(s+1) == '!')
 	{
-	  strfcpy (p, NONULL(LastFolder), sizeof (p));
+	  strfcpy (p, LastFolder, sizeof (p));
 	  tail = s + 2;
 	}
 	else 
 	{
-	  strfcpy (p, NONULL(Spoolfile), sizeof (p));
+	  strfcpy (p, Spoolfile, sizeof (p));
 	  tail = s + 1;
 	}
       }
@@ -431,7 +425,7 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       
       case '-':
       {
-	strfcpy (p, NONULL(LastFolder), sizeof (p));
+	strfcpy (p, LastFolder, sizeof (p));
 	tail = s + 1;
       }
       break;
@@ -977,6 +971,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
   }
   *wptr = 0;
 
+#if 0
   if (flags & M_FORMAT_MAKEPRINT)
   {
     /* Make sure that the string is printable by changing all non-printable
@@ -986,6 +981,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	  !((flags & M_FORMAT_TREE) && (*cp <= M_TREE_MAX)))
 	*cp = isspace ((unsigned char) *cp) ? ' ' : '.';
   }
+#endif
 }
 
 /* This function allows the user to specify a command to read stdout from in
