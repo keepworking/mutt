@@ -54,10 +54,6 @@
 #include <utime.h>
 #endif
 
-/* HP-UX and ConvexOS don't have this macro */
-#ifndef S_ISLNK
-#define S_ISLNK(x) (((x) & S_IFMT) == S_IFLNK ? 1 : 0)
-#endif
 
 #define mutt_is_spool(s)  (strcmp (NONULL(Spoolfile), s) == 0)
 
@@ -73,9 +69,12 @@ static int invoke_dotlock(const char *path, int flags, int retry)
 {
   char cmd[LONG_STRING + _POSIX_PATH_MAX];
   char r[SHORT_STRING];
+  char *f;
   
   if(flags & DL_FL_RETRY)
     snprintf(r, sizeof(r), "-r %d ", retry ? MAXLOCKATTEMPT : 0);
+  
+  f = mutt_quote_filename(path);
   
   snprintf(cmd, sizeof(cmd),
 	   "%s %s%s%s%s%s%s",
@@ -85,7 +84,9 @@ static int invoke_dotlock(const char *path, int flags, int retry)
 	   flags & DL_FL_USEPRIV ? "-p " : "",
 	   flags & DL_FL_FORCE ? "-f " : "",
 	   flags & DL_FL_RETRY ? r : "",
-	   path);
+	   f);
+  
+  FREE(&f);
 
   return mutt_system(cmd);
 }
@@ -292,7 +293,7 @@ FILE *mx_open_file_lock (const char *path, const char *mode)
 
 #ifdef USE_IMAP
 
-static int mx_is_imap(const char *p)
+int mx_is_imap(const char *p)
 {
   return p && (*p == '{');
 }
@@ -535,6 +536,7 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
   ctx->path = safe_strdup (path);
 
   ctx->msgnotreadyet = -1;
+  ctx->collapsed = 0;
   
   if (flags & M_QUIET)
     ctx->quiet = 1;
@@ -553,19 +555,22 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
     return ctx;
   }
 
-  switch (ctx->magic = mx_get_magic (path))
+  ctx->magic = mx_get_magic (path);
+  
+  if(ctx->magic == 0)
+    mutt_error ("%s is not a mailbox.", path);
+
+  if(ctx->magic == -1)
+    mutt_perror(path);
+  
+  if(ctx->magic <= 0)
   {
-    case 0:
-      mutt_error ("%s is not a mailbox.", path);
-      /* fall through */
-
-    case -1:
-      mx_fastclose_mailbox (ctx);
-      if (!pctx)
-	free (ctx);
-      return (NULL);
+    mx_fastclose_mailbox (ctx);
+    if (!pctx)
+      FREE (&ctx);
+    return (NULL);
   }
-
+  
   /* if the user has a `push' command in their .muttrc, or in a folder-hook,
    * it will cause the progress messages not to be displayed because
    * mutt_refresh() will think we are in the middle of a macro.  so set a
@@ -948,7 +953,9 @@ int mx_sync_mailbox (CONTEXT *ctx)
 #undef this_body
     ctx->msgcount = j;
 
+    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, 1); /* rethread from scratch */
+    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (rc);
@@ -956,7 +963,7 @@ int mx_sync_mailbox (CONTEXT *ctx)
 
 int mh_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
 {
-  int hi = 1;
+  int hi = 0;
   int fd, n;
   char *cp;
   char path[_POSIX_PATH_MAX];
@@ -1338,8 +1345,7 @@ MESSAGE *mx_open_message (CONTEXT *ctx, int msgno)
 	  mutt_perror (path);
 	  dprint (1, (debugfile, "mx_open_message: fopen: %s: %s (errno %d).\n",
 		      path, strerror (errno), errno));
-	  free (msg);
-	  msg = NULL;
+	  FREE (&msg);
 	}
       }
       break;
@@ -1347,17 +1353,14 @@ MESSAGE *mx_open_message (CONTEXT *ctx, int msgno)
 #ifdef USE_IMAP
     case M_IMAP:
       if (imap_fetch_message (msg, ctx, msgno) != 0)
-      {
-	free (msg);
-	msg = NULL;
-      }
+	FREE (&msg);
       break;
 #endif /* USE_IMAP */
 
     default:
 
       dprint (1, (debugfile, "mx_open_message(): function not implemented for mailbox type %d.\n", ctx->magic));
-      safe_free ((void **) &msg);
+      FREE (&msg);
       break;
   }
   return (msg);
@@ -1404,8 +1407,7 @@ int mx_close_message (MESSAGE **msg)
       break;
   }
 
-  free (*msg);
-  *msg = NULL;
+  FREE (msg);
   return (r);
 }
 

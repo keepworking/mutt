@@ -649,7 +649,9 @@ int mbox_sync_mailbox (CONTEXT *ctx)
   {
     save_sort = Sort;
     Sort = SORT_ORDER;
+    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, 0);
+    unset_option (OPTSORTCOLLAPSE);
   }
 
   /* need to open the file for writing in such a way that it does not truncate
@@ -729,8 +731,8 @@ int mbox_sync_mailbox (CONTEXT *ctx)
     if (! ctx->hdrs[i]->deleted)
     {
       j++;
-      if (!ctx->quiet && WriteInc && ((j % WriteInc) == 0 || j == 1))
-	mutt_message ("Writing messages... %d (%d%%)", j,
+      if (!ctx->quiet && WriteInc && ((i % WriteInc) == 0 || j == 1))
+	mutt_message ("Writing messages... %d (%d%%)", i,
 		      ftell (ctx->fp) / (ctx->size / 100 + 1));
 
       if (ctx->magic == M_MMDF)
@@ -890,7 +892,9 @@ bail:  /* Come here in case of disaster */
     Sort = save_sort;
     /* if the mailbox was reopened, the thread tree will be invalid so make
      * sure to start threading from scratch.  */
+    set_option (OPTSORTCOLLAPSE);
     mutt_sort_headers (ctx, (need_sort == M_REOPENED));
+    unset_option (OPTSORTCOLLAPSE);
   }
 
   return (-1);
