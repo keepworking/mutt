@@ -87,11 +87,8 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     memset (&pattern, 0, sizeof (pattern));
     pattern.data = safe_strdup (path);
   }
-  else if (DefaultHook && !(data & (M_CHARSETHOOK | M_ACCOUNTHOOK))
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-      && !(data & M_CRYPTHOOK)
-#endif /* HAVE_PGP */
-      )
+  else if (DefaultHook && (data & (M_FOLDERHOOK | M_MBOXHOOK | M_SENDHOOK |
+				   M_FCCHOOK | M_SAVEHOOK | M_MESSAGEHOOK)))
   {
     char tmp[HUGE_STRING];
 
@@ -157,11 +154,11 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   else
   {
     rx = safe_malloc (sizeof (regex_t));
-#ifdef M_CRYPTHOOK
-    if ((rc = REGCOMP (rx, NONULL(pattern.data), ((data & (M_CRYPTHOOK|M_CHARSETHOOK)) ? REG_ICASE : 0))) != 0)
+#ifdef M_PGPHOOK
+    if ((rc = REGCOMP (rx, NONULL(pattern.data), ((data & (M_PGPHOOK|M_CHARSETHOOK)) ? REG_ICASE : 0))) != 0)
 #else
     if ((rc = REGCOMP (rx, NONULL(pattern.data), (data & (M_CHARSETHOOK|M_ICONVHOOK)) ? REG_ICASE : 0)) != 0)
-#endif /* M_CRYPTHOOK */
+#endif /* HAVE_PGP */
     {
       regerror (rc, rx, err->data, err->dsize);
       regfree (rx);
@@ -444,10 +441,10 @@ char *mutt_iconv_hook (const char *chs)
   return _mutt_string_hook (chs, M_ICONVHOOK);
 }
 
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-char *mutt_crypt_hook (ADDRESS *adr)
+#ifdef HAVE_PGP
+char *mutt_pgp_hook (ADDRESS *adr)
 {
-  return _mutt_string_hook (adr->mailbox, M_CRYPTHOOK);
+  return _mutt_string_hook (adr->mailbox, M_PGPHOOK);
 }
 #endif /* HAVE_PGP */
 
