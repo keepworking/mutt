@@ -23,10 +23,6 @@
 #include "mapping.h"
 #include "sort.h"
 #include "mailbox.h"
-#include "browser.h"
-#ifdef USE_IMAP
-#include "imap.h"
-#endif
 
 #include <stdlib.h>
 #include <dirent.h>
@@ -36,6 +32,22 @@
 #include <sys/stat.h>
 #include <pwd.h>
 #include <grp.h>
+
+struct folder_file
+{
+  mode_t mode;
+  time_t mtime;
+  off_t size;
+  char *name;
+  char *desc;
+};
+
+struct browser_state
+{
+  struct folder_file *entry;
+  short entrylen; /* number of real entries */
+  short entrymax;  /* max entry */
+};
 
 static struct mapping_t FolderHelp[] = {
   { N_("Exit"),  OP_EXIT },
@@ -299,9 +311,6 @@ static void add_folder (MUTTMENU *m, struct browser_state *state,
   }
   (state->entry)[state->entrylen].name = safe_strdup (name);
   (state->entry)[state->entrylen].desc = safe_strdup (buffer);
-#ifdef USE_IMAP
-  (state->entry)[state->entrylen].notfolder = 0;
-#endif
 
   (state->entrylen)++;
 }
@@ -311,7 +320,6 @@ static void init_state (struct browser_state *state, MUTTMENU *menu)
   state->entrylen = 0;
   state->entrymax = 256;
   state->entry = (struct folder_file *) safe_malloc (sizeof (struct folder_file) * state->entrymax);
-  memset (state->entry, 0, sizeof (struct folder_file) * state->entrymax);
   if (menu)
     menu->data = state->entry;
 }
@@ -420,10 +428,7 @@ int select_file_search (MUTTMENU *menu, regex_t *re, int n)
 
 void folder_entry (char *s, size_t slen, MUTTMENU *menu, int num)
 {
-  snprintf (s, slen, "%2d %c %s", 
-	    num + 1, 
-	    ((struct folder_file *) menu->data)[num].tagged ? '*' : ' ',
-	    ((struct folder_file *) menu->data)[num].desc);
+  snprintf (s, slen, "%2d %s", num + 1, ((struct folder_file *) menu->data)[num].desc);
 }
 
 static void init_menu (struct browser_state *state, MUTTMENU *menu, char *title,
@@ -446,32 +451,13 @@ static void init_menu (struct browser_state *state, MUTTMENU *menu, char *title,
   {
     strfcpy (path, LastDir, sizeof (path));
     mutt_pretty_mailbox (path);
-#ifdef USE_IMAP
-  if (state->imap_browse && option (OPTIMAPLSUB))
-    snprintf (title, titlelen, _("Subscribed [%s], File mask: %s"),
-	      path, Mask.pattern);
-  else
-#endif
     snprintf (title, titlelen, _("Directory [%s], File mask: %s"),
-	      path, Mask.pattern);
+	      path, NONULL (Mask.pattern));
   }
   menu->redraw = REDRAW_FULL;
 }
 
-int file_tag (MUTTMENU *menu, int n)
-{
-  struct folder_file *ff = &(((struct folder_file *)menu->data)[n]);
-  if (S_ISDIR (ff->mode) || (S_ISLNK (ff->mode) && link_is_dir (ff->name)))
-  {
-    mutt_error _("Can't attach a directory!");
-    return 0;
-  }
-  
-  return ((ff->tagged = !ff->tagged) ? 1 : -1);
-}
-
-void _mutt_select_file (char *f, size_t flen, int buffy,
-		       int multiple, char ***files, int *numfiles)
+void mutt_select_file (char *f, size_t flen, int buffy)
 {
   char buf[_POSIX_PATH_MAX];
   char prefix[_POSIX_PATH_MAX] = "";
@@ -487,17 +473,6 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
   if (*f)
   {
     mutt_expand_path (f, flen);
-#ifdef USE_IMAP
-    if (mx_is_imap (f))
-    {
-      init_state (&state, NULL);
-      state.imap_browse = 1;
-      imap_init_browse (f, &state);
-      strfcpy (LastDir, f, sizeof (LastDir));
-    }
-    else
-    {
-#endif
     for (i = mutt_strlen (f) - 1; i > 0 && f[i] != '/' ; i--);
     if (i > 0)
     {
@@ -527,23 +502,9 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
     else
       strfcpy (prefix, f + i + 1, sizeof (prefix));
     killPrefix = 1;
-#ifdef USE_IMAP
-    }
-#endif
   }
-  else 
-  {
-    if (!LastDir[0])
-      strfcpy (LastDir, NONULL(Maildir), sizeof (LastDir));
-#ifdef USE_IMAP
-    if (!buffy && mx_is_imap (LastDir))
-    {
-      init_state (&state, NULL);
-      state.imap_browse = 1;
-      imap_init_browse (LastDir, &state);
-    }
-#endif
-  }
+  else if (!LastDir[0])
+    strfcpy (LastDir, NONULL(Maildir), sizeof (LastDir));
 
   *f = 0;
 
@@ -552,11 +513,14 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
     if (examine_mailboxes (NULL, &state) == -1)
       return;
   }
-  else
 #ifdef USE_IMAP
-  if (!state.imap_browse)
+  else if (mx_is_imap (LastDir))
+  {
+    mutt_error _("IMAP folder browsing is not currently supported");
+    return;
+  }
 #endif
-  if (examine_directory (NULL, &state, LastDir, prefix) == -1)
+  else if (examine_directory (NULL, &state, LastDir, prefix) == -1)
     return;
 
   menu = mutt_new_menu ();
@@ -565,8 +529,6 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
   menu->search = select_file_search;
   menu->title = title;
   menu->data = state.entry;
-  if (multiple)
-    menu->tag = file_tag;
 
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_FOLDER, FolderHelp);
 
@@ -586,11 +548,7 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 
         if (S_ISDIR (state.entry[menu->current].mode) ||
 	    (S_ISLNK (state.entry[menu->current].mode) &&
-	    link_is_dir (state.entry[menu->current].name)) 
-#ifdef USE_IMAP
-	    || state.entry[menu->current].notfolder
-#endif
-	    )
+	    link_is_dir (state.entry[menu->current].name)))
 	{
 	  /* make sure this isn't a MH or maildir mailbox */
 	  if (buffy)
@@ -598,21 +556,11 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 	    strfcpy (buf, state.entry[menu->current].name, sizeof (buf));
 	    mutt_expand_path (buf, sizeof (buf));
 	  }
-#ifdef USE_IMAP
-	  else if (state.imap_browse)
-	  {
-	    strfcpy (buf, state.entry[menu->current].name, sizeof (buf));
-	  }
-#endif
 	  else
 	    snprintf (buf, sizeof (buf), "%s/%s", LastDir, 
 		      state.entry[menu->current].name);
 
-	  if ((mx_get_magic (buf) <= 0)
-#ifdef USE_IMAP
-	    || state.entry[menu->current].notfolder
-#endif
-	    )
+	  if (mx_get_magic (buf) <= 0)
 	  {
 	    char OldLastDir[_POSIX_PATH_MAX];
 
@@ -643,13 +591,6 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 	      sprintf (LastDir, "%s", state.entry[menu->current].name);
 	      mutt_expand_path (LastDir, sizeof (LastDir));
 	    }
-#ifdef USE_IMAP
-	    else if (state.imap_browse)
-	    {
-	      strfcpy (LastDir, state.entry[menu->current].name, 
-		  sizeof (LastDir));
-	    }
-#endif
 	    else
 	      sprintf (LastDir + mutt_strlen (LastDir), "/%s",
 		       state.entry[menu->current].name);
@@ -661,16 +602,6 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 	      killPrefix = 0;
 	    }
 	    buffy = 0;
-#ifdef USE_IMAP
-	    if (state.imap_browse)
-	    {
-	      init_state (&state, NULL);
-	      state.imap_browse = 1;
-	      imap_init_browse (LastDir, &state);
-	      menu->data = state.entry;
-	    }
-	    else
-#endif
 	    if (examine_directory (menu, &state, LastDir, prefix) == -1)
 	    {
 	      /* try to restore the old values */
@@ -693,50 +624,12 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 	  strfcpy (f, state.entry[menu->current].name, flen);
 	  mutt_expand_path (f, flen);
 	}
-#ifdef USE_IMAP
-	else if (state.imap_browse)
-	{
-	  strfcpy (f, state.entry[menu->current].name, flen);
-	}
-#endif
 	else
 	  snprintf (f, flen, "%s/%s", LastDir, state.entry[menu->current].name);
 
 	/* Fall through to OP_EXIT */
 
       case OP_EXIT:
-
-	if (multiple)
-	{
-	  char **tfiles;
-	  int i, j;
-
-	  if (menu->tagged)
-	  {
-	    *numfiles = menu->tagged;
-	    tfiles = safe_malloc (*numfiles * sizeof (char *));
-	    for (i = 0, j = 0; i < state.entrylen; i++)
-	    {
-	      struct folder_file ff = state.entry[i];
-	      char full[_POSIX_PATH_MAX];
-	      if (ff.tagged)
-	      {
-		snprintf (full, sizeof (full), "%s/%s", LastDir, ff.name);
-		mutt_expand_path (full, sizeof (full));
-		tfiles[j++] = safe_strdup (full);
-	      }
-	    }
-	    *files = tfiles;
-	  }
-	  else if (f[0]) /* no tagged entries. return selected entry */
-	  {
-	    *numfiles = 1;
-	    tfiles = safe_malloc (*numfiles * sizeof (char *));
-	    mutt_expand_path (f, flen);
-	    tfiles[0] = safe_strdup (f);
-	    *files = tfiles;
-	  }
-	}
 
 	destroy_state (&state);
 	mutt_menuDestroy (&menu);
@@ -746,35 +639,10 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
         if(state.entrylen)
 	  mutt_message(state.entry[menu->current].name);
         break;
-
-#ifdef USE_IMAP
-      case OP_BROWSER_SUBSCRIBE:
-	imap_subscribe (state.entry[menu->current].name, 1);
-	break;
-
-      case OP_BROWSER_UNSUBSCRIBE:
-	imap_subscribe (state.entry[menu->current].name, 0);
-	break;
-
-      case OP_BROWSER_TOGGLE_LSUB:
-	if (option (OPTIMAPLSUB))
-	{
-	  unset_option (OPTIMAPLSUB);
-	}
-	else
-	{
-	  set_option (OPTIMAPLSUB);
-	}
-	mutt_ungetch (0, OP_CHECK_NEW);
-	break;
-#endif
       
       case OP_CHANGE_DIRECTORY:
 
 	strfcpy (buf, LastDir, sizeof (buf));
-#ifdef USE_IMAP
-	if (!state.imap_browse)
-#endif
 	{/* add '/' at the end of the directory name */
 	int len=mutt_strlen(LastDir);
 	if (sizeof (buf) > len)
@@ -786,21 +654,6 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 	{
 	  buffy = 0;	  
 	  mutt_expand_path (buf, sizeof (buf));
-#ifdef USE_IMAP
-	  if (mx_is_imap (buf))
-	  {
-	    strfcpy (LastDir, buf, sizeof (LastDir));
-	    destroy_state (&state);
-	    init_state (&state, NULL);
-	    state.imap_browse = 1;
-	    imap_init_browse (LastDir, &state);
-	    menu->data = state.entry;
-	    menu->current = 0; 
-	    menu->top = 0; 
-	    init_menu (&state, menu, title, sizeof (title), buffy);
-	  }
-	  else
-#endif
 	  if (stat (buf, &st) == 0)
 	  {
 	    if (S_ISDIR (st.st_mode))
@@ -936,21 +789,11 @@ void _mutt_select_file (char *f, size_t flen, int buffy,
 	destroy_state (&state);
 	prefix[0] = 0;
 	killPrefix = 0;
-
 	if (buffy)
 	{
 	  if (examine_mailboxes (menu, &state) == -1)
 	    return;
 	}
-#ifdef USE_IMAP
-	else if (mx_is_imap (LastDir))
-	{
-	  init_state (&state, NULL);
-	  state.imap_browse = 1;
-	  imap_init_browse (LastDir, &state);
-	  menu->data = state.entry;
-	}
-#endif
 	else if (examine_directory (menu, &state, LastDir, prefix) == -1)
 	  return;
 	init_menu (&state, menu, title, sizeof (title), buffy);

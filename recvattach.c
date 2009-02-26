@@ -44,10 +44,12 @@
 #include <string.h>
 #include <errno.h>
 
+static const char *Mailbox_is_read_only = N_("Mailbox is read-only.");
+
 #define CHECK_READONLY if (Context->readonly) \
 {\
     mutt_flushinp (); \
-    mutt_error _("Mailbox is read-only."); \
+    mutt_error _(Mailbox_is_read_only); \
     break; \
 }
 
@@ -119,7 +121,6 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
       safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * (*idxmax += 5));
 
     if (m->type == TYPEMULTIPART && m->parts
-	&& (compose || (parent_type == -1 && mutt_strcasecmp ("alternative", m->subtype)))
 #ifdef _PGPPATH
 	&& !mutt_is_multipart_encrypted(m)
 #endif
@@ -137,13 +138,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
       m->tagged = 0;
 
       /* We don't support multipart messages in the compose menu yet */
-      if (!compose && 
-	  ((m->type == TYPEMULTIPART
-#ifdef _PGPPATH
-	    && !mutt_is_multipart_encrypted (m)
-#endif
-	    )
-	   || mutt_is_message_type(m->type, m->subtype)))
+      if (!compose && mutt_is_message_type(m->type, m->subtype))
       {
 	idx = mutt_gen_attach_list (m->parts, m->type, idx, idxlen, idxmax, level + 1, compose);
       }
@@ -156,9 +151,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
   return (idx);
 }
 
-/* %c = character set: convert?
- * %C = character set
- * %D = deleted flag
+/* %D = deleted flag
  * %d = description
  * %e = MIME content-transfer-encoding
  * %f = filename
@@ -181,38 +174,12 @@ const char *mutt_attach_fmt (char *dest,
 {
   char fmt[16];
   char tmp[SHORT_STRING];
-  char charset[SHORT_STRING];
   ATTACHPTR *aptr = (ATTACHPTR *) data;
   int optional = (flags & M_FORMAT_OPTIONAL);
   size_t l;
   
   switch (op)
   {
-    case 'C':
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
-	if (mutt_is_text_type (aptr->content->type, aptr->content->subtype) &&
-	    mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
-	  snprintf (dest, destlen, fmt, charset);
-	else
-	  snprintf (dest, destlen, fmt, "");
-      }
-      else if (!mutt_is_text_type (aptr->content->type, aptr->content->subtype) ||
-	       !mutt_get_send_charset (charset, sizeof (charset), aptr->content, 0))
-        optional = 0;
-      break;
-    case 'c':
-      /* XXX */
-      if (!optional)
-      {
-	snprintf (fmt, sizeof (fmt), "%%%sc", prefix);
-	snprintf (dest, destlen, fmt, aptr->content->type != TYPETEXT ||
-		  aptr->content->noconv ? 'n' : 'c');
-      }
-      else if (aptr->content->type != TYPETEXT || aptr->content->noconv)
-        optional = 0;
-      break;
     case 'd':
       if(!optional)
       {
@@ -358,7 +325,7 @@ void attach_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 
 int mutt_tag_attach (MUTTMENU *menu, int n)
 {
-  return ((((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged) ? 1 : -1);
+  return (((ATTACHPTR **) menu->data)[n]->content->tagged = !((ATTACHPTR **) menu->data)[n]->content->tagged);
 }
 
 int mutt_is_message_type (int type, const char *subtype)
@@ -812,12 +779,6 @@ create_tagged_message (const char *tempfile,
  * hdr		current message
  * body		current attachment 
  */
-
-/* 
- * XXX - this code looks way too complicated, and rather ineffective.
- * Analyze and fix this.
- */
-
 static void reply_attachment_list (int op, int tag, HEADER *hdr, BODY *body)
 {
   HEADER *hn;
@@ -827,7 +788,11 @@ static void reply_attachment_list (int op, int tag, HEADER *hdr, BODY *body)
   if (!tag && body->hdr)
   {
     hn = body->hdr;
-    hn->msgno = hdr->msgno; /* required for MH/maildir */
+    hn->msgno   = hdr->msgno; /* required for MH/maildir */
+    hn->replied = hdr->replied;
+    hn->read    = hdr->read;
+    hn->old	= hdr->old;
+    hn->changed = hdr->changed;
     ctx = Context;
   }
   else
@@ -838,40 +803,16 @@ static void reply_attachment_list (int op, int tag, HEADER *hdr, BODY *body)
     ctx = mx_open_mailbox (tempfile, M_QUIET, NULL);
     hn = ctx->hdrs[0];
   }
-  
-  if (op == SENDFORWARD && option (OPTFORWATTACH))
+
+  ci_send_message (op, NULL, NULL, ctx, hn);
+
+  if (hn->replied)
   {
-    HEADER *newhdr = mutt_new_header();
-    char buffer [LONG_STRING];
-
-    mutt_message ("Preparing to forward...");
-    if (mutt_prepare_edit_message (ctx, newhdr, hn) < 0)
-    {
-      mutt_clear_error();
-      mutt_free_header (&newhdr);
-      goto cleanup;
-    }
-
-    mutt_free_envelope (&newhdr->env);
-    newhdr->env = mutt_new_envelope();
-    newhdr->received = 0;
-    newhdr->date_sent = 0;
-
-    /* set the default subject for the message. */
-    buffer[0] = 0;
-    mutt_make_string (buffer, sizeof (buffer), NONULL(ForwFmt), ctx, hn);
-    newhdr->env->subject = safe_strdup (buffer);
-
-    mutt_clear_error();
-    ci_send_message (0, newhdr, NULL, ctx, NULL);
+    if (Context != ctx)
+      mutt_set_flag (Context, hdr, M_REPLIED, 1);
+    else
+      _mutt_set_flag (Context, hdr, M_REPLIED, 1, 0);
   }
-  else
-    ci_send_message (op, NULL, NULL, ctx, hn);
-
-  if (hn->replied && !hdr->replied)
-    mutt_set_flag (Context, hdr, M_REPLIED, 1);
-
-cleanup:
 
   if (ctx != Context)
   {
@@ -884,11 +825,9 @@ cleanup:
 void
 mutt_attach_display_loop (MUTTMENU *menu, int op, FILE *fp, ATTACHPTR **idx)
 {
-#if 0
   int old_optweed = option (OPTWEED);
+
   set_option (OPTWEED);
-#endif
-  
   do
   {
     switch (op)
@@ -927,17 +866,17 @@ mutt_attach_display_loop (MUTTMENU *menu, int op, FILE *fp, ATTACHPTR **idx)
   }
   while (op != OP_NULL);
 
-#if 0
   if (option (OPTWEED) != old_optweed)
     toggle_option (OPTWEED);
-#endif
 }
 
+
+static const char *Function_not_permitted = N_("Function not permitted in attach-message mode.");
 
 #define CHECK_ATTACH if(option(OPTATTACHMSG)) \
 		     {\
 			mutt_flushinp (); \
-			mutt_error ("Function not permitted in attach-message mode."); \
+			mutt_error _(Function_not_permitted); \
 			break; \
 		     }
 
@@ -1055,8 +994,6 @@ void mutt_view_attachments (HEADER *hdr)
       case OP_DELETE:
 	CHECK_READONLY;
 
-
-
 #ifdef _PGPPATH
         if (hdr->pgp)
         {
@@ -1106,32 +1043,32 @@ void mutt_view_attachments (HEADER *hdr)
         break;
 
       case OP_UNDELETE:
-       CHECK_READONLY;
-       if (!menu->tagprefix)
-       {
-	 idx[menu->current]->content->deleted = 0;
-	 if (option (OPTRESOLVE) && menu->current < menu->max - 1)
-	 {
-	   menu->current++;
-	   menu->redraw = REDRAW_MOTION_RESYNCH;
-	 }
-	 else
-	   menu->redraw = REDRAW_CURRENT;
-       }
-       else
-       {
-	 int x;
+	CHECK_READONLY;
+	if (!menu->tagprefix)
+	{
+	  idx[menu->current]->content->deleted = 0;
+	  if (option (OPTRESOLVE) && menu->current < menu->max - 1)
+	  {
+	    menu->current++;
+	    menu->redraw = REDRAW_MOTION_RESYNCH;
+	  }
+	  else
+	    menu->redraw = REDRAW_CURRENT;
+	}
+	else
+	{
+	  int x;
 
-	 for (x = 0; x < menu->max; x++)
-	 {
-	   if (idx[x]->content->tagged)
-	   {
-	     idx[x]->content->deleted = 0;
-	     menu->redraw = REDRAW_INDEX;
-	   }
-	 }
-       }
-       break;
+ 	  for (x = 0; x < menu->max; x++)
+	  {
+	    if (idx[x]->content->tagged)
+	    {
+	      idx[x]->content->deleted = 0;
+	      menu->redraw = REDRAW_INDEX;
+	    }
+	  }
+        }
+        break;
 
       case OP_BOUNCE_MESSAGE:
         CHECK_ATTACH;
