@@ -32,10 +32,6 @@
 #include "pgp.h"
 #endif
 
-#ifdef HAVE_SMIME
-#include "smime.h"
-#endif
-
 #include <ctype.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -264,8 +260,7 @@ int mutt_edit_attachment (BODY *a)
   else if (a->type == TYPETEXT)
   {
     /* On text, default to editor */
-    mutt_edit_file ((!Editor || mutt_strcmp ("builtin", Editor) == 0) ? 
-		    NONULL(Visual) : NONULL(Editor), newfile);
+    mutt_edit_file (NONULL (Editor), newfile);
   }
   else
   {
@@ -329,41 +324,6 @@ static int is_mmnoask (const char *buf)
   return (0);
 }
 
-void mutt_check_lookup_list (BODY *b, char *type, int len)
-{
-  LIST *t = MimeLookupList;
-  int i;
-
-  for (; t; t = t->next) {
-    i = mutt_strlen (t->data) - 1;
-    if ((i > 0 && t->data[i-1] == '/' && t->data[i] == '*' && 
-	 ascii_strncasecmp (type, t->data, i) == 0) ||
-	ascii_strcasecmp (type, t->data) == 0) {
-
-    BODY tmp = {0};
-    int n;
-    if ((n = mutt_lookup_mime_type (&tmp, b->filename)) != TYPEOTHER) {
-      snprintf (type, len, "%s/%s",
-                n == TYPEAUDIO ? "audio" :
-                n == TYPEAPPLICATION ? "application" :
-                n == TYPEIMAGE ? "image" :
-                n == TYPEMESSAGE ? "message" :
-                n == TYPEMODEL ? "model" :
-                n == TYPEMULTIPART ? "multipart" :
-                n == TYPETEXT ? "text" :
-                n == TYPEVIDEO ? "video" : "other",
-                tmp.subtype);
-      dprint(1, (debugfile, "mutt_check_lookup_list: \"%s\" -> %s\n", 
-        b->filename, type));
-    }
-    if (tmp.subtype) 
-      safe_free ((void **) &tmp.subtype);
-    if (tmp.xtype) 
-      safe_free ((void **) &tmp.xtype);
-    }
-  }
-}
-
 int mutt_is_autoview (BODY *b, const char *type)
 {
   LIST *t = AutoViewList;
@@ -371,12 +331,10 @@ int mutt_is_autoview (BODY *b, const char *type)
   int i;
 
   if (!type)
+  {
     snprintf (_type, sizeof (_type), "%s/%s", TYPE (b), b->subtype);
-  else
-    strncpy (_type, type, sizeof(_type));
-
-  mutt_check_lookup_list (b, _type, sizeof(_type));
-  type = _type;
+    type = _type;
+  }
 
   if (mutt_needs_mailcap (b))
   {
@@ -387,7 +345,8 @@ int mutt_is_autoview (BODY *b, const char *type)
       return 1;
   }
 
-  for (; t; t = t->next) {
+  for (; t; t = t->next)
+  {
     i = mutt_strlen (t->data) - 1;
     if ((i > 0 && t->data[i-1] == '/' && t->data[i] == '*' && 
 	 ascii_strncasecmp (type, t->data, i) == 0) ||
@@ -417,11 +376,10 @@ int mutt_view_attachment (FILE *fp, BODY *a, int flag, HEADER *hdr,
   int unlink_tempfile = 0;
   
   is_message = mutt_is_message_type(a->type, a->subtype);
-#if defined(HAVE_PGP) || defined(HAVE_SMIME)
-  if (is_message && a->hdr && (a->hdr->security & ENCRYPT) &&
-      !crypt_valid_passphrase(a->hdr->security))
+#ifdef HAVE_PGP
+  if (is_message && a->hdr && (a->hdr->pgp & PGPENCRYPT) && !pgp_valid_passphrase())
     return (rc);
-#endif /* HAVE_PGP || HAVE_SMIME */
+#endif /* HAVE_PGP */
   use_mailcap = (flag == M_MAILCAP ||
 		(flag == M_REGULAR && mutt_needs_mailcap (a)));
   snprintf (type, sizeof (type), "%s/%s", TYPE (a), a->subtype);
@@ -762,7 +720,7 @@ int mutt_save_attachment (FILE *fp, BODY *m, char *path, int flags, HEADER *hdr)
       fseek (fp, m->offset, 0);
       if (fgets (buf, sizeof (buf), fp) == NULL)
 	return -1;
-      if (mx_open_mailbox (path, (flags == M_SAVE_APPEND ? M_APPEND : M_NEW) | M_QUIET, &ctx) == NULL)
+      if (mx_open_mailbox(path, M_APPEND | M_QUIET, &ctx) == NULL)
 	return -1;
       if ((msg = mx_open_new_message (&ctx, hn, is_from (buf, NULL, 0, NULL) ? 0 : M_ADD_FROM)) == NULL)
       {
