@@ -19,8 +19,6 @@
 #ifndef _IMAP_H
 #define _IMAP_H 1
 
-#include "browser.h"
-
 int imap_append_message (CONTEXT *ctx, MESSAGE *msg);
 int imap_check_mailbox (CONTEXT *ctx, int *index_hint);
 int imap_fetch_message (MESSAGE *msg, CONTEXT *ctx, int msgno);
@@ -29,8 +27,5 @@ int imap_open_mailbox_append (CONTEXT *ctx);
 int imap_sync_mailbox (CONTEXT *ctx);
 void imap_fastclose_mailbox (CONTEXT *ctx);
 int imap_buffy_check (char *path);
-int imap_subscribe (char *path, int subscribe);
-int imap_init_browse (char *path, struct browser_state *state);
-int imap_complete(char* dest, char* path);
 
 #endif

@@ -274,12 +274,9 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
 
 
 #ifdef _PGPPATH
-    else if (mutt_strncmp ("Pgp:", tmp->data, 4) == 0 /* this is generated
-						       * by old mutt versions
-						       */
-	     || mutt_strncmp ("X-Mutt-PGP:", tmp->data, 11) == 0)
+    else if (mutt_strncmp ("Pgp:", tmp->data, 4) == 0)
     {
-      hdr->pgp = mutt_parse_pgp_hdr (strchr (tmp->data, ':') + 1, 1);
+      hdr->pgp = mutt_parse_pgp_hdr (tmp->data+4, 1);
        
       /* remove the pgp field */
       next = tmp->next;
@@ -293,29 +290,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
     }
 #endif /* _PGPPATH */
 
-#ifdef MIXMASTER
-    else if (mutt_strncmp ("X-Mutt-Mix:", tmp->data, 11) == 0)
-    {
-      char *t;
-      mutt_free_list (&hdr->chain);
-      
-      t = strtok (tmp->data + 11, " \t\n");
-      while (t)
-      {
-	hdr->chain = mutt_add_list (hdr->chain, t);
-	t = strtok (NULL, " \t\n");
-      }
-      
-      next = tmp->next;
-      if (last) 
-	last->next = tmp->next;
-      else
-	hdr->env->userhdrs = tmp->next;
-      tmp->next = NULL;
-      mutt_free_list (&tmp);
-      tmp = next;
-    }
-#endif
+
 
     else
     {
@@ -417,7 +392,6 @@ int mutt_parse_pgp_hdr (char *p, int set_signas)
 
 int mutt_prepare_edit_message (CONTEXT *ctx, HEADER *newhdr, HEADER *hdr)
 {
-  PARAMETER *par;
   MESSAGE *msg = mx_open_message (ctx, hdr->msgno);
   char file[_POSIX_PATH_MAX];
 
@@ -426,7 +400,8 @@ int mutt_prepare_edit_message (CONTEXT *ctx, HEADER *newhdr, HEADER *hdr)
 
   fseek (msg->fp, hdr->offset, 0);
   newhdr->env = mutt_read_rfc822_header (msg->fp, newhdr, 1);
-
+  mutt_free_body (&newhdr->content);
+  
   if (hdr->content->type == TYPEMESSAGE || hdr->content->type == TYPEMULTIPART)
   {
     BODY *b;
@@ -437,7 +412,8 @@ int mutt_prepare_edit_message (CONTEXT *ctx, HEADER *newhdr, HEADER *hdr)
      * message.
      */
     newhdr->content = hdr->content->parts;
-    for (b = hdr->content->parts; b; b = b->next)
+    b = hdr->content->parts;
+    while (b != NULL)
     {
       file[0] = '\0';
       if (b->filename)
@@ -456,24 +432,15 @@ int mutt_prepare_edit_message (CONTEXT *ctx, HEADER *newhdr, HEADER *hdr)
       safe_free ((void *) &b->filename);
       b->filename = safe_strdup (file);
       b->unlink = 1;
-
-      if (mutt_is_text_type (b->type, b->subtype))
-	b->noconv = 1;
-      
       mutt_stamp_attachment (b);
       mutt_free_body (&b->parts);
+      b = b->next;
     }
     hdr->content->parts = NULL;
-    if (hdr->content->type == TYPEMESSAGE && hdr->content->hdr)
-      hdr->content->hdr->content = NULL;
   }
   else
   {
-    BODY *b = hdr->content;
-    file[0] = 0;
-    if (b->filename)
-      strfcpy (file, b->filename, sizeof (file));
-    mutt_adv_mktemp (file, sizeof(file));
+    mutt_mktemp (file);
     if (mutt_save_attachment (msg->fp, hdr->content, file, 0, NULL) == -1)
     {
       mutt_free_envelope (&newhdr->env);
@@ -484,18 +451,10 @@ int mutt_prepare_edit_message (CONTEXT *ctx, HEADER *newhdr, HEADER *hdr)
     
     FREE (&newhdr->content->subtype);
     FREE (&newhdr->content->xtype);
-    FREE (&newhdr->content->description);
     
     newhdr->content->type = hdr->content->type;
     newhdr->content->xtype = safe_strdup (hdr->content->xtype);
     newhdr->content->subtype = safe_strdup (hdr->content->subtype);
-    newhdr->content->description = safe_strdup (hdr->content->description);
-
-    for (par = hdr->content->parameter; par; par = par->next)
-      mutt_set_parameter (par->attribute, par->value, &newhdr->content->parameter);
-
-    if (mutt_is_text_type (newhdr->content->type, newhdr->content->subtype))
-      newhdr->content->noconv = 1;
     
     newhdr->content->use_disp = 0;	/* no content-disposition */
     newhdr->content->unlink = 1;	/* delete when we are done */
