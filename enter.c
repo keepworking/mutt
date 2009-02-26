@@ -53,6 +53,7 @@ enum
 int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 		       int flags)
 {
+  event_t event;
   int curpos = 0;		/* the location of the cursor */
   int lastchar = 0; 		/* offset of the last char in the string */
   int begin = 0;		/* first character displayed on the line */
@@ -64,13 +65,18 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
   int j;
   char tempbuf[_POSIX_PATH_MAX] = "";
   history_class_t hclass;
+  int tabs = 0; /* number of *consecutive* TABs */
   
-  if(flags & (M_FILE | M_EFILE))
+  if (flags & (M_FILE | M_EFILE))
     hclass = HC_FILE;
-  else if(flags & M_CMD)
+  else if (flags & M_CMD)
     hclass = HC_CMD;
-  else if(flags & M_ALIAS)
+  else if (flags & M_ALIAS)
     hclass = HC_ALIAS;
+  else if (flags & M_COMMAND)
+    hclass = HC_COMMAND;
+  else if (flags & M_PATTERN)
+    hclass = HC_PATTERN;
   else 
     hclass = HC_OTHER;
 
@@ -117,9 +123,11 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
       return (-1);
     }
 
-    if (ch != 0)
+    if (ch != OP_NULL)
     {
       first = 0; /* make sure not to clear the buffer */
+      if (ch != OP_EDITOR_COMPLETE)
+	tabs = 0;
       switch (ch)
       {
 	case OP_EDITOR_HISTORY_UP:
@@ -307,6 +315,7 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	  /* fall through to completion routine (M_FILE) */
 
 	case OP_EDITOR_COMPLETE:
+	  tabs++;
 	  if (flags & M_CMD)
 	  {
 	    buf[curpos] = 0;
@@ -329,8 +338,10 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	    buf[curpos] = 0;
 	    if (curpos)
 	    {
-	      for (j = curpos - 1 ; j >= 0 && buf[j] != ' ' && buf[j] != ',' ; j--);
-	      if (mutt_alias_complete ((char *) buf + j + 1, buflen - j - 1))
+	      for (j = curpos - 1 ; j >= 0 && buf[j] != ',' ; j--);
+	      for (++j; buf[j] == ' '; j++)
+		;
+	      if (mutt_alias_complete ((char *) buf + j, buflen - j))
 	      {
 		redraw = M_REDRAW_INIT;
 		continue;
@@ -343,7 +354,14 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	  else if (flags & M_COMMAND)
 	  {
 	    buf[curpos] = 0;
-	    if (mutt_command_complete ((char *) buf, buflen, curpos))
+	    if (buf[lastchar - 1] == '=' && 
+		mutt_var_value_complete ((char *) buf, buflen, curpos))
+	    {
+	      tabs=0;
+	      redraw = M_REDRAW_INIT;
+	      continue;
+	    }
+	    else if (mutt_command_complete ((char *) buf, buflen, curpos, tabs))
 	    {
 	      redraw = M_REDRAW_INIT;
 	      continue;
@@ -384,8 +402,9 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 	    buf[curpos] = 0;
 	    if (curpos)
 	    {
-	      for (j = curpos - 1 ; j >= 0 && buf[j] != ' ' && buf[j] != ',' ; j--);
-	      mutt_query_complete ((char *) buf + j + 1, buflen - j - 1);
+	      for (j = curpos - 1 ; j >= 0 && buf[j] != ',' ; j--);
+	      for (j++; buf[j] == ' '; j++);
+	      mutt_query_complete ((char *) buf + j, buflen - j);
 	    }
 	    else
 	      mutt_query_menu ((char *) buf, buflen);
@@ -396,7 +415,8 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 
 	case OP_EDITOR_QUOTE_CHAR:
 	  ADDCH (LastKey);
-	  LastKey = mutt_getch ();
+	  event = mutt_getch ();
+	  LastKey = event.ch;
 	  move (y, x + curpos - begin);
 	  goto self_insert;
 
@@ -409,6 +429,7 @@ int mutt_enter_string (unsigned char *buf, size_t buflen, int y, int x,
 
 self_insert:
 
+      tabs = 0;
       /* use the raw keypress */
       ch = LastKey;
 
@@ -417,7 +438,7 @@ self_insert:
 	first = 0;
 	if (IsPrint (ch))
 	{
-	  mutt_ungetch (ch);
+	  mutt_ungetch (ch, 0);
 	  buf[0] = 0;
 	  redraw = M_REDRAW_INIT;
 	  continue;
