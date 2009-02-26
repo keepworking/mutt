@@ -142,8 +142,9 @@ typedef enum
 #define M_SENDHOOK	(1<<2)
 #define M_FCCHOOK	(1<<3)
 #define M_SAVEHOOK	(1<<4)
+#define M_CHARSETHOOK	(1<<5)
 #ifdef _PGPPATH
-#define M_PGPHOOK	(1<<5)
+#define M_PGPHOOK	(1<<6)
 #endif
 
 /* tree characters for linearize_tree and print_enriched_string */
@@ -253,6 +254,7 @@ enum
   OPT_PRINT,
   OPT_INCLUDE,
   OPT_DELETE,
+  OPT_MFUPTO,
   OPT_MIMEFWD,
   OPT_MOVE,
   OPT_COPY,
@@ -294,10 +296,12 @@ enum
   OPTCONFIRMAPPEND,
   OPTCONFIRMCREATE,
   OPTEDITHDRS,
+  OPTENCODEFROM,
   OPTFASTREPLY,
   OPTFCCATTACH,
   OPTFOLLOWUPTO,
   OPTFORCENAME,
+  OPTFORWATTACH,
   OPTFORWDECODE,
   OPTFORWWEEDHEADER,
   OPTFORWQUOTE,
@@ -307,7 +311,8 @@ enum
   OPTHIDDENHOST,
   OPTIGNORELISTREPLYTO,
 #ifdef USE_IMAP
-    OPTIMAPPASSIVE,
+  OPTIMAPLSUB,
+  OPTIMAPPASSIVE,
 #endif
   OPTIMPLICITAUTOVIEW,
   OPTMAILCAPSANITIZE,
@@ -348,6 +353,7 @@ enum
   OPTWRAP,
   OPTWRAPSEARCH,
   OPTWRITEBCC,		/* write out a bcc header? */
+  OPTXMAILER,
 
   /* PGP options */
   
@@ -357,9 +363,12 @@ enum
   OPTPGPLONGIDS,
   OPTPGPREPLYENCRYPT,
   OPTPGPREPLYSIGN,
+  OPTPGPREPLYSIGNENCRYPTED,
   OPTPGPENCRYPTSELF,
+  OPTPGPRETAINABLESIG,
   OPTPGPSTRICTENC,
   OPTFORWDECRYPT,
+  OPTPGPSHOWUNUSABLE,
 #endif
 
   /* pseudo options */
@@ -416,6 +425,7 @@ typedef struct list_t
 } LIST;
 
 #define mutt_new_list() safe_calloc (1, sizeof (LIST))
+void mutt_add_to_list (LIST **, BUFFER *);
 void mutt_free_list (LIST **);
 int mutt_matches_ignore (const char *, LIST *);
 
@@ -470,7 +480,6 @@ typedef struct content
   unsigned int binary : 1; /* long lines, or CR not in CRLF pair */
   unsigned int from : 1;   /* has a line beginning with "From "? */
   unsigned int dot : 1;    /* has a line consisting of a single dot? */
-  unsigned int nonasc : 1; /* has unicode characters out of ASCII range */
 } CONTENT;
 
 typedef struct body
@@ -508,7 +517,7 @@ typedef struct body
 				 * encoding update.
 				 */
   
-  unsigned int type : 4;        /* content-type primary type */
+  unsigned int type : 3;        /* content-type primary type */
   unsigned int encoding : 3;    /* content-transfer-encoding */
   unsigned int disposition : 2; /* content-disposition */
   unsigned int use_disp : 1;    /* Content-Disposition field printed? */
@@ -518,7 +527,7 @@ typedef struct body
 				 */
   unsigned int tagged : 1;
   unsigned int deleted : 1;	/* attachment marked for deletion */
-
+  unsigned int noconv : 1;	/* don't do character set conversion */
 } BODY;
 
 typedef struct header
@@ -583,6 +592,10 @@ typedef struct header
   struct header *last_sort; /* last message in subthread, for secondary SORT_LAST */
   char *tree;            /* character string to print thread tree */
 
+#ifdef MIXMASTER
+  LIST *chain;
+#endif
+  
 } HEADER;
 
 #include "mutt_regex.h"
@@ -665,14 +678,16 @@ typedef struct
   int flags;
 } STATE;
 
-
-
 /* flags for the STATE struct */
 #define M_DISPLAY	(1<<0) /* output is displayed to the user */
+
+
 
 #ifdef _PGPPATH
 #define M_VERIFY	(1<<1) /* perform signature verification */
 #endif
+
+
 
 #define M_PENDINGPREFIX (1<<2) /* prefix to write, but character must follow */
 #define M_WEED          (1<<3) /* weed headers even when not in display mode */
