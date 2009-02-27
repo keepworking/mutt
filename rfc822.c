@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <string.h>
 #include <ctype.h>
@@ -36,8 +32,6 @@
 #define STRING 128
 #include "rfc822.h"
 #endif
-
-#include "mutt_idna.h"
 
 #define terminate_string(a, b, c) do { if ((b) < (c)) a[(b)] = 0; else \
 	a[(c)] = 0; } while (0)
@@ -178,7 +172,7 @@ next_token (const char *s, char *token, size_t *tokenlen, size_t tokenmax)
   }
   while (*s)
   {
-    if (ISSPACE ((unsigned char) *s) || is_special (*s))
+    if (ISSPACE (*s) || is_special (*s))
       break;
     if (*tokenlen < tokenmax)
       token[(*tokenlen)++] = *s;
@@ -286,14 +280,11 @@ parse_route_addr (const char *s,
   if ((s = parse_address (s, token, &tokenlen, sizeof (token) - 1, comment, commentlen, commentmax, addr)) == NULL)
     return NULL;
 
-  if (*s != '>')
+  if (*s != '>' || !addr->mailbox)
   {
     RFC822Error = ERR_BAD_ROUTE_ADDR;
     return NULL;
   }
-
-  if (!addr->mailbox)
-    addr->mailbox = safe_strdup ("@");
 
   s++;
   return s;
@@ -337,7 +328,6 @@ add_addrspec (ADDRESS **top, ADDRESS **last, const char *phrase,
 
 ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
 {
-  int ws_pending;
   const char *begin, *ps;
   char comment[STRING], phrase[STRING];
   size_t phraselen = 0, commentlen = 0;
@@ -349,8 +339,6 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
   while (last && last->next)
     last = last->next;
 
-  ws_pending = isspace ((unsigned char) *s);
-  
   SKIPWS (s);
   begin = s;
   while (*s)
@@ -474,7 +462,7 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
     }
     else
     {
-      if (phraselen && phraselen < sizeof (phrase) - 1 && ws_pending)
+      if (phraselen && phraselen < sizeof (phrase) - 1 && *s != '.')
 	phrase[phraselen++] = ' ';
       if ((ps = next_token (s, phrase, &phraselen, sizeof (phrase) - 1)) == NULL)
       {
@@ -483,7 +471,6 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *top, const char *s)
       }
       s = ps;
     }
-    ws_pending = isspace ((unsigned char) *s);
     SKIPWS (s);
   }
   
@@ -515,7 +502,7 @@ void rfc822_qualify (ADDRESS *addr, const char *host)
     {
       p = safe_malloc (mutt_strlen (addr->mailbox) + mutt_strlen (host) + 2);
       sprintf (p, "%s@%s", addr->mailbox, host);	/* __SPRINTF_CHECKED__ */
-      FREE (&addr->mailbox);
+      safe_free ((void **) &addr->mailbox);
       addr->mailbox = p;
     }
 }
@@ -547,8 +534,7 @@ rfc822_cat (char *buf, size_t buflen, const char *value, const char *specials)
     strfcpy (buf, value, buflen);
 }
 
-void rfc822_write_address_single (char *buf, size_t buflen, ADDRESS *addr,
-				  int display)
+void rfc822_write_address_single (char *buf, size_t buflen, ADDRESS *addr)
 {
   size_t len;
   char *pbuf = buf;
@@ -635,21 +621,8 @@ void rfc822_write_address_single (char *buf, size_t buflen, ADDRESS *addr,
   {
     if (!buflen)
       goto done;
-    if (ascii_strcmp (addr->mailbox, "@") && !display)
-    {
-      strfcpy (pbuf, addr->mailbox, buflen);
-      len = mutt_strlen (pbuf);
-    }
-    else if (ascii_strcmp (addr->mailbox, "@") && display)
-    {
-      strfcpy (pbuf, mutt_addr_for_display (addr), buflen);
-      len = mutt_strlen (pbuf);
-    }
-    else
-    {
-      *pbuf = '\0';
-      len = 0;
-    }
+    strfcpy (pbuf, addr->mailbox, buflen);
+    len = mutt_strlen (pbuf);
     pbuf += len;
     buflen -= len;
 
@@ -687,7 +660,7 @@ done:
 }
 
 /* note: it is assumed that `buf' is nul terminated! */
-int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
+void rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr)
 {
   char *pbuf = buf;
   size_t len = mutt_strlen (buf);
@@ -697,7 +670,7 @@ int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
   if (len > 0)
   {
     if (len > buflen)
-      return pbuf - buf; /* safety check for bogus arguments */
+      return; /* safety check for bogus arguments */
 
     pbuf += len;
     buflen -= len;
@@ -715,7 +688,7 @@ int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
   {
     /* use buflen+1 here because we already saved space for the trailing
        nul char, and the subroutine can make use of it */
-    rfc822_write_address_single (pbuf, buflen + 1, addr, display);
+    rfc822_write_address_single (pbuf, buflen + 1, addr);
 
     /* this should be safe since we always have at least 1 char passed into
        the above call, which means `pbuf' should always be nul terminated */
@@ -739,7 +712,6 @@ int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
   }
 done:
   *pbuf = 0;
-  return pbuf - buf;
 }
 
 /* this should be rfc822_cpy_adr */
@@ -832,14 +804,14 @@ int rfc822_valid_msgid (const char *msgid)
 
   /* TODO: complete parser */
   for (i = 0; i < l; i++)
-    if ((unsigned char)msgid[i] > 127)
+    if (msgid[i] > 127)
       return -1;
 
   return 0;
 }
 
 #ifdef TESTING
-int safe_free (void **p)	/* __SAFE_FREE_CHECKED__ */
+int safe_free (void **p)
 {
   free(*p);		/* __MEM_CHECKED__ */
   *p = 0;
@@ -850,7 +822,7 @@ int main (int argc, char **argv)
   ADDRESS *list;
   char buf[256];
 # if 0
-  char *str = "michael, Michael Elkins <me@mutt.org>, testing a really complex address: this example <@contains.a.source.route,@with.multiple.hosts:address@example.com>;, lothar@of.the.hillpeople (lothar)";
+  char *str = "michael, Michael Elkins <me@cs.hmc.edu>, testing a really complex address: this example <@contains.a.source.route,@with.multiple.hosts:address@example.com>;, lothar@of.the.hillpeople (lothar)";
 # else
   char *str = "a b c ";
 # endif

@@ -9,7 +9,7 @@
 #
 
 #
-#     Copyright (c) 2000 Thomas Roessler <roessler@does-not-exist.org>
+#     Copyright (c) 2000 Thomas Roessler <roessler@guug.de>
 #
 #
 #     This program is free software; you can redistribute it and/or modify
@@ -24,10 +24,10 @@
 # 
 #     You should have received a copy of the GNU General Public License
 #     along with this program; if not, write to the Free Software
-#     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
 #
 
-SUBMIT="fleas@mutt.org"
+SUBMIT="submit@bugs.guug.de"
 DEBIAN_SUBMIT="submit@bugs.debian.org"
 
 prefix=@prefix@
@@ -41,7 +41,7 @@ include_file ()
 {
 	echo
 	echo "--- Begin $1"
-	sed -e '/^[	 ]*#/d; /^[	 ]*$/d; s/^-/- -/' $1
+	sed -e 's/^-/- -/' $1 | egrep -v '^[ 	]*(#|$)'
 	echo "--- End $1"
 	echo
 }
@@ -96,29 +96,6 @@ mkdir ${SCRATCH} || \
 trap "rm -r -f ${SCRATCH} ; trap '' 0 ; exit" 0 1 2
 
 TEMPLATE=${SCRATCH}/template.txt
-
-if test -z "$EMAIL" ; then
-	EMAIL="`mutt -Q from 2> /dev/null | sed -e 's/^from=.\(.*\).$/\1/'`"
-fi
-
-EMAILTMP=''
-while test -z "$EMAILTMP"
-do
-  echo "Please enter your e-mail address [$EMAIL]:"
-  echo $n "> $c"
-  read EMAILTMP
-
-  if test -z "$EMAILTMP"; then EMAILTMP="$EMAIL"; fi
-
-  if ! echo "$EMAILTMP" | grep -q @
-  then
-    echo "$EMAILTMP does not appear to be a valid email address"
-    EMAILTMP=''
-    continue
-  fi
-
-  EMAIL="$EMAILTMP"
-done
 
 echo "Please enter a one-line description of the problem you experience:"
 echo $n "> $c"
@@ -206,13 +183,7 @@ else
 	DPKG=no
 fi
 
-if rpm -q mutt > /dev/null 2> /dev/null ; then
-	echo "Mutt seems to come from an RPM package."
-	RPMVERSION="`rpm -q mutt`"
-	RPMPACKAGER="`rpm -q -i mutt | sed -n -e 's/^Packager *: *//p'`"
-fi
-
-MUTTVERSION="`mutt -v | awk '{print $2; exit; }'`"
+MUTTVERSION="`mutt -v | head -1 | awk '{print $2}'`"
 test "$DPKG" = "yes" && SUBMIT="$SUBMIT, $DEBIAN_SUBMIT"
 
 exec > ${TEMPLATE}
@@ -223,10 +194,10 @@ test "$ORGANIZATION" && echo "Organization: $ORGANIZATION"
 
 echo "Subject: mutt-$MUTTVERSION: $SUBJECT"
 echo "To: $SUBMIT"
-test "$EMAIL" 	     && echo "Bcc: ${EMAIL}"
+echo "Bcc: ${EMAIL-$LOGNAME}"
 echo
 echo "Package: mutt"
-echo "Version: ${DEBIANVERSION-${RPMVERSION-$MUTTVERSION}}"
+echo "Version: ${DEBIANVERSION-$MUTTVERSION}"
 echo "Severity: $severity"
 echo 
 echo "-- Please type your report below this line"
@@ -236,16 +207,9 @@ echo
 
 if test "$DEBIAN" = "yes" ; then
 	echo "Obtaining Debian-specific information..." > /dev/tty
-	bug -p -s dummy mutt < /dev/null 2> /dev/null |        \
+	bug -p -s dummy mutt |                                 \
 		sed -n -e "/^-- System Information/,/^---/p" | \
 		grep -v '^---'
-else
-	echo "-- System Information"
-	echo "System Version: `uname -a`"
-	test -z "$RPMPACKAGER" || echo "RPM Packager: $RPMPACKAGER";
-	test -f /etc/redhat-release && echo "RedHat Release: `cat /etc/redhat-release`"
-	test -f /etc/SuSE-release && echo "SuSE Release: `sed 1q /etc/SuSE-release`"
-	# Please provide more of these if you have any.
 fi
 
 echo 
@@ -266,7 +230,7 @@ echo @CFLAGS@
 echo
 echo "-- Mutt Version Information"
 echo
-LC_ALL=C mutt -v
+mutt -v
 
 if test "$CORE" && test -f "$CORE" ; then
 	echo 

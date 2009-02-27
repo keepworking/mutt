@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000,2002 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,19 +13,14 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
 #include "mutt_curses.h"
 #include "keymap.h"
 #include "mapping.h"
-#include "mutt_crypt.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -42,13 +37,12 @@ struct mapping_t Menus[] = {
  { "index",	MENU_MAIN },
  { "pager",	MENU_PAGER },
  { "postpone",	MENU_POST },
- { "pgp",	MENU_PGP },
- { "smime",	MENU_SMIME },
-#ifdef HAVE_GPGME
- { "key_select_pgp",	MENU_KEY_SELECT_PGP },
- { "key_select_smime",	MENU_KEY_SELECT_SMIME },
-#endif
 
+
+#ifdef HAVE_PGP
+ { "pgp",	MENU_PGP },
+#endif  
+  
 #ifdef MIXMASTER
   { "mix", 	MENU_MIX },
 #endif
@@ -80,12 +74,6 @@ static struct mapping_t KeyNames[] = {
   { "<Esc>",	'\033' },
   { "<Tab>",	'\t' },
   { "<Space>",	' ' },
-#ifdef KEY_BTAB
-  { "<BackTab>", KEY_BTAB },
-#endif
-#ifdef KEY_NEXT
-  { "<Next>",    KEY_NEXT },
-#endif  
   { NULL,	0 }
 };
 
@@ -125,22 +113,6 @@ static int parse_fkey(char *s)
     return n;
 }
 
-/*
- * This function parses the string <NNN> and uses the octal value as the key
- * to bind.
- */
-static int parse_keycode (const char *s)
-{
-  if (isdigit ((unsigned char) s[1]) &&
-      isdigit ((unsigned char) s[2]) &&
-      isdigit ((unsigned char) s[3]) &&
-      s[4] == '>')
-  {
-    return (s[3] - '0') + (s[2] - '0') * 8 + (s[1] - '0') * 64;
-  }
-  return -1;
-}
-
 static int parsekeys (char *str, keycode_t *d, int max)
 {
   int n, len = max;
@@ -167,11 +139,6 @@ static int parsekeys (char *str, keycode_t *d, int max)
       {
 	s = t;
 	*d = KEY_F (n);
-      }
-      else if ((n = parse_keycode(s)) > 0)
-      {
-	s = t;
-	*d = n;
       }
       
       *t = c;
@@ -344,7 +311,7 @@ static void push_string (char *s)
 	}
       }
     }
-    mutt_ungetch ((unsigned char)*p--, 0);	/* independent 8 bits chars */
+    mutt_ungetch (*p--, 0);
   }
 }
 
@@ -562,15 +529,8 @@ void km_init (void)
   create_bindings (OpAlias, MENU_ALIAS);
 
 
-  if ((WithCrypto & APPLICATION_PGP))
-    create_bindings (OpPgp, MENU_PGP);
-
-  if ((WithCrypto & APPLICATION_SMIME))
-    create_bindings (OpSmime, MENU_SMIME);
-
-#ifdef CRYPT_BACKEND_GPGME
-  create_bindings (OpPgp, MENU_KEY_SELECT_PGP);
-  create_bindings (OpSmime, MENU_KEY_SELECT_SMIME);
+#ifdef HAVE_PGP
+  create_bindings (OpPgp, MENU_PGP);
 #endif
 
 #ifdef MIXMASTER
@@ -704,53 +664,38 @@ int mutt_parse_push (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
   return (r);
 }
 
-/* expects to see: <menu-string>,<menu-string>,... <key-string> */
-static char *parse_keymap (int *menu, BUFFER *s, int maxmenus, int *nummenus, BUFFER *err)
+/* expects to see: <menu-string> <key-string> */
+char *parse_keymap (int *menu, BUFFER *s, BUFFER *err)
 {
   BUFFER buf;
-  int i=0;
-  char *p, *q;
 
   memset (&buf, 0, sizeof (buf));
 
   /* menu name */
   mutt_extract_token (&buf, s, 0);
-  p = buf.data;
   if (MoreArgs (s))
   {
-    while (i < maxmenus)
+    if ((*menu = mutt_check_menu (buf.data)) == -1)
     {
-      q = strchr(p,',');
-      if (q)
-        *q = '\0';
+      snprintf (err->data, err->dsize, _("%s: no such menu"), buf.data);
+    }
+    else
+    {
+      /* key sequence */
+      mutt_extract_token (&buf, s, 0);
 
-      if ((menu[i] = mutt_check_menu (p)) == -1)
+      if (!*buf.data)
       {
-         snprintf (err->data, err->dsize, _("%s: no such menu"), p);
-         goto error;
+	strfcpy (err->data, _("null key sequence"), err->dsize);
       }
-      ++i;
-      if (q)
-        p = q+1;
-      else
-        break;
+      else if (MoreArgs (s))
+	return (buf.data);
     }
-    *nummenus=i;
-    /* key sequence */
-    mutt_extract_token (&buf, s, 0);
-
-    if (!*buf.data)
-    {
-      strfcpy (err->data, _("null key sequence"), err->dsize);
-    }
-    else if (MoreArgs (s))
-      return (buf.data);
   }
   else
   {
     strfcpy (err->data, _("too few arguments"), err->dsize);
   }
-error:
   FREE (&buf.data);
   return (NULL);
 }
@@ -794,15 +739,13 @@ struct binding_t *km_get_table (int menu)
     case MENU_QUERY:
       return OpQuery;
 
-    case MENU_PGP:
-      return (WithCrypto & APPLICATION_PGP)? OpPgp:NULL;
 
-#ifdef CRYPT_BACKEND_GPGME
-    case MENU_KEY_SELECT_PGP:
+
+#ifdef HAVE_PGP
+    case MENU_PGP:
       return OpPgp;
-    case MENU_KEY_SELECT_SMIME:
-      return OpSmime;
 #endif
+
 
 #ifdef MIXMASTER
     case MENU_MIX:
@@ -818,10 +761,9 @@ int mutt_parse_bind (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
   struct binding_t *bindings = NULL;
   char *key;
-  int menu[sizeof(Menus)/sizeof(struct mapping_t)-1], r = 0, nummenus, i;
+  int menu, r = 0;
 
-  if ((key = parse_keymap (menu, s, sizeof (menu)/sizeof (menu[0]),
-			   &nummenus, err)) == NULL)
+  if ((key = parse_keymap (&menu, s, err)) == NULL)
     return (-1);
 
   /* function to execute */
@@ -832,28 +774,19 @@ int mutt_parse_bind (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     r = -1;
   }
   else if (ascii_strcasecmp ("noop", buf->data) == 0)
-  {
-    for (i = 0; i < nummenus; ++i)
-    {
-      km_bindkey (key, menu[i], OP_NULL); /* the `unbind' command */
-    }
-  }
+    km_bindkey (key, menu, OP_NULL); /* the `unbind' command */
   else
   {
-    for (i = 0; i < nummenus; ++i)
+    /* First check the "generic" list of commands */
+    if (menu == MENU_PAGER || menu == MENU_EDITOR || menu == MENU_GENERIC ||
+	try_bind (key, menu, buf->data, OpGeneric) != 0)
     {
-      /* First check the "generic" list of commands */
-      if (menu[i] == MENU_PAGER || menu[i] == MENU_EDITOR ||
-      menu[i] == MENU_GENERIC ||
-	  try_bind (key, menu[i], buf->data, OpGeneric) != 0)
+      /* Now check the menu-specific list of commands (if they exist) */
+      bindings = km_get_table (menu);
+      if (bindings && try_bind (key, menu, buf->data, bindings) != 0)
       {
-        /* Now check the menu-specific list of commands (if they exist) */
-        bindings = km_get_table (menu[i]);
-        if (bindings && try_bind (key, menu[i], buf->data, bindings) != 0)
-        {
-          snprintf (err->data, err->dsize, _("%s: no such function in map"), buf->data);
-          r = -1;
-        }
+	snprintf (err->data, err->dsize, _("%s: no such function in map"), buf->data);
+	r = -1;
       }
     }
   }
@@ -864,11 +797,11 @@ int mutt_parse_bind (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 /* macro <menu> <key> <macro> <description> */
 int mutt_parse_macro (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 {
-  int menu[sizeof(Menus)/sizeof(struct mapping_t)-1], r = -1, nummenus, i;
+  int menu, r = -1;
   char *seq = NULL;
   char *key;
 
-  if ((key = parse_keymap (menu, s, sizeof (menu) / sizeof (menu[0]), &nummenus, err)) == NULL)
+  if ((key = parse_keymap (&menu, s, err)) == NULL)
     return (-1);
 
   mutt_extract_token (buf, s, M_TOKEN_CONDENSE);
@@ -890,22 +823,16 @@ int mutt_parse_macro (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
       }
       else
       {
-        for (i = 0; i < nummenus; ++i)
-        {
-          km_bind (key, menu[i], OP_MACRO, seq, buf->data);
-          r = 0;
-        }
+	km_bind (key, menu, OP_MACRO, seq, buf->data);
+	r = 0;
       }
 
       FREE (&seq);
     }
     else
     {
-      for (i = 0; i < nummenus; ++i)
-      {
-        km_bind (key, menu[i], OP_MACRO, buf->data, NULL);
-        r = 0;
-      }
+      km_bind (key, menu, OP_MACRO, buf->data, NULL);
+      r = 0;
     }
   }
   FREE (&key);
@@ -953,26 +880,4 @@ int mutt_parse_exec (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     mutt_ungetch(0, ops[--nops]);
 
   return 0;
-}
-
-/*
- * prompts the user to enter a keystroke, and displays the octal value back
- * to the user.
- */
-void mutt_what_key (void)
-{
-  int ch;
-
-  mvprintw(LINES-1,0, _("Enter keys (^G to abort): "));
-  do {
-    ch = getch();
-    if (ch != ERR && ch != ctrl ('G'))
-    {
-      mutt_message(_("Char = %s, Octal = %o, Decimal = %d"),
-	       km_keyname(ch), ch, ch);
-    }
-  }
-  while (ch != ERR && ch != ctrl ('G'));
-
-  mutt_flushinp();
 }

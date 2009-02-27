@@ -13,17 +13,13 @@
  * 
  * You should have received a copy of the GNU General Public
  * License along with this program; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
- * MA  02110-1301, USA.
+ * Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
+ * MA 02111, USA.
  */
 
 /* This module peeks at a PGP signature and figures out the hash
  * algorithm.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "pgp.h"
@@ -49,10 +45,6 @@ HashAlgorithms[] =
   { 5,  	"pgp-md2"		},
   { 6,  	"pgp-tiger192"		},
   { 7,		"pgp-haval-5-160" 	},
-  { 8,		"pgp-sha256"		},
-  { 9,		"pgp-sha384"		},
-  { 10,		"pgp-sha512"		},
-  { 11,		"pgp-sha224"		},
   { -1, 	NULL }
 };
 
@@ -69,8 +61,8 @@ static const char *pgp_hash_to_micalg (short id)
 static void pgp_dearmor (FILE *in, FILE *out)
 {
   char line[HUGE_STRING];
-  LOFF_T start;
-  LOFF_T end;
+  long start;
+  long end;
   char *r;
 
   STATE state;
@@ -106,7 +98,7 @@ static void pgp_dearmor (FILE *in, FILE *out)
   }
   
   /* actual data starts here */
-  start = ftello (in);
+  start = ftell (in);
   
   /* find the checksum */
   
@@ -121,13 +113,13 @@ static void pgp_dearmor (FILE *in, FILE *out)
     return;
   }
   
-  if ((end = ftello (in) - strlen (line)) < start)
+  if ((end = ftell (in) - strlen (line)) < start)
   {
     dprint (1, (debugfile, "pgp_dearmor: end < start???\n"));
     return;
   }
   
-  if (fseeko (in, start, SEEK_SET) == -1)
+  if (fseek (in, start, SEEK_SET) == -1)
   {
     dprint (1, (debugfile, "pgp_dearmor: Can't seekto start.\n"));
     return;

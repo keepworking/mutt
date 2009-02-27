@@ -9,30 +9,16 @@
 # Note that this script won't work for you.  I'm including it with 
 # the distribution for the sake of completeness.
 #
-# Thomas Roessler <roessler@does-not-exist.org> Mon,  8 Nov 1999 22:32:41 +0100
+# Thomas Roessler <roessler@guug.de> Mon,  8 Nov 1999 22:32:41 +0100
 #
 
 set -e
 
-if test "$1" = "-nodiff" ; then
-	diff=no
-else
-	diff=yes
-fi
-
-
-devel="devel/"	# comment out for the stable branch
-
-# test for uncommitted changes
-if hg id | grep -q '+'
-then
-  echo "Uncommitted changes"
-  exit 1
-fi
+# devel="devel/"	# comment out for the stable branch
 
 # update the source
 
-hg update
+cvs update
 
 # Do automated security checks
 
@@ -40,6 +26,8 @@ hg update
 
 # bump the version number, and calculate the tags
 
+rm -f VERSION 
+cvs update VERSION 
 OVERSION="`cat VERSION`" 
 OTAG="mutt-`echo $OVERSION | tr . -`-rel" 
 
@@ -49,59 +37,62 @@ ${VISUAL} VERSION
 VERSION="`cat VERSION`" 
 TAG="mutt-`echo $VERSION | tr . -`-rel" 
 
-#echo 'const char *ReleaseDate = "'`date +%Y-%m-%d`'";' > reldate.h
+echo 'const char *ReleaseDate = "'`date +%Y-%m-%d`'";' > reldate.h
 
-make update-changelog 
+rcs2log | cat - ChangeLog > ChangeLog.$$ && mv ChangeLog.$$ ChangeLog
+${VISUAL} ChangeLog
 
 # now, prepare the distribution tar balls
 
-#automake
-#touch configure.in
+(cd m4 && rm -f Makefile Makefile.in Makefile.am && make -f Makefile.am.in)
+automake
+touch configure.in
 make config.status
 ./config.status
 make update-doc
-make update-changelog
-(cd po && make update-po)
+make
 
 # build them
 
+# make us-dist
 make dist
+mv mutt-${VERSION}.tar.gz mutt-${VERSION}i.tar.gz
+# mv mutt-${VERSION}-us.tar.gz mutt-${VERSION}.tar.gz
 
 # commit and tag the release
 
-hg commit -m "automatic post-release commit for mutt-${VERSION}"
-#make commit-changelog 
-hg tag ${TAG}
+cvs commit -m "automatic post-release commit for mutt-${VERSION}"
+cvs tag ${TAG}
 
 # build the diff between the two releases
 
-if test "$diff" = yes
-then
-  hg diff -r ${OTAG} -r ${TAG} | gzip -9 \
-		> diff-${OVERSION}-${VERSION}.gz
-fi
+cvs rdiff -u -r ${OTAG} -r ${TAG} mutt | gzip -9 \
+	> diff-${OVERSION}i-${VERSION}i.gz
 
 # sign the various files
 
 # DISTFILES="mutt-${VERSION}.tar.gz mutt-${VERSION}i.tar.gz diff-${OVERSION}i-${VERSION}i.gz"
-DISTFILES="mutt-${VERSION}.tar.gz"
-
-if test "$diff" = yes ; then
-	DISTFILES="$DISTFILES diff-${OVERSION}-${VERSION}.gz"
-fi
+DISTFILES="mutt-${VERSION}i.tar.gz diff-${OVERSION}i-${VERSION}i.gz"
 
 for f in $DISTFILES; do
-	gpg -ba $f
+	pgp -sb $f
 	chmod 644 $f.asc
 done
 
+echo "Release built.  Please connect to the net and press <enter>"
+echo "when on-line."
+
+read dummy
+
 for f in $DISTFILES ; do
-	scp $f $f.asc trithemius.gnupg.org:/home/ftp/mutt/${devel}
+#	scp1 $f $f.asc sigtrap.guug.de:/home/ftp/pub/mutt/${devel}
+	scp $f $f.asc trithemius.gnupg.org:/home/ftp/pub/mutt/${devel}
 done
 
-hg sign -m'mutt-${VERSION} signed'
+$HOME/bin/upload-cvs
+cvs update
 
 # Finally, announce the new mutt to the public
 
-# mutt -s "[Announce] mutt-${VERSION} is out" mutt-dev@mutt.org
+mutt -s "[Announce] mutt-${VERSION} is out" mutt-dev@mutt.org
 

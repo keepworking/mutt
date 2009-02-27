@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "history.h"
@@ -44,8 +40,8 @@ static void init_history (struct history *h)
     if (h->hist)
     {
       for (i = 0 ; i < OldSize ; i ++)
-	FREE (&h->hist[i]);
-      FREE (&h->hist);
+	safe_free ((void **) &h->hist[i]);
+      safe_free ((void **) &h->hist);
     }
   }
   
@@ -54,145 +50,6 @@ static void init_history (struct history *h)
   
   h->cur = 0;
   h->last = 0;
-}
-
-void mutt_read_histfile (void)
-{
-  FILE *f;
-  int line = 0, hclass, read;
-  char *linebuf = NULL, *p;
-  size_t buflen;
-
-  if ((f = fopen (HistFile, "r")) == NULL)
-    return;
-
-  while ((linebuf = mutt_read_line (linebuf, &buflen, f, &line)) != NULL)
-  {
-    read = 0;
-    if (sscanf (linebuf, "%d:%n", &hclass, &read) < 1 || read == 0 ||
-        *(p = linebuf + strlen (linebuf) - 1) != '|')
-    {
-      mutt_error (_("Bad history file format (line %d)"), line);
-      break;
-    }
-    *p = '\0';
-    p = safe_strdup (linebuf + read);
-    if (p)
-    {
-      mutt_convert_string (&p, "utf-8", Charset, 0);
-      mutt_history_add (hclass, p, 0);
-      FREE (&p);
-    }
-  }
-
-  fclose (f);
-  FREE (&linebuf);
-}
-
-static void shrink_histfile (void)
-{
-  char tmpfname[_POSIX_PATH_MAX];
-  FILE *f, *tmp = NULL;
-  int n[HC_LAST] = { 0 };
-  int line, hclass;
-  char *linebuf = NULL;
-  size_t buflen;
-
-  if ((f = fopen (HistFile, "r")) == NULL)
-    return;
-
-  line = 0;
-  while ((linebuf = mutt_read_line (linebuf, &buflen, f, &line)) != NULL)
-  {
-    if (sscanf (linebuf, "%d", &hclass) < 1)
-    {
-      mutt_error (_("Bad history file format (line %d)"), line);
-      goto cleanup;
-    }
-    n[hclass]++;
-  }
-
-  for(hclass = HC_FIRST; hclass < HC_LAST; hclass++)
-    if (n[hclass] > SaveHist)
-    {
-      mutt_mktemp (tmpfname);
-      if ((tmp = safe_fopen (tmpfname, "w+")) == NULL)
-        mutt_perror (tmpfname);
-      break;
-    }
-
-  if (tmp != NULL)
-  {
-    rewind (f);
-    line = 0;
-    while ((linebuf = mutt_read_line (linebuf, &buflen, f, &line)) != NULL)
-    {
-      if (sscanf (linebuf, "%d", &hclass) < 1)
-      {
-        mutt_error (_("Bad history file format (line %d)"), line);
-        goto cleanup;
-      }
-      if (n[hclass]-- <= SaveHist)
-        fprintf (tmp, "%s\n", linebuf);
-    }
-  }
-
-cleanup:
-  fclose (f);
-  FREE (&linebuf);
-  if (tmp != NULL)
-  {
-    if (fflush (tmp) == 0 &&
-        (f = fopen (HistFile, "w")) != NULL) /* __FOPEN_CHECKED__ */
-    {
-      rewind (tmp);
-      mutt_copy_stream (tmp, f);
-      fclose (f);
-    }
-    fclose (tmp);
-    unlink (tmpfname);
-  }
-}
-
-static void save_history (history_class_t hclass, const char *s)
-{
-  static int n = 0;
-  FILE *f;
-  char *tmp, *p;
-
-  if (!s || !*s)  /* This shouldn't happen, but it's safer. */
-    return;
-
-  if ((f = fopen (HistFile, "a")) == NULL)
-  {
-    mutt_perror ("fopen");
-    return;
-  }
-
-  tmp = safe_strdup (s);
-  mutt_convert_string (&tmp, Charset, "utf-8", 0);
-
-  /* Format of a history item (1 line): "<histclass>:<string>|".
-     We add a '|' in order to avoid lines ending with '\'. */
-  fprintf (f, "%d:", (int) hclass);
-  for (p = tmp; *p; p++)
-  {
-    /* Don't copy \n as a history item must fit on one line. The string
-       shouldn't contain such a character anyway, but as this can happen
-       in practice, we must deal with that. */
-    if (*p != '\n')
-      putc ((unsigned char) *p, f);
-  }
-  fputs ("|\n", f);
-
-  fclose (f);
-  FREE (&tmp);
-
-  if (--n < 0)
-  {
-    n = SaveHist;
-    shrink_histfile();
-  }
 }
 
 void mutt_init_history(void)
@@ -208,7 +65,7 @@ void mutt_init_history(void)
   OldSize = HistSize;
 }
   
-void mutt_history_add (history_class_t hclass, const char *s, int save)
+void mutt_history_add (history_class_t hclass, const char *s)
 {
   int prev;
   struct history *h = &History[hclass];
@@ -220,15 +77,8 @@ void mutt_history_add (history_class_t hclass, const char *s, int save)
   {
     prev = h->last - 1;
     if (prev < 0) prev = HistSize - 1;
-
-    /* don't add to prompt history:
-     *  - lines beginning by a space
-     *  - repeated lines
-     */
-    if (*s != ' ' && (!h->hist[prev] || mutt_strcmp (h->hist[prev], s) != 0))
+    if (!h->hist[prev] || mutt_strcmp (h->hist[prev], s) != 0)
     {
-      if (save && SaveHist)
-        save_history (hclass, s);
       mutt_str_replace (&h->hist[h->last++], s);
       if (h->last > HistSize - 1)
 	h->last = 0;

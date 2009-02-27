@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -117,22 +113,18 @@ void hash_delete_hash (HASH * table, int hash, const char *key, const void *data
   struct hash_elem *ptr = table->table[hash];
   struct hash_elem **last = &table->table[hash];
 
-  while (ptr) 
+  for (; ptr; last = &ptr->next, ptr = ptr->next)
   {
-    if ((data == ptr->data || !data)
-	&& mutt_strcmp (ptr->key, key) == 0)
+    /* if `data' is given, look for a matching ->data member.  this is
+     * required for the case where we have multiple entries with the same
+     * key
+     */
+    if ((data == ptr->data) || (!data && mutt_strcmp (ptr->key, key) == 0))
     {
       *last = ptr->next;
-      if (destroy)
-	destroy (ptr->data);
+      if (destroy) destroy (ptr->data);
       FREE (&ptr);
-      
-      ptr = *last;
-    }
-    else
-    {
-      last = &ptr->next;
-      ptr = ptr->next;
+      return;
     }
   }
 }
@@ -154,9 +146,9 @@ void hash_destroy (HASH **ptr, void (*destroy) (void *))
       elem = elem->next;
       if (destroy)
 	destroy (tmp->data);
-      FREE (&tmp);
+      safe_free ((void **) &tmp);
     }
   }
-  FREE (&pptr->table);
-  FREE (ptr);		/* __FREE_CHECKED__ */
+  safe_free ((void **) &pptr->table);
+  safe_free ((void **) ptr);
 }

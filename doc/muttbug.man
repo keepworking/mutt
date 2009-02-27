@@ -15,10 +15,11 @@
 .\" 
 .\"     You should have received a copy of the GNU General Public License
 .\"     along with this program; if not, write to the Free Software
-.\"     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+.\"     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
 .\"
 .TH flea 1 "July 2000" Unix "User Manuals"
 .SH NAME
+.PP
 flea \- Report a bug (or rather a flea) in mutt.
 .SH SYNOPSIS
 .PP
@@ -107,7 +108,7 @@ If you leave the editor,
 .B flea
 will give you the option to review, re-edit, submit, or abandon your
 bug report.  If you decide to submit it, a mail message containing
-your report will be sent to <fleas@mutt.org>.  You'll receive a
+your report will be sent to <submit@bugs.guug.de>.  You'll receive a
 copy of this message.
 .PP
 While your bug report is being processed by the bug tracking system,
@@ -117,8 +118,7 @@ been entered into the bug tracking system, it will be assigned a
 unique serial number about which you are informed via e-mail.  If
 you wish to submit additional information about the bug, you can
 just send it to the address
-.BR fleas@mutt.org
-with #\fIserial\fP in the subject.
+.BR \fIserial\fP@bugs.guug.de .
 .PP
 Later, you will most likely receive questions from the developers
 about the problem you observed, and you will eventually be informed
@@ -132,7 +132,7 @@ hesitate to contact the developers directly under
 You can also browse your bug report and all additional information
 and replies connected to it using the bug tracking system's Web
 interface under the following URL:
-http://bugs.mutt.org/
+http://bugs.guug.de/
 .SH
 ENVIRONMENT
 .PP
@@ -191,7 +191,7 @@ SEE ALSO
 .BR uname (1),
 .BR vi (1)
 .PP
-The mutt bug tracking system: http://bugs.mutt.org/
+The mutt bug tracking system: http://bugs.guug.de/
 .SH
 AUTHOR
 .PP

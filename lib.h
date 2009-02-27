@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -16,14 +16,16 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */ 
 
 /* mutt functions which are generally useful. */
 
 #ifndef _LIB_H
 # define _LIB_H
+
+# include "config.h"
 
 # include <stdio.h>
 # include <string.h>
@@ -62,19 +64,8 @@
 # define STRING          256
 # define SHORT_STRING    128
 
-/*
- * Create a format string to be used with scanf.
- * To use it, write, for instance, MUTT_FORMAT(HUGE_STRING).
- * 
- * See K&R 2nd ed, p. 231 for an explanation.
- */
-# define _MUTT_FORMAT_2(a,b)	"%" a  b
-# define _MUTT_FORMAT_1(a, b)	_MUTT_FORMAT_2(#a, b)
-# define MUTT_FORMAT(a)		_MUTT_FORMAT_1(a, "s")
-# define MUTT_FORMAT2(a,b)	_MUTT_FORMAT_1(a, b)
 
-
-# define FREE(x) safe_free(x)
+# define FREE(x) safe_free((void **)x)
 # define NONULL(x) x?x:""
 # define ISSPACE(c) isspace((unsigned char)c)
 # define strfcpy(A,B,C) strncpy(A,B,C), *(A+(C)-1)=0
@@ -98,59 +89,24 @@
  * A non-mutt "implementation" (ahem) can be found in extlib.c.
  */
 
-
 # ifndef _EXTLIB_C
 extern void (*mutt_error) (const char *, ...);
 # endif
-
-# ifdef _LIB_C
-#  define MUTT_LIB_WHERE 
-#  define MUTT_LIB_INITVAL(x) = x
-# else
-#  define MUTT_LIB_WHERE extern
-#  define MUTT_LIB_INITVAL(x)
-# endif
-
 void mutt_exit (int);
-
-
-# ifdef DEBUG
-
-MUTT_LIB_WHERE FILE *debugfile MUTT_LIB_INITVAL(0);
-MUTT_LIB_WHERE int debuglevel MUTT_LIB_INITVAL(0);
-
-#  define dprint(N,X) do { if(debuglevel>=N && debugfile) fprintf X; } while (0)
-
-# else
-
-#  define dprint(N,X)
-
-# endif
-
-
-/* Exit values used in send_msg() */
-#define S_ERR 127
-#define S_BKG 126
 
 /* The actual library functions. */
 
 FILE *safe_fopen (const char *, const char *);
 
-char *mutt_concatn_path (char *, size_t, const char *, size_t, const char *, size_t);
-char *mutt_concat_path (char *, const char *, const char *, size_t);
 char *mutt_read_line (char *, size_t *, FILE *, int *);
 char *mutt_skip_whitespace (char *);
 char *mutt_strlower (char *);
 char *mutt_substrcpy (char *, const char *, const char *, size_t);
 char *mutt_substrdup (const char *, const char *);
-char *safe_strcat (char *, size_t, const char *);
-char *safe_strncat (char *, size_t, const char *, size_t);
 char *safe_strdup (const char *);
 
 const char *mutt_stristr (const char *, const char *);
-const char *mutt_basename (const char *);
 
-int compare_stat (struct stat *, struct stat *);
 int mutt_copy_stream (FILE *, FILE *);
 int mutt_copy_bytes (FILE *, FILE *, size_t);
 int mutt_rx_sanitize_string (char *, size_t, const char *);
@@ -158,10 +114,9 @@ int mutt_strcasecmp (const char *, const char *);
 int mutt_strcmp (const char *, const char *);
 int mutt_strncasecmp (const char *, const char *, size_t);
 int mutt_strncmp (const char *, const char *, size_t);
-int mutt_strcoll (const char *, const char *);
 int safe_open (const char *, int);
-int safe_rename (const char *, const char *);
 int safe_symlink (const char *, const char *);
+int safe_rename (const char *, const char *);
 int safe_fclose (FILE **);
 
 size_t mutt_quote_filename (char *, size_t, const char *);
@@ -175,8 +130,7 @@ void mutt_sanitize_filename (char *, short);
 void mutt_str_replace (char **p, const char *s);
 void mutt_str_adjust (char **p);
 void mutt_unlink (const char *);
-void safe_free (void *);
-void safe_realloc (void *, size_t);
+void safe_free (void **);
+void safe_realloc (void **, size_t);
 
-const char *mutt_strsysexit(int e);
 #endif

@@ -9,7 +9,24 @@
 #ifndef _SHA1_H
 # define _SHA1_H
 
-#include "crypthash.h"
+#include "config.h"
+
+#include <sys/types.h>
+#if HAVE_INTTYPES_H
+# include <inttypes.h>
+#else
+# if HAVE_STDINT_H
+#  include <stdint.h>
+# endif
+#endif
+
+#ifndef HAVE_UINT32_T
+#  if SIZEOF_INT == 4
+typedef unsigned int uint32_t;
+#  elif SIZEOF_LONG == 4
+typedef unsigned long uint32_t;
+#  endif
+#endif
 
 typedef struct {
   uint32_t state[5];
@@ -30,3 +47,4 @@ void SHA1Final(unsigned char digest[20], SHA1_CTX* context);
 # define SHA_DIGEST_LENGTH 20
 
 #endif
+

@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,19 +13,13 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "buffy.h"
 #include "mailbox.h"
 #include "mx.h"
-
-#include "mutt_curses.h"
 
 #ifdef USE_IMAP
 #include "imap.h"
@@ -45,19 +39,21 @@ time_t BuffyDoneTime = 0;	/* last time we knew for sure how much mail there was.
 static short BuffyCount = 0;	/* how many boxes with new mail */
 static short BuffyNotify = 0;	/* # of unnotified new boxes */
 
+#ifdef BUFFY_SIZE
+
 /* Find the last message in the file. 
  * upon success return 0. If no message found - return -1 */
 
 int fseek_last_message (FILE * f)
 {
-  LOFF_T pos;
+  long int pos;
   char buffer[BUFSIZ + 9];	/* 7 for "\n\nFrom " */
   int bytes_read;
   int i;			/* Index into `buffer' for scanning.  */
 
   memset (buffer, 0, sizeof(buffer));
   fseek (f, 0, SEEK_END);
-  pos = ftello (f);
+  pos = ftell (f);
 
   /* Set `bytes_read' to the size of the last, probably partial, buffer; 0 <
    * `bytes_read' <= `BUFSIZ'.  */
@@ -70,14 +66,14 @@ int fseek_last_message (FILE * f)
   {
     /* we save in the buffer at the end the first 7 chars from the last read */
     strncpy (buffer + BUFSIZ, buffer, 5+2); /* 2 == 2 * mutt_strlen(CRLF) */
-    fseeko (f, pos, SEEK_SET);
+    fseek (f, pos, SEEK_SET);
     bytes_read = fread (buffer, sizeof (char), bytes_read, f);
     if (bytes_read == -1)
       return -1;
     for (i = bytes_read; --i >= 0;)
       if (!mutt_strncmp (buffer + i, "\n\nFrom ", mutt_strlen ("\n\nFrom ")))
       {				/* found it - go to the beginning of the From */
-	fseeko (f, pos + i + 2, SEEK_SET);
+	fseek (f, pos + i + 2, SEEK_SET);
 	return 0;
       }
     bytes_read = BUFSIZ;
@@ -97,18 +93,15 @@ int fseek_last_message (FILE * f)
 int test_last_status_new (FILE * f)
 {
   HEADER *hdr;
-  ENVELOPE* tmp_envelope;
   int result = 0;
 
   if (fseek_last_message (f) == -1)
     return (0);
 
   hdr = mutt_new_header ();
-  tmp_envelope = mutt_read_rfc822_header (f, hdr, 0, 0);
+  mutt_read_rfc822_header (f, hdr, 0, 0);
   if (!(hdr->read || hdr->old))
     result = 1;
-
-  mutt_free_envelope(&tmp_envelope);
   mutt_free_header (&hdr);
 
   return result;
@@ -122,7 +115,7 @@ int test_new_folder (const char *path)
 
   typ = mx_get_magic (path);
 
-  if (typ != M_MBOX && typ != M_MMDF)
+  if (typ != M_MBOX && typ != M_MMDF && typ != M_KENDRA)
     return 0;
 
   if ((f = fopen (path, "rb")))
@@ -165,30 +158,20 @@ void mutt_update_mailbox (BUFFY * b)
     b->size = 0;
   return;
 }
+#endif
 
 int mutt_parse_mailboxes (BUFFER *path, BUFFER *s, unsigned long data, BUFFER *err)
 {
-  BUFFY **tmp,*tmp1;
+  BUFFY **tmp;
   char buf[_POSIX_PATH_MAX];
+#ifdef BUFFY_SIZE
   struct stat sb;
+#endif /* BUFFY_SIZE */
 
   while (MoreArgs (s))
   {
     mutt_extract_token (path, s, 0);
     strfcpy (buf, path->data, sizeof (buf));
-
-    if(data == M_UNMAILBOXES && mutt_strcmp(buf,"*") == 0)
-    {
-      for (tmp = &Incoming; *tmp;)
-      {
-        FREE (&((*tmp)->path));
-        tmp1=(*tmp)->next;
-        FREE (tmp);		/* __FREE_CHECKED__ */
-        *tmp=tmp1;
-      }
-      return 0;
-    }
-
     mutt_expand_path (buf, sizeof (buf));
 
     /* Skip empty tokens. */
@@ -199,18 +182,6 @@ int mutt_parse_mailboxes (BUFFER *path, BUFFER *s, unsigned long data, BUFFER *e
     {
       if (mutt_strcmp (buf, (*tmp)->path) == 0)
 	break;
-    }
-
-    if(data == M_UNMAILBOXES)
-    {
-      if(*tmp)
-      {
-        FREE (&((*tmp)->path));
-        tmp1=(*tmp)->next;
-        FREE (tmp);		/* __FREE_CHECKED__ */
-        *tmp=tmp1;
-      }
-      continue;
     }
 
     if (!*tmp)
@@ -227,28 +198,31 @@ int mutt_parse_mailboxes (BUFFER *path, BUFFER *s, unsigned long data, BUFFER *e
     (*tmp)->notified = 1;
     (*tmp)->newly_created = 0;
 
-    /* for check_mbox_size, it is important that if the folder is new (tested by
+#ifdef BUFFY_SIZE
+    /* for buffy_size, it is important that if the folder is new (tested by
      * reading it), the size is set to 0 so that later when we check we see
-     * that it increased .  without check_mbox_size we probably don't care.
+     * that it increased .  without buffy_size we probably don't care.
      */
-    if (option(OPTCHECKMBOXSIZE) &&
-	stat ((*tmp)->path, &sb) == 0 && !test_new_folder ((*tmp)->path))
+    if (stat ((*tmp)->path, &sb) == 0 && !test_new_folder ((*tmp)->path))
     {
       /* some systems out there don't have an off_t type */
       (*tmp)->size = (long) sb.st_size;
     }
     else
       (*tmp)->size = 0;
+#endif /* BUFFY_SIZE */
   }
   return 0;
 }
 
-/* people use check_mbox_size on systems where modified time attributes are 
- * BADLY broken. Ignore them.
+#ifdef BUFFY_SIZE
+/* people use buffy_size on systems where modified time attributes are BADLY
+ * broken. Ignore them.
  */
-#define STAT_CHECK_SIZE (sb.st_size > tmp->size)
-#define STAT_CHECK_TIME (sb.st_mtime > sb.st_atime || (tmp->newly_created && sb.st_ctime == sb.st_mtime && sb.st_ctime == sb.st_atime))
-#define STAT_CHECK (option(OPTCHECKMBOXSIZE) ? STAT_CHECK_SIZE : STAT_CHECK_TIME)
+#define STAT_CHECK (sb.st_size > tmp->size)
+#else
+#define STAT_CHECK (sb.st_mtime > sb.st_atime || (tmp->newly_created && sb.st_ctime == sb.st_mtime && sb.st_ctime == sb.st_atime))
+#endif /* BUFFY_SIZE */
 
 int mutt_buffy_check (int force)
 {
@@ -278,8 +252,6 @@ int mutt_buffy_check (int force)
   BuffyNotify = 0;
 
 #ifdef USE_IMAP
-  BuffyCount += imap_buffy_check (force);
-
   if (!Context || Context->magic != M_IMAP)
 #endif
 #ifdef USE_POP
@@ -294,14 +266,12 @@ int mutt_buffy_check (int force)
   
   for (tmp = Incoming; tmp; tmp = tmp->next)
   {
-#ifdef USE_IMAP
-    if (tmp->magic != M_IMAP)
-#endif
     tmp->new = 0;
 
 #ifdef USE_IMAP
-    if (tmp->magic != M_IMAP)
-    {
+    if (mx_is_imap (tmp->path))
+      tmp->magic = M_IMAP;
+    else
 #endif
 #ifdef USE_POP
     if (mx_is_pop (tmp->path))
@@ -315,12 +285,11 @@ int mutt_buffy_check (int force)
        * be ready for when it does. */
       tmp->newly_created = 1;
       tmp->magic = 0;
+#ifdef BUFFY_SIZE
       tmp->size = 0;
+#endif
       continue;
     }
-#ifdef USE_IMAP
-    }
-#endif
 
     /* check to see if the folder is the currently selected folder
      * before polling */
@@ -349,17 +318,20 @@ int mutt_buffy_check (int force)
       {
       case M_MBOX:
       case M_MMDF:
+      case M_KENDRA:
 
 	if (STAT_CHECK)
 	{
 	  BuffyCount++;
 	  tmp->new = 1;
 	}
-	else if (option(OPTCHECKMBOXSIZE))
+#ifdef BUFFY_SIZE
+	else
 	{
 	  /* some other program has deleted mail from the folder */
 	  tmp->size = (long) sb.st_size;
 	}
+#endif
 	if (tmp->newly_created &&
 	    (sb.st_ctime != sb.st_mtime || sb.st_ctime != sb.st_atime))
 	  tmp->newly_created = 0;
@@ -393,10 +365,27 @@ int mutt_buffy_check (int force)
 	if ((tmp->new = mh_buffy (tmp->path)) > 0)
 	  BuffyCount++;
 	break;
+	
+#ifdef USE_IMAP
+      case M_IMAP:
+	if ((tmp->new = imap_mailbox_check (tmp->path, 1)) > 0)
+	  BuffyCount++;
+	else
+	  tmp->new = 0;
+
+	break;
+#endif
+
+#ifdef USE_POP
+      case M_POP:
+	break;
+#endif
       }
     }
-    else if (option(OPTCHECKMBOXSIZE) && Context && Context->path)
+#ifdef BUFFY_SIZE
+    else if (Context && Context->path)
       tmp->size = (long) sb.st_size;	/* update the size */
+#endif
 
     if (!tmp->new)
       tmp->notified = 0;
@@ -408,66 +397,29 @@ int mutt_buffy_check (int force)
   return (BuffyCount);
 }
 
-int mutt_buffy_list (void)
+int mutt_buffy_notify (void)
 {
   BUFFY *tmp;
   char path[_POSIX_PATH_MAX];
-  char buffylist[2*STRING];
-  int pos;
-  int first;
 
-  int have_unnotified = BuffyNotify;
-  
-  pos = 0;
-  first = 1;
-  buffylist[0] = 0;
-  pos += strlen (strncat (buffylist, _("New mail in "), sizeof (buffylist) - 1 - pos)); /* __STRNCAT_CHECKED__ */
-  for (tmp = Incoming; tmp; tmp = tmp->next)
-  {
-    /* Is there new mail in this mailbox? */
-    if (!tmp->new || (have_unnotified && tmp->notified))
-      continue;
-
-    strfcpy (path, tmp->path, sizeof (path));
-    mutt_pretty_mailbox (path);
-    
-    if (!first && pos + strlen (path) >= COLS - 7)
-      break;
-    
-    if (!first)
-      pos += strlen (strncat(buffylist + pos, ", ", sizeof(buffylist)-1-pos)); /* __STRNCAT_CHECKED__ */
-
-    /* Prepend an asterisk to mailboxes not already notified */
-    if (!tmp->notified)
-    {
-      /* pos += strlen (strncat(buffylist + pos, "*", sizeof(buffylist)-1-pos));  __STRNCAT_CHECKED__ */
-      tmp->notified = 1;
-      BuffyNotify--;
-    }
-    pos += strlen (strncat(buffylist + pos, path, sizeof(buffylist)-1-pos)); /* __STRNCAT_CHECKED__ */
-    first = 0;
-  }
-  if (!first && tmp)
-  {
-    strncat (buffylist + pos, ", ...", sizeof (buffylist) - 1 - pos); /* __STRNCAT_CHECKED__ */
-  }
-  if (!first)
-  {
-    mutt_message ("%s", buffylist);
-    return (1);
-  }
-  /* there were no mailboxes needing to be notified, so clean up since 
-   * BuffyNotify has somehow gotten out of sync
-   */
-  BuffyNotify = 0;
-  return (0);
-}
-
-int mutt_buffy_notify (void)
-{
   if (mutt_buffy_check (0) && BuffyNotify)
   {
-    return (mutt_buffy_list ());
+    for (tmp = Incoming; tmp; tmp = tmp->next)
+    {
+      if (tmp->new && !tmp->notified)
+      {
+	strfcpy (path, tmp->path, sizeof (path));
+	mutt_pretty_mailbox (path);
+	mutt_message (_("New mail in %s."), path);
+	tmp->notified = 1;
+	BuffyNotify--;
+	return (1);
+      }
+    }
+    /* there were no mailboxes needing to be notified, so clean up since 
+     * BuffyNotify has somehow gottten out of sync
+     */
+    BuffyNotify = 0;
   }
   return (0);
 }
@@ -488,7 +440,7 @@ void mutt_buffy (char *s, size_t slen)
   {
   case 0:
 
-    *s = '\0';
+    s = '\0';
     break;
 
   case 1:
@@ -497,7 +449,7 @@ void mutt_buffy (char *s, size_t slen)
       tmp = tmp->next;
     if (!tmp)
     {
-      *s = '\0';
+      s = '\0';
       mutt_buffy_check (1); /* buffy was wrong - resync things */
       break;
     }
@@ -523,7 +475,7 @@ void mutt_buffy (char *s, size_t slen)
     }
     if (count >= 3)
     {
-      *s = '\0';
+      s = '\0';
       mutt_buffy_check (1); /* buffy was wrong - resync things */
       break;
     }

@@ -26,7 +26,27 @@ documentation and/or software.
 #ifndef MD5_H
 #define MD5_H 1
 
-#include "crypthash.h"
+#include "config.h"
+
+#include <sys/types.h>
+#if HAVE_INTTYPES_H
+# include <inttypes.h>
+#else
+# if HAVE_STDINT_H
+#  include <stdint.h>
+# endif
+#endif
+
+/* POINTER defines a generic pointer type */
+typedef unsigned char *POINTER;
+
+#ifndef HAVE_UINT32_T
+#  if SIZEOF_INT == 4
+typedef unsigned int uint32_t;
+#  elif SIZEOF_LONG == 4
+typedef unsigned long int uint32_t;
+#  endif
+#endif
 
 /* MD5 context. */
 typedef struct {

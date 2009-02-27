@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,16 +13,11 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
-#include "mutt_idna.h"
 #include "mapping.h"
 #include "sort.h"
 
@@ -62,16 +57,14 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf);
 
 static ADDRESS *result_to_addr (QUERY *r)
 {
-  static ADDRESS *tmp;
+  static ADDRESS tmp;
   
-  if (!(tmp = rfc822_cpy_adr (r->addr)))
-    return NULL;
+  tmp = *r->addr;
   
-  if(!tmp->next && !tmp->personal)
-    tmp->personal = safe_strdup (r->name);
+  if(!tmp.next && !tmp.personal)
+    tmp.personal = r->name;
   
-  mutt_addrlist_to_idna (tmp, NULL);
-  return tmp;
+  return &tmp;
 }
 
 static QUERY *run_query (char *s, int quiet)
@@ -118,7 +111,7 @@ static QUERY *run_query (char *s, int quiet)
 	cur = cur->next;
       }
 
-      l = mutt_strwidth (p);
+      l = mutt_strlen (p);
       if (l > SecondColumn)
 	SecondColumn = l;
 	
@@ -126,7 +119,7 @@ static QUERY *run_query (char *s, int quiet)
       p = strtok(NULL, "\t\n");
       if (p)
       {
-	l = mutt_strwidth (p);
+	l = mutt_strlen (p);
 	if (l > FirstColumn)
 	  FirstColumn = l;
 	cur->name = safe_strdup (p);
@@ -138,7 +131,7 @@ static QUERY *run_query (char *s, int quiet)
       }
     }
   }
-  FREE (&buf);
+  safe_free ((void **) &buf);
   fclose (fp);
   if (mutt_wait_filter (thepid))
   {
@@ -187,7 +180,7 @@ static int query_search (MUTTMENU *m, regex_t *re, int n)
 static void query_entry (char *s, size_t slen, MUTTMENU *m, int num)
 {
   ENTRY *table = (ENTRY *) m->data;
-  char buf2[SHORT_STRING], buf[SHORT_STRING] = "";
+  char buf[SHORT_STRING] = "";
 
   /* need a query format ... hard coded constants are not good */
   while (FirstColumn + SecondColumn > 70)
@@ -200,17 +193,14 @@ static void query_entry (char *s, size_t slen, MUTTMENU *m, int num)
       SecondColumn = QUERY_MIN_COLUMN_LENGHT;
   }
 
-  rfc822_write_address (buf, sizeof (buf), table[num].data->addr, 1);
+  rfc822_write_address (buf, sizeof (buf), table[num].data->addr);
 
-  mutt_format_string (buf2, sizeof (buf2),
-		      FirstColumn + 2, FirstColumn + 2,
-		      0, ' ', table[num].data->name,
-		      mutt_strlen (table[num].data->name), 0);
-
-  snprintf (s, slen, " %c %3d %s %-*.*s %s", 
+  snprintf (s, slen, " %c %3d %-*.*s %-*.*s %s", 
 	    table[num].tagged ? '*':' ',
 	    num+1,
-	    buf2,
+	    FirstColumn+2,
+	    FirstColumn+2,
+	    NONULL (table[num].data->name),
 	    SecondColumn+2,
 	    SecondColumn+2,
 	    buf,
@@ -229,7 +219,6 @@ static int query_tag (MUTTMENU *menu, int n, int m)
 int mutt_query_complete (char *buf, size_t buflen)
 {
   QUERY *results = NULL;
-  ADDRESS *tmpa;
 
   if (!QueryCmd)
   {
@@ -243,11 +232,8 @@ int mutt_query_complete (char *buf, size_t buflen)
     /* only one response? */
     if (results->next == NULL)
     {
-      tmpa = result_to_addr (results);
-      mutt_addrlist_to_local (tmpa);
       buf[0] = '\0';
-      rfc822_write_address (buf, buflen, tmpa, 0);
-      rfc822_free_address (&tmpa);
+      rfc822_write_address (buf, buflen, result_to_addr(results));
       mutt_clear_error ();
       return (0);
     }
@@ -285,7 +271,7 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
   QUERY *queryp = NULL;
   int i, done = 0;
   int op;
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   char title[STRING];
 
   snprintf (title, sizeof (title), _("Query")); /* FIXME */
@@ -343,14 +329,14 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
 		while (queryp)
 		{
 		  rfc822_free_address (&queryp->addr);
-		  FREE (&queryp->name);
-		  FREE (&queryp->other);
+		  safe_free ((void **)&queryp->name);
+		  safe_free ((void **)&queryp->other);
 		  results = queryp->next;
-		  FREE (&queryp);
+		  safe_free ((void **)&queryp);
 		  queryp = results;
 		}
 		results = newresults;
-		FREE (&QueryTable);
+		safe_free ((void **) &QueryTable);
 	      }
 	      else
 	      {
@@ -389,7 +375,7 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
 		int clear = 0;
 
 		/* append */
-		safe_realloc (&QueryTable, menu->max * sizeof (ENTRY));
+		safe_realloc ((void **)&QueryTable, menu->max * sizeof (ENTRY));
 
 		menu->data = QueryTable;
 
@@ -416,19 +402,13 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
 
 	    for (i = 0; i < menu->max; i++)
 	      if (QueryTable[i].tagged)
-	      {
-		ADDRESS *a = result_to_addr(QueryTable[i].data);
-		rfc822_append (&naddr, a);
-		rfc822_free_address (&a);
-	      }
+		rfc822_append (&naddr, result_to_addr(QueryTable[i].data));
 
 	    mutt_create_alias (NULL, naddr);
 	  }
 	  else
 	  {
-	    ADDRESS *a = result_to_addr(QueryTable[menu->current].data);
-	    mutt_create_alias (NULL, a);
-	    rfc822_free_address (&a);
+	    mutt_create_alias (NULL, result_to_addr(QueryTable[menu->current].data));
 	  }
 	  break;
 
@@ -445,17 +425,14 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
 	  msg->env = mutt_new_envelope ();
 	  if (!menu->tagprefix)
 	  {
-	    msg->env->to = result_to_addr(QueryTable[menu->current].data);
+	    msg->env->to = 
+	      rfc822_cpy_adr (result_to_addr(QueryTable[menu->current].data));
 	  }
 	  else
 	  {
 	    for (i = 0; i < menu->max; i++)
 	      if (QueryTable[i].tagged)
-	      {
-		ADDRESS *a = result_to_addr(QueryTable[i].data);
-		rfc822_append (&msg->env->to, a);
-		rfc822_free_address (&a);
-	      }
+		rfc822_append (&msg->env->to, result_to_addr(QueryTable[i].data));
 	  }
 	  ci_send_message (0, msg, NULL, Context, NULL);
 	  menu->redraw = REDRAW_FULL;
@@ -482,32 +459,23 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
 	{
 	  if (curpos == 0)
 	  {
-	    ADDRESS *tmpa = result_to_addr (QueryTable[i].data);
-	    mutt_addrlist_to_local (tmpa);
 	    tagged = 1;
-	    rfc822_write_address (buf, buflen, tmpa, 0);
+	    rfc822_write_address (buf, buflen, result_to_addr(QueryTable[i].data));
 	    curpos = mutt_strlen (buf);
-	    rfc822_free_address (&tmpa);
 	  }
 	  else if (curpos + 2 < buflen)
 	  {
-	    ADDRESS *tmpa = result_to_addr (QueryTable[i].data);
-	    mutt_addrlist_to_local (tmpa);
 	    strcat (buf, ", ");	/* __STRCAT_CHECKED__ */
 	    rfc822_write_address ((char *) buf + curpos + 1, buflen - curpos - 1,
-				  tmpa, 0);
+				  result_to_addr(QueryTable[i].data));
 	    curpos = mutt_strlen (buf);
-	    rfc822_free_address (&tmpa);
 	  }
 	}
       }
       /* then enter current message */
       if (!tagged)
       {
-	ADDRESS *tmpa = result_to_addr (QueryTable[menu->current].data);
-	mutt_addrlist_to_local (tmpa);
-	rfc822_write_address (buf, buflen, tmpa, 0);
-	rfc822_free_address (&tmpa);
+	rfc822_write_address (buf, buflen, result_to_addr(QueryTable[menu->current].data));
       }
       
     }
@@ -516,13 +484,13 @@ static void query_menu (char *buf, size_t buflen, QUERY *results, int retbuf)
     while (queryp)
     {
       rfc822_free_address (&queryp->addr);
-      FREE (&queryp->name);
-      FREE (&queryp->other);
+      safe_free ((void **)&queryp->name);
+      safe_free ((void **)&queryp->other);
       results = queryp->next;
-      FREE (&queryp);
+      safe_free ((void **)&queryp);
       queryp = results;
     }
-    FREE (&QueryTable);
+    safe_free ((void **) &QueryTable);
     
     /* tell whoever called me to redraw the screen when I return */
     set_option (OPTNEEDREDRAW);

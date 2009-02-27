@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1997-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1997-2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,15 +15,11 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */
 
 /* Generally useful, pgp-related functions. */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +27,6 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "mutt.h"
 #include "lib.h"
 #include "pgplib.h"
 
@@ -131,7 +126,7 @@ void pgp_free_sig (pgp_sig_t **sigp)
   for (sp = *sigp; sp; sp = q)
   {
     q = sp->next;
-    FREE (&sp);
+    safe_free ((void **) &sp);
   }
   
   *sigp = NULL;
@@ -147,14 +142,14 @@ void pgp_free_uid (pgp_uid_t ** upp)
   {
     q = up->next;
     pgp_free_sig (&up->sigs);
-    FREE (&up->addr);
-    FREE (&up);
+    safe_free ((void **) &up->addr);
+    safe_free ((void **) &up);
   }
 
   *upp = NULL;
 }
 
-pgp_uid_t *pgp_copy_uids (pgp_uid_t *up, pgp_key_t parent)
+pgp_uid_t *pgp_copy_uids (pgp_uid_t *up, pgp_key_t *parent)
 {
   pgp_uid_t *l = NULL;
   pgp_uid_t **lp = &l;
@@ -172,9 +167,9 @@ pgp_uid_t *pgp_copy_uids (pgp_uid_t *up, pgp_key_t parent)
   return l;
 }
 
-static void _pgp_free_key (pgp_key_t *kpp)
+static void _pgp_free_key (pgp_key_t ** kpp)
 {
-  pgp_key_t kp;
+  pgp_key_t *kp;
 
   if (!kpp || !*kpp)
     return;
@@ -182,15 +177,14 @@ static void _pgp_free_key (pgp_key_t *kpp)
   kp = *kpp;
 
   pgp_free_uid (&kp->address);
-  FREE (&kp->keyid);
-  /* mutt_crypt.h: 'typedef struct pgp_keyinfo *pgp_key_t;' */
-  FREE (kpp);		/* __FREE_CHECKED__ */
+  safe_free ((void **) &kp->keyid);
+  safe_free ((void **) kpp);
 }
 
-pgp_key_t pgp_remove_key (pgp_key_t *klist, pgp_key_t key)
+pgp_key_t *pgp_remove_key (pgp_key_t ** klist, pgp_key_t * key)
 {
-  pgp_key_t *last;
-  pgp_key_t p, q, r;
+  pgp_key_t **last;
+  pgp_key_t *p, *q, *r;
 
   if (!klist || !*klist || !key)
     return NULL;
@@ -215,9 +209,9 @@ pgp_key_t pgp_remove_key (pgp_key_t *klist, pgp_key_t key)
   return q;
 }
 
-void pgp_free_key (pgp_key_t *kpp)
+void pgp_free_key (pgp_key_t ** kpp)
 {
-  pgp_key_t p, q, r;
+  pgp_key_t *p, *q, *r;
 
   if (!kpp || !*kpp)
     return;

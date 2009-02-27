@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 /* 
@@ -25,10 +25,6 @@
  * This file contains various functions for implementing a fair subset of 
  * rfc1524.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "rfc1524.h"
@@ -296,7 +292,7 @@ static int rfc1524_mailcap_parse (BODY *a,
 	      && test_command)
 	  {
 	    len = mutt_strlen (test_command) + STRING;
-	    safe_realloc (&test_command, len);
+	    safe_realloc ((void **) &test_command, len);
 	    rfc1524_expand_command (a, a->filename, type, test_command, len);
 	    if (mutt_system (test_command))
 	    {
@@ -334,13 +330,13 @@ static int rfc1524_mailcap_parse (BODY *a,
 	/* reset */
 	if (entry)
 	{
-	  FREE (&entry->command);
-	  FREE (&entry->composecommand);
-	  FREE (&entry->composetypecommand);
-	  FREE (&entry->editcommand);
-	  FREE (&entry->printcommand);
-	  FREE (&entry->nametemplate);
-	  FREE (&entry->convert);
+	  safe_free ((void **) &entry->command);
+	  safe_free ((void **) &entry->composecommand);
+	  safe_free ((void **) &entry->composetypecommand);
+	  safe_free ((void **) &entry->editcommand);
+	  safe_free ((void **) &entry->printcommand);
+	  safe_free ((void **) &entry->nametemplate);
+	  safe_free ((void **) &entry->convert);
 	  entry->needsterminal = 0;
 	  entry->copiousoutput = 0;
 	}
@@ -348,7 +344,7 @@ static int rfc1524_mailcap_parse (BODY *a,
     } /* while (!found && (buf = mutt_read_line ())) */
     fclose (fp);
   } /* if ((fp = fopen ())) */
-  FREE (&buf);
+  safe_free ((void **) &buf);
   return found;
 }
 
@@ -361,14 +357,14 @@ void rfc1524_free_entry(rfc1524_entry **entry)
 {
   rfc1524_entry *p = *entry;
 
-  FREE (&p->command);
-  FREE (&p->testcommand);
-  FREE (&p->composecommand);
-  FREE (&p->composetypecommand);
-  FREE (&p->editcommand);
-  FREE (&p->printcommand);
-  FREE (&p->nametemplate);
-  FREE (entry);		/* __FREE_CHECKED__ */
+  safe_free((void **)&p->command);
+  safe_free((void **)&p->testcommand);
+  safe_free((void **)&p->composecommand);
+  safe_free((void **)&p->composetypecommand);
+  safe_free((void **)&p->editcommand);
+  safe_free((void **)&p->printcommand);
+  safe_free((void **)&p->nametemplate);
+  safe_free((void **)entry);
 }
 
 /*
@@ -395,8 +391,6 @@ int rfc1524_mailcap_lookup (BODY *a, char *type, rfc1524_entry *entry, int opt)
     mutt_error _("No mailcap path specified");
     return 0;
   }
-
-  mutt_check_lookup_list (a, type, SHORT_STRING);
 
   while (!found && *curr)
   {
@@ -473,7 +467,7 @@ int rfc1524_expand_filename (char *nametemplate,
   }
   else if (!oldfile)
   {
-    mutt_expand_fmt (newfile, nflen, nametemplate, "mutt");
+    snprintf (newfile, nflen, nametemplate, "mutt");
   }
   else /* oldfile && nametemplate */
   {

@@ -29,27 +29,18 @@
  *           gcc -DTEST_SNPRINTF -o snprintf snprintf.c -lm
  *    and run snprintf for results.
  * 
- *  Thomas Roessler <roessler@does-not-exist.org> 01/27/98 for mutt 0.89i
+ *  Thomas Roessler <roessler@guug.de> 01/27/98 for mutt 0.89i
  *    The PGP code was using unsigned hexadecimal formats. 
  *    Unfortunately, unsigned formats simply didn't work.
  *
- *  Michael Elkins <me@mutt.org> 03/05/98 for mutt 0.90.8
+ *  Michael Elkins <me@cs.hmc.edu> 03/05/98 for mutt 0.90.8
  *    The original code assumed that both snprintf() and vsnprintf() were
  *    missing.  Some systems only have snprintf() but not vsnprintf(), so
  *    the code is now broken down under HAVE_SNPRINTF and HAVE_VSNPRINTF.
  *
- *  Holger Weiss <holger@zedat.fu-berlin.de> 07/23/06 for mutt 1.5.13
- *    A C99 compliant [v]snprintf() returns the number of characters that
- *    would have been written to a sufficiently sized buffer (excluding
- *    the '\0').  Mutt now relies on this behaviour, but the original
- *    code simply returned the length of the resulting output string, so
- *    that's been fixed.
- *
  **************************************************************/
 
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
+#include "config.h"
 
 #if !defined(HAVE_SNPRINTF) || !defined(HAVE_VSNPRINTF)
 
@@ -86,7 +77,7 @@
 /*int snprintf (char *str, size_t count, const char *fmt, ...);*/
 /*int vsnprintf (char *str, size_t count, const char *fmt, va_list arg);*/
 
-static int dopr (char *buffer, size_t maxlen, const char *format, 
+static void dopr (char *buffer, size_t maxlen, const char *format, 
                   va_list args);
 static void fmtstr (char *buffer, size_t *currlen, size_t maxlen,
 		    char *value, int flags, int min, int max);
@@ -128,7 +119,7 @@ static void dopr_outch (char *buffer, size_t *currlen, size_t maxlen, char c );
 #undef MAX
 #define MAX(p,q) ((p >= q) ? p : q)
 
-static int dopr (char *buffer, size_t maxlen, const char *format, va_list args)
+static void dopr (char *buffer, size_t maxlen, const char *format, va_list args)
 {
   char ch;
   long value;
@@ -148,7 +139,7 @@ static int dopr (char *buffer, size_t maxlen, const char *format, va_list args)
 
   while (state != DP_S_DONE)
   {
-    if (ch == '\0')
+    if ((ch == '\0') || (currlen >= maxlen)) 
       state = DP_S_DONE;
 
     switch(state) 
@@ -324,6 +315,8 @@ static int dopr (char *buffer, size_t maxlen, const char *format, va_list args)
 	break;
       case 's':
 	strvalue = va_arg (args, char *);
+	if (max < 0) 
+	  max = maxlen; /* ie, no max */
 	fmtstr (buffer, &currlen, maxlen, strvalue, flags, min, max);
 	break;
       case 'p':
@@ -377,8 +370,6 @@ static int dopr (char *buffer, size_t maxlen, const char *format, va_list args)
     buffer[currlen] = '\0';
   else 
     buffer[maxlen - 1] = '\0';
-
-  return (int)currlen;
 }
 
 static void fmtstr (char *buffer, size_t *currlen, size_t maxlen,
@@ -399,18 +390,18 @@ static void fmtstr (char *buffer, size_t *currlen, size_t maxlen,
   if (flags & DP_F_MINUS) 
     padlen = -padlen; /* Left Justify */
 
-  while ((padlen > 0) && (max == -1 || cnt < max)) 
+  while ((padlen > 0) && (cnt < max)) 
   {
     dopr_outch (buffer, currlen, maxlen, ' ');
     --padlen;
     ++cnt;
   }
-  while (*value && (max == -1 || cnt < max)) 
+  while (*value && (cnt < max)) 
   {
     dopr_outch (buffer, currlen, maxlen, *value++);
     ++cnt;
   }
-  while ((padlen < 0) && (max == -1 || cnt < max)) 
+  while ((padlen < 0) && (cnt < max)) 
   {
     dopr_outch (buffer, currlen, maxlen, ' ');
     ++padlen;
@@ -684,8 +675,7 @@ static void fmtfp (char *buffer, size_t *currlen, size_t maxlen,
 static void dopr_outch (char *buffer, size_t *currlen, size_t maxlen, char c)
 {
   if (*currlen < maxlen)
-    buffer[*currlen] = c;
-  (*currlen)++;
+    buffer[(*currlen)++] = c;
 }
 #endif /* !defined(HAVE_SNPRINTF) || !defined(HAVE_VSNPRINTF) */
 
@@ -693,7 +683,8 @@ static void dopr_outch (char *buffer, size_t *currlen, size_t maxlen, char c)
 int vsnprintf (char *str, size_t count, const char *fmt, va_list args)
 {
   str[0] = 0;
-  return(dopr(str, count, fmt, args));
+  dopr(str, count, fmt, args);
+  return(strlen(str));
 }
 #endif /* !HAVE_VSNPRINTF */
 
@@ -710,16 +701,15 @@ int snprintf (va_alist) va_dcl
   size_t count;
   char *fmt;
 #endif
-  int len;
   VA_LOCAL_DECL;
     
   VA_START (fmt);
   VA_SHIFT (str, char *);
   VA_SHIFT (count, size_t );
   VA_SHIFT (fmt, char *);
-  len = vsnprintf(str, count, fmt, ap);
+  (void) vsnprintf(str, count, fmt, ap);
   VA_END;
-  return(len);
+  return(strlen(str));
 }
 
 #ifdef TEST_SNPRINTF

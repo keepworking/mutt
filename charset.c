@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  *
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,13 +15,10 @@
  *
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */
 
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <string.h>
 #include <stdio.h>
@@ -129,7 +126,7 @@ PreferredMIMENames[] =
   { "iso-ir-144",	"iso-8859-5"	},
   { "ISO_8859-5",	"iso-8859-5"	},
   { "cyrillic",		"iso-8859-5"	},
-  { "csISOLatinCyrillic", "iso-8859-5"	},
+  { "csISOLatinCyrillic", "iso8859-5"	},
 
   { "ISO_8859-9:1989",	"iso-8859-9"	},
   { "iso-ir-148",	"iso-8859-9"	},
@@ -150,9 +147,9 @@ PreferredMIMENames[] =
   { "csShiftJis",	"Shift_JIS"	},
   
   { "Extended_UNIX_Code_Packed_Format_for_Japanese",
-      			"euc-jp"	},
+      			"EUC-JP"	},
   { "csEUCPkdFmtJapanese", 
-      			"euc-jp"	},
+      			"EUC-JP"	},
   
   { "csGB2312",		"gb2312"	},
   { "csbig5",		"big5"		},
@@ -199,7 +196,6 @@ PreferredMIMENames[] =
   /* seems to be common on some systems */
 
   { "sjis",		"Shift_JIS"	},
-  { "euc-jp-ms",	"eucJP-ms"	},
 
 
   /*
@@ -245,12 +241,6 @@ void mutt_canonical_charset (char *dest, size_t dlen, const char *name)
   char *p;
   char scratch[LONG_STRING];
 
-  if (!ascii_strcasecmp (name, "utf-8")) 
-  {
-    strfcpy (dest, "utf-8", dlen);
-    return;
-  }
-
   /* catch some common iso-8859-something misspellings */
   if (!ascii_strncasecmp (name, "8859", 4) && name[4] != '-')
     snprintf (scratch, sizeof (scratch), "iso-8859-%s", name +4);
@@ -288,19 +278,6 @@ int mutt_chscmp (const char *s, const char *chs)
   return !ascii_strcasecmp (buffer, chs);
 }
 
-char *mutt_get_default_charset ()
-{
-  static char fcharset[SHORT_STRING];
-  const char *c = AssumedCharset;
-  const char *c1;
-
-  if (c && *c) {
-    c1 = strchr (c, ':');
-    strfcpy (fcharset, c, c1 ? (c1 - c + 1) : sizeof (fcharset));
-    return fcharset;
-  }
-  return strcpy (fcharset, "us-ascii"); /* __STRCPY_CHECKED__ */
-}
 
 #ifndef HAVE_ICONV
 
@@ -324,17 +301,7 @@ int iconv_close (iconv_t cd)
 
 
 /*
- * Like iconv_open, but canonicalises the charsets, applies
- * charset-hooks, recanonicalises, and finally applies iconv-hooks.
- * Parameter flags=0 skips charset-hooks, while M_ICONV_HOOK_FROM
- * applies them to fromcode. Callers should use flags=0 when fromcode
- * can safely be considered true, either some constant, or some value
- * provided by the user; M_ICONV_HOOK_FROM should be used only when
- * fromcode is unsure, taken from a possibly wrong incoming MIME label,
- * or such. Misusing M_ICONV_HOOK_FROM leads to unwanted interactions
- * in some setups. Note: By design charset-hooks should never be, and
- * are never, applied to tocode. Highlight note: The top-well-named
- * M_ICONV_HOOK_FROM acts on charset-hooks, not at all on iconv-hooks.
+ * Like iconv_open, but canonicalises the charsets
  */
 
 iconv_t mutt_iconv_open (const char *tocode, const char *fromcode, int flags)
@@ -345,26 +312,23 @@ iconv_t mutt_iconv_open (const char *tocode, const char *fromcode, int flags)
   char *tmp;
 
   iconv_t cd;
-
-  /* transform to MIME preferred charset names */
+  
   mutt_canonical_charset (tocode1, sizeof (tocode1), tocode);
-  mutt_canonical_charset (fromcode1, sizeof (fromcode1), fromcode);
 
-  /* maybe apply charset-hooks and recanonicalise fromcode,
-   * but only when caller asked us to sanitize a potentialy wrong
-   * charset name incoming from the wild exterior. */
+#ifdef M_ICONV_HOOK_TO
+  /* Not used. */
+  if ((flags & M_ICONV_HOOK_TO) && (tmp = mutt_charset_hook (tocode1)))
+    mutt_canonical_charset (tocode1, sizeof (tocode1), tmp);
+#endif
+
+  mutt_canonical_charset (fromcode1, sizeof (fromcode1), fromcode);
   if ((flags & M_ICONV_HOOK_FROM) && (tmp = mutt_charset_hook (fromcode1)))
     mutt_canonical_charset (fromcode1, sizeof (fromcode1), tmp);
 
-  /* always apply iconv-hooks to suit system's iconv tastes */
-  tocode2 = mutt_iconv_hook (tocode1);
-  tocode2 = (tocode2) ? tocode2 : tocode1;
-  fromcode2 = mutt_iconv_hook (fromcode1);
-  fromcode2 = (fromcode2) ? fromcode2 : fromcode1;
-
-  /* call system iconv with names it appreciates */
-  if ((cd = iconv_open (tocode2, fromcode2)) != (iconv_t) -1)
+  if ((cd = iconv_open (tocode1, fromcode1)) != (iconv_t) -1)
     return cd;
+  if ((tocode2 = mutt_iconv_hook (tocode1)) && (fromcode2 = mutt_iconv_hook (fromcode1)))
+    return iconv_open (tocode2, fromcode2);
   
   return (iconv_t) -1;
 }
@@ -415,24 +379,18 @@ size_t mutt_iconv (iconv_t cd, ICONV_CONST char **inbuf, size_t *inbytesleft,
 	if (*t)
 	  continue;
       }
-      /* Replace the output */
-      if (!outrepl)
-	outrepl = "?";
-      iconv (cd, 0, 0, &ob, &obl);
-      if (obl)
+      if (outrepl)
       {
+	/* Try replacing the output */
 	int n = strlen (outrepl);
-	if (n > obl)
+	if (n <= obl)
 	{
-	  outrepl = "?";
-	  n = 1;
+	  memcpy (ob, outrepl, n);
+	  ++ib, --ibl;
+	  ob += n, obl -= n;
+	  ++ret;
+	  continue;
 	}
-	memcpy (ob, outrepl, n);
-	++ib, --ibl;
-	ob += n, obl -= n;
-	++ret;
-	iconv (cd, 0, 0, 0, 0); /* for good measure */
-	continue;
       }
     }
     *inbuf = ib, *inbytesleft = ibl;
@@ -444,9 +402,7 @@ size_t mutt_iconv (iconv_t cd, ICONV_CONST char **inbuf, size_t *inbytesleft,
 
 /*
  * Convert a string
- * Used in rfc2047.c, rfc2231.c, crypt-gpgme.c, mutt_idna.c, and more.
- * Parameter flags is given as-is to mutt_iconv_open(). See there
- * for its meaning and usage policy.
+ * Used in rfc2047.c and rfc2231.c
  */
 
 int mutt_convert_string (char **ps, const char *from, const char *to, int flags)
@@ -484,7 +440,7 @@ int mutt_convert_string (char **ps, const char *from, const char *to, int flags)
 
     *ob = '\0';
 
-    FREE (ps);		/* __FREE_CHECKED__ */
+    safe_free ((void **) ps);
     *ps = buf;
     
     mutt_str_adjust (ps);
@@ -519,10 +475,6 @@ struct fgetconv_not
   iconv_t cd;
 };
 
-/*
- * Parameter flags is given as-is to mutt_iconv_open(). See there
- * for its meaning and usage policy.
- */
 FGETCONV *fgetconv_open (FILE *file, const char *from, const char *to, int flags)
 {
   struct fgetconv_s *fc;
@@ -545,27 +497,6 @@ FGETCONV *fgetconv_open (FILE *file, const char *from, const char *to, int flags
   fc->file = file;
   fc->cd = cd;
   return (FGETCONV *)fc;
-}
-
-char *fgetconvs (char *buf, size_t l, FGETCONV *_fc)
-{
-  int c;
-  size_t r;
-  
-  for (r = 0; r + 1 < l;)
-  {
-    if ((c = fgetconv (_fc)) == EOF)
-      break;
-    buf[r++] = (char) c;
-    if (c == '\n') 
-      break;
-  }
-  buf[r] = '\0';
-  
-  if (r) 
-    return buf;
-  else 
-    return NULL;
 }
 
 int fgetconv (FGETCONV *_fc)
@@ -627,5 +558,5 @@ void fgetconv_close (FGETCONV **_fc)
 
   if (fc->cd != (iconv_t)-1)
     iconv_close (fc->cd);
-  FREE (_fc);		/* __FREE_CHECKED__ */
+  safe_free ((void **) _fc);
 }

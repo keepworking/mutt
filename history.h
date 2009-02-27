@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 #ifndef _HISTORY_H
@@ -35,8 +35,7 @@ enum history_class
 typedef enum history_class history_class_t;
 
 void mutt_init_history(void);
-void mutt_read_histfile(void);
-void mutt_history_add(history_class_t, const char *, int);
+void mutt_history_add(history_class_t, const char *);
 char *mutt_history_next(history_class_t);
 char *mutt_history_prev(history_class_t);
 

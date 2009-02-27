@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * Copyright (C) 2000 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
@@ -14,12 +14,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -30,8 +26,6 @@
 #include "copy.h"
 #include "mx.h"
 #include "pager.h"
-#include "mutt_crypt.h"
-#include "mutt_idna.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -40,7 +34,17 @@
 #include "imap.h"
 #endif
 
+#ifdef BUFFY_SIZE
 #include "buffy.h"
+#endif
+
+
+
+#ifdef HAVE_PGP
+#include "pgp.h"
+#endif
+
+
 
 #include <errno.h>
 #include <unistd.h>
@@ -51,6 +55,7 @@
 #include <sys/types.h>
 #include <utime.h>
 
+extern char *ReleaseDate;
 
 /* The folder the user last saved to.  Used by ci_save_message() */
 static char LastSaveFolder[_POSIX_PATH_MAX] = "";
@@ -71,19 +76,18 @@ int mutt_display_message (HEADER *cur)
   mutt_parse_mime_message (Context, cur);
   mutt_message_hook (Context, cur, M_MESSAGEHOOK);
 
-  /* see if crytpo is needed for this message.  if so, we should exit curses */
-  if (WithCrypto && cur->security)
+#ifdef HAVE_PGP
+  /* see if PGP is needed for this message.  if so, we should exit curses */
+  if (cur->pgp)
   {
-    if (cur->security & ENCRYPT)
+    if (cur->pgp & PGPENCRYPT)
     {
-      if (cur->security & APPLICATION_SMIME)
-	crypt_smime_getkeys (cur->env);
-      if(!crypt_valid_passphrase(cur->security))
+      if (!pgp_valid_passphrase ())
 	return 0;
 
       cmflags |= M_CM_VERIFY;
     }
-    else if (cur->security & SIGN)
+    else if (cur->pgp & PGPSIGN)
     {
       /* find out whether or not the verify signature */
       if (query_quadoption (OPT_VERIFYSIG, _("Verify PGP signature?")) == M_YES)
@@ -93,20 +97,15 @@ int mutt_display_message (HEADER *cur)
     }
   }
   
-  if (cmflags & M_CM_VERIFY || cur->security & ENCRYPT)
+  if ((cmflags & M_CM_VERIFY) || (cur->pgp & PGPENCRYPT))
   {
-    if (cur->security & APPLICATION_PGP)
-    {
-      if (cur->env->from)
-        crypt_pgp_invoke_getkeys (cur->env->from);
-      
-      crypt_invoke_message (APPLICATION_PGP);
-    }
+    if (cur->env->from)
+      pgp_invoke_getkeys (cur->env->from);
 
-    if (cur->security & APPLICATION_SMIME)
-      crypt_invoke_message (APPLICATION_SMIME);
+    mutt_message _("Invoking PGP...");
   }
 
+#endif
 
   mutt_mktemp (tempfile);
   if ((fpout = safe_fopen (tempfile, "w")) == NULL)
@@ -157,50 +156,23 @@ int mutt_display_message (HEADER *cur)
   if (fpfilterout != NULL && mutt_wait_filter (filterpid) != 0)
     mutt_any_key_to_continue (NULL);
 
-  safe_fclose (&fpfilterout);	/* XXX - check result? */
-
+  safe_fclose (&fpfilterout);
   
-  if (WithCrypto)
-  {
-    /* update crypto information for this message */
-    cur->security &= ~(GOODSIGN|BADSIGN);
-    cur->security |= crypt_query (cur->content);
-  
-    /* Remove color cache for this message, in case there
-       are color patterns for both ~g and ~V */
-    cur->pair = 0;
-  }
+#ifdef HAVE_PGP
+  /* update PGP information for this message */
+  cur->pgp |= pgp_query (cur->content);
+#endif
 
   if (builtin)
   {
     pager_t info;
 
-    if (WithCrypto 
-        && (cur->security & APPLICATION_SMIME) && (cmflags & M_CM_VERIFY))
-    {
-      if (cur->security & GOODSIGN)
-      {
-	if (!crypt_smime_verify_sender(cur))
-	  mutt_message ( _("S/MIME signature successfully verified."));
-	else
-	  mutt_error ( _("S/MIME certificate owner does not match sender."));
-      }
-      else if (cur->security & PARTSIGN)
-	mutt_message (_("Warning: Part of this message has not been signed."));
-      else if (cur->security & SIGN || cur->security & BADSIGN)
-	mutt_error ( _("S/MIME signature could NOT be verified."));
-    }
-
-    if (WithCrypto 
-        && (cur->security & APPLICATION_PGP) && (cmflags & M_CM_VERIFY))
-    {
-      if (cur->security & GOODSIGN)
-	mutt_message (_("PGP signature successfully verified."));
-      else if (cur->security & PARTSIGN)
-	mutt_message (_("Warning: Part of this message has not been signed."));
-      else if (cur->security & SIGN)
-	mutt_message (_("PGP signature could NOT be verified."));
-    }
+#ifdef HAVE_PGP
+    if (cmflags & M_CM_VERIFY)
+      mutt_message ((cur->pgp & PGPGOODSIGN) ?
+		    _("PGP signature successfully verified.") :
+		    _("PGP signature could NOT be verified."));
+#endif
 
     /* Invoke the builtin pager */
     memset (&info, 0, sizeof (pager_t));
@@ -235,10 +207,8 @@ int mutt_display_message (HEADER *cur)
 void ci_bounce_message (HEADER *h, int *redraw)
 {
   char prompt[SHORT_STRING];
-  char scratch[SHORT_STRING];
   char buf[HUGE_STRING] = { 0 };
   ADDRESS *adr = NULL;
-  char *err = NULL;
   int rc;
 
   if(h)
@@ -265,46 +235,30 @@ void ci_bounce_message (HEADER *h, int *redraw)
 
   adr = mutt_expand_aliases (adr);
 
-  if (mutt_addrlist_to_idna (adr, &err) < 0)
-  {
-    mutt_error (_("Bad IDN: '%s'"), err);
-    FREE (&err);
-    rfc822_free_address (&adr);
-    return;
-  }
-
   buf[0] = 0;
-  rfc822_write_address (buf, sizeof (buf), adr, 1);
+  rfc822_write_address (buf, sizeof (buf), adr);
 
 #define extra_space (15 + 7 + 2)
-  snprintf (scratch, sizeof (scratch),
+  /*
+   * This is the printing width of "...? ([y=yes]/n=no): ?" plus 2
+   * for good measure. This is not ideal. FIXME.
+   */
+  snprintf (prompt, sizeof (prompt) - 4,
            (h ? _("Bounce message to %s") : _("Bounce messages to %s")), buf);
-
-  if (mutt_strwidth (prompt) > COLS - extra_space)
-  {
-    mutt_format_string (prompt, sizeof (prompt),
-			0, COLS-extra_space, 0, 0,
-			scratch, sizeof (scratch), 0);
-    safe_strcat (prompt, sizeof (prompt), "...?");
-  }
-  else
-    snprintf (prompt, sizeof (prompt), "%s?", scratch);
-
-  if (query_quadoption (OPT_BOUNCE, prompt) != M_YES)
+  mutt_format_string (prompt, sizeof (prompt) - 4,
+		      0, COLS-extra_space, 0, 0,
+		      prompt, sizeof (prompt), 0);
+  strcat (prompt, "...?");	/* __STRCAT_CHECKED__ */
+  if (mutt_yesorno (prompt, 1) != 1)
   {
     rfc822_free_address (&adr);
-    CLEARLINE (LINES - 1);
-    mutt_message (h ? _("Message not bounced.") : _("Messages not bounced."));
+    CLEARLINE (LINES-1);
     return;
   }
 
-  CLEARLINE (LINES - 1);
-  
-  rc = mutt_bounce_message (NULL, h, adr);
+  mutt_bounce_message (NULL, h, adr);
   rfc822_free_address (&adr);
-  /* If no error, or background, display message. */
-  if ((rc == 0) || (rc == S_BKG))
-    mutt_message (h ? _("Message bounced.") : _("Messages bounced."));
+  mutt_message (h ? _("Message bounced.") : _("Messages bounced."));
 }
 
 static void pipe_set_flags (int decode, int print, int *cmflags, int *chflags)
@@ -326,19 +280,23 @@ static void pipe_set_flags (int decode, int print, int *cmflags, int *chflags)
   
 }
 
-static void pipe_msg (HEADER *h, FILE *fp, int decode, int print)
+void pipe_msg (HEADER *h, FILE *fp, int decode, int print)
 {
   int cmflags = 0;
   int chflags = CH_FROM;
   
   pipe_set_flags (decode, print, &cmflags, &chflags);
 
-  if (WithCrypto && decode && h->security & ENCRYPT)
+#ifdef HAVE_PGP
+  
+  if (decode && (h->pgp & PGPENCRYPT))
   {
-    if(!crypt_valid_passphrase(h->security))
+    if (!pgp_valid_passphrase())
       return;
-    endwin ();
+    endwin();
   }
+  
+#endif
 
   if (decode)
     mutt_parse_mime_message (Context, h);
@@ -360,24 +318,21 @@ static int _mutt_pipe_message (HEADER *h, char *cmd,
   pid_t thepid;
   FILE *fpout;
   
-/*   mutt_endwin (NULL); 
-
-     is this really needed here ? 
-     it makes the screen flicker on pgp and s/mime messages,
-     before asking for a passphrase...
-                                     Oliver Ehli */
+  mutt_endwin (NULL);
   if (h)
   {
 
     mutt_message_hook (Context, h, M_MESSAGEHOOK);
 
-    if (WithCrypto && decode)
+#ifdef HAVE_PGP
+    if (decode)
     {
       mutt_parse_mime_message (Context, h);
-      if(h->security & ENCRYPT && !crypt_valid_passphrase(h->security))
+      if(h->pgp & PGPENCRYPT && !pgp_valid_passphrase())
 	return 1;
     }
     mutt_endwin (NULL);
+#endif
 
     if ((thepid = mutt_create_filter (cmd, &fpout, NULL, NULL)) < 0)
     {
@@ -386,24 +341,29 @@ static int _mutt_pipe_message (HEADER *h, char *cmd,
     }
       
     pipe_msg (h, fpout, decode, print);
-    fclose (fpout);
+    safe_fclose (&fpout);
     rc = mutt_wait_filter (thepid);
   }
   else
   { /* handle tagged messages */
 
-    if (WithCrypto && decode)
+
+
+#ifdef HAVE_PGP
+
+    if (decode)
     {
       for (i = 0; i < Context->vcount; i++)
 	if(Context->hdrs[Context->v2r[i]]->tagged)
 	{
 	  mutt_message_hook (Context, Context->hdrs[Context->v2r[i]], M_MESSAGEHOOK);
 	  mutt_parse_mime_message(Context, Context->hdrs[Context->v2r[i]]);
-	  if (Context->hdrs[Context->v2r[i]]->security & ENCRYPT &&
-	      !crypt_valid_passphrase(Context->hdrs[Context->v2r[i]]->security))
+	  if (Context->hdrs[Context->v2r[i]]->pgp & PGPENCRYPT &&
+	      !pgp_valid_passphrase())
 	    return 1;
 	}
     }
+#endif
     
     if (split)
     {
@@ -504,9 +464,9 @@ int mutt_select_sort (int reverse)
   int method = Sort; /* save the current method in case of abort */
 
   switch (mutt_multi_choice (reverse ?
-			     _("Rev-Sort (d)ate/(f)rm/(r)ecv/(s)ubj/t(o)/(t)hread/(u)nsort/si(z)e/s(c)ore/s(p)am?: ") :
-			     _("Sort (d)ate/(f)rm/(r)ecv/(s)ubj/t(o)/(t)hread/(u)nsort/si(z)e/s(c)ore/s(p)am?: "),
-			     _("dfrsotuzcp")))
+			     _("Rev-Sort (d)ate/(f)rm/(r)ecv/(s)ubj/t(o)/(t)hread/(u)nsort/si(z)e/s(c)ore?: ") :
+			     _("Sort (d)ate/(f)rm/(r)ecv/(s)ubj/t(o)/(t)hread/(u)nsort/si(z)e/s(c)ore?: "),
+			     _("dfrsotuzc")))
   {
   case -1: /* abort - don't resort */
     return -1;
@@ -545,10 +505,6 @@ int mutt_select_sort (int reverse)
   
   case 9: /* s(c)ore */ 
     Sort = SORT_SCORE;
-    break;
-
-  case 10: /* s(p)am */
-    Sort = SORT_SPAM;
     break;
   }
   if (reverse)
@@ -614,16 +570,9 @@ void mutt_display_address (ENVELOPE *env)
   adr = mutt_get_address (env, &pfx);
 
   if (!adr) return;
-  
-  /* 
-   * Note: We don't convert IDNA to local representation this time.
-   * That is intentional, so the user has an opportunity to copy &
-   * paste the on-the-wire form of the address to other, IDN-unable
-   * software. 
-   */
-  
+
   buf[0] = 0;
-  rfc822_write_address (buf, sizeof (buf), adr, 0);
+  rfc822_write_address (buf, sizeof (buf), adr);
   mutt_message ("%s: %s", pfx, buf);
 }
 
@@ -632,64 +581,51 @@ static void set_copy_flags (HEADER *hdr, int decode, int decrypt, int *cmflags, 
   *cmflags = 0;
   *chflags = CH_UPDATE_LEN;
   
-  if (WithCrypto && !decode && decrypt && (hdr->security & ENCRYPT))
+#ifdef HAVE_PGP
+  if (!decode && decrypt && (hdr->pgp & PGPENCRYPT))
   {
-    if ((WithCrypto & APPLICATION_PGP)
-        && mutt_is_multipart_encrypted(hdr->content))
+    if (mutt_is_multipart_encrypted(hdr->content))
     {
       *chflags = CH_NONEWLINE | CH_XMIT | CH_MIME;
       *cmflags = M_CM_DECODE_PGP;
     }
-    else if ((WithCrypto & APPLICATION_PGP)
-              && mutt_is_application_pgp (hdr->content) & ENCRYPT)
+    else if (mutt_is_application_pgp(hdr->content) & PGPENCRYPT)
       decode = 1;
-    else if ((WithCrypto & APPLICATION_SMIME)
-             && mutt_is_application_smime(hdr->content) & ENCRYPT)
-    {
-      *chflags = CH_NONEWLINE | CH_XMIT | CH_MIME;
-      *cmflags = M_CM_DECODE_SMIME;
-    }
   }
+#endif
 
   if (decode)
   {
     *chflags = CH_XMIT | CH_MIME | CH_TXTPLAIN;
     *cmflags = M_CM_DECODE | M_CM_CHARCONV;
+  }
 
-    if (!decrypt)	/* If decode doesn't kick in for decrypt, */
-    {
-      *chflags |= CH_DECODE;	/* then decode RFC 2047 headers, */
+  /* respect $weed only if decode doesn't kick in
+   * for decrypt.
+   */
 
-      if (option (OPTWEED))
-      {
-	*chflags |= CH_WEED;	/* and respect $weed. */
-	*cmflags |= M_CM_WEED;
-      }
-    }
+  if (decode && !decrypt && option (OPTWEED))
+  {
+    *chflags |= CH_WEED;
+    *cmflags |= M_CM_WEED;
   }
 }
 
-int _mutt_save_message (HEADER *h, CONTEXT *ctx, int delete, int decode, int decrypt)
+void _mutt_save_message (HEADER *h, CONTEXT *ctx, int delete, int decode, int decrypt)
 {
   int cmflags, chflags;
-  int rc;
   
   set_copy_flags (h, decode, decrypt, &cmflags, &chflags);
 
   if (decode || decrypt)
     mutt_parse_mime_message (Context, h);
 
-  if ((rc = mutt_append_message (ctx, Context, h, cmflags, chflags)) != 0)
-    return rc;
-
-  if (delete)
+  if (mutt_append_message (ctx, Context, h, cmflags, chflags) == 0 && delete)
   {
     mutt_set_flag (Context, h, M_DELETE, 1);
     if (option (OPTDELETEUNTAG))
       mutt_set_flag (Context, h, M_TAG, 0);
   }
-  
-  return 0;
 }
 
 /* returns 0 if the copy/save was successful, or -1 on error/abort */
@@ -697,12 +633,17 @@ int mutt_save_message (HEADER *h, int delete,
 		       int decode, int decrypt, int *redraw)
 {
   int i, need_buffy_cleanup;
-  int need_passphrase = 0, app=0;
+#ifdef HAVE_PGP
+  int need_passphrase = 0;
+#endif
   char prompt[SHORT_STRING], buf[_POSIX_PATH_MAX];
   CONTEXT ctx;
   struct stat st;
+#ifdef BUFFY_SIZE
   BUFFY *tmp = NULL;
+#else
   struct utimbuf ut;
+#endif
 
   *redraw = 0;
 
@@ -715,14 +656,11 @@ int mutt_save_message (HEADER *h, int delete,
 	     (delete ? _("Save%s to mailbox") : _("Copy%s to mailbox"))),
 	    h ? "" : _(" tagged"));
   
-
   if (h)
   {
-    if (WithCrypto)
-    {
-      need_passphrase = h->security & ENCRYPT;
-      app = h->security;
-    }
+#ifdef HAVE_PGP
+    need_passphrase = h->pgp & PGPENCRYPT;
+#endif
     mutt_message_hook (Context, h, M_MESSAGEHOOK);
     mutt_default_save (buf, sizeof (buf), h);
   }
@@ -739,16 +677,13 @@ int mutt_save_message (HEADER *h, int delete,
       }
     }
 
-
     if (h)
     {
       mutt_message_hook (Context, h, M_MESSAGEHOOK);
       mutt_default_save (buf, sizeof (buf), h);
-      if (WithCrypto)
-      {
-        need_passphrase = h->security & ENCRYPT;
-        app = h->security;
-      }
+#ifdef HAVE_PGP
+      need_passphrase |= h->pgp & PGPENCRYPT;
+#endif
       h = NULL;
     }
   }
@@ -779,12 +714,13 @@ int mutt_save_message (HEADER *h, int delete,
   mutt_expand_path (buf, sizeof (buf));
 
   /* check to make sure that this file is really the one the user wants */
-  if (mutt_save_confirm (buf, &st) != 0)
+  if (!mutt_save_confirm (buf, &st))
     return -1;
 
-  if (WithCrypto && need_passphrase && (decode || decrypt)
-      && !crypt_valid_passphrase(app))
+#ifdef HAVE_PGP
+  if(need_passphrase && (decode || decrypt) && !pgp_valid_passphrase())
     return -1;
+#endif
   
   mutt_message (_("Copying to %s..."), buf);
   
@@ -807,13 +743,7 @@ int mutt_save_message (HEADER *h, int delete,
   if (mx_open_mailbox (buf, M_APPEND, &ctx) != NULL)
   {
     if (h)
-    {
-      if (_mutt_save_message(h, &ctx, delete, decode, decrypt) != 0)
-      {
-        mx_close_mailbox (&ctx, NULL);
-        return -1;
-      }
-    }
+      _mutt_save_message(h, &ctx, delete, decode, decrypt);
     else
     {
       for (i = 0; i < Context->vcount; i++)
@@ -821,40 +751,33 @@ int mutt_save_message (HEADER *h, int delete,
 	if (Context->hdrs[Context->v2r[i]]->tagged)
 	{
 	  mutt_message_hook (Context, Context->hdrs[Context->v2r[i]], M_MESSAGEHOOK);
-	  if (_mutt_save_message(Context->hdrs[Context->v2r[i]],
-			     &ctx, delete, decode, decrypt) != 0)
-          {
-            mx_close_mailbox (&ctx, NULL);
-            return -1;
-          }
+	  _mutt_save_message(Context->hdrs[Context->v2r[i]],
+			     &ctx, delete, decode, decrypt);
 	}
       }
     }
 
-    need_buffy_cleanup = (ctx.magic == M_MBOX || ctx.magic == M_MMDF);
+    need_buffy_cleanup = (ctx.magic == M_MBOX || ctx.magic == M_MMDF || ctx.magic == M_KENDRA);
 
     mx_close_mailbox (&ctx, NULL);
 
     if (need_buffy_cleanup)
     {
-      if (option(OPTCHECKMBOXSIZE))
+#ifdef BUFFY_SIZE
+      tmp = mutt_find_mailbox (buf);
+      if (tmp && !tmp->new)
+	mutt_update_mailbox (tmp);
+#else
+      /* fix up the times so buffy won't get confused */
+      if (st.st_mtime > st.st_atime)
       {
-	tmp = mutt_find_mailbox (buf);
-	if (tmp && !tmp->new)
-	  mutt_update_mailbox (tmp);
+	ut.actime = st.st_atime;
+	ut.modtime = time (NULL);
+	utime (buf, &ut); 
       }
       else
-      {
-	/* fix up the times so buffy won't get confused */
-	if (st.st_mtime > st.st_atime)
-	{
-	  ut.actime = st.st_atime;
-	  ut.modtime = time (NULL);
-	  utime (buf, &ut); 
-	}
-	else
-	  utime (buf, NULL);
-      }
+	utime (buf, NULL);
+#endif
     }
 
     mutt_clear_error ();
@@ -920,26 +843,19 @@ void mutt_edit_content_type (HEADER *h, BODY *b, FILE *fp)
 
   if (!h && b->type == TYPETEXT && charset_changed)
   {
-    int r;
     snprintf (tmp, sizeof (tmp), _("Convert to %s upon sending?"),
 	      mutt_get_parameter ("charset", b->parameter));
-    if ((r = mutt_yesorno (tmp, !b->noconv)) != -1)
-      b->noconv = (r == M_NO);
+    b->noconv = !mutt_yesorno (tmp, !b->noconv);
   }
 
   /* inform the user */
   
-  snprintf (tmp, sizeof (tmp), "%s/%s", TYPE (b), NONULL (b->subtype));
   if (type_changed)
     mutt_message (_("Content-Type changed to %s."), tmp);
-  if (b->type == TYPETEXT && charset_changed)
-  {
-    if (type_changed)
-      mutt_sleep (1);
+  else if (b->type == TYPETEXT && charset_changed)
     mutt_message (_("Character set changed to %s; %s."),
 		  mutt_get_parameter ("charset", b->parameter),
 		  b->noconv ? _("not converting") : _("converting"));
-  }
 
   b->force_charset |= charset_changed ? 1 : 0;
 
@@ -954,34 +870,35 @@ void mutt_edit_content_type (HEADER *h, BODY *b, FILE *fp)
   if (fp && (is_multipart (b) || mutt_is_message_type (b->type, b->subtype)))
     mutt_parse_part (fp, b);
   
-  if (WithCrypto && h)
+#ifdef HAVE_PGP
+  if (h)
   {
     if (h->content == b)
-      h->security  = 0;
-
-    h->security |= crypt_query (b);
+      h->pgp = 0;
+    h->pgp |= pgp_query (b);
   }
+#endif /* HAVE_PGP */
+
 }
 
+
+#ifdef HAVE_PGP
 
 static int _mutt_check_traditional_pgp (HEADER *h, int *redraw)
 {
   MESSAGE *msg;
   int rv = 0;
   
-  h->security |= PGP_TRADITIONAL_CHECKED;
-  
   mutt_parse_mime_message (Context, h);
   if ((msg = mx_open_message (Context, h->msgno)) == NULL)
     return 0;
-  if (crypt_pgp_check_traditional (msg->fp, h->content, 0))
+  if (pgp_check_traditional (msg->fp, h->content, 0))
   {
-    h->security = crypt_query (h->content);
+    h->pgp = pgp_query (h->content);
     *redraw |= REDRAW_FULL;
     rv = 1;
   }
   
-  h->security |= PGP_TRADITIONAL_CHECKED;
   mx_close_message (&msg);
   return rv;
 }
@@ -990,17 +907,16 @@ int mutt_check_traditional_pgp (HEADER *h, int *redraw)
 {
   int i;
   int rv = 0;
-  if (h && !(h->security & PGP_TRADITIONAL_CHECKED))
+  if (h)
     rv = _mutt_check_traditional_pgp (h, redraw);
   else
   {
     for (i = 0; i < Context->vcount; i++)
-      if (Context->hdrs[Context->v2r[i]]->tagged && 
-	  !(Context->hdrs[Context->v2r[i]]->security & PGP_TRADITIONAL_CHECKED))
+      if (Context->hdrs[Context->v2r[i]]->tagged)
 	rv = _mutt_check_traditional_pgp (Context->hdrs[Context->v2r[i]], redraw)
 	  || rv;
   }
   return rv;
 }
 
-
+#endif

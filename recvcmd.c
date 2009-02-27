@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,13 +15,9 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA. 
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA. 
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -33,7 +29,7 @@
 #include "mapping.h"
 #include "mx.h"
 #include "copy.h"
-#include "mutt_idna.h"
+
 
 /* some helper functions to verify that we are exclusively operating
  * on message/rfc822 attachments
@@ -130,20 +126,17 @@ void mutt_attach_bounce (FILE * fp, HEADER * hdr,
 	   ATTACHPTR ** idx, short idxlen, BODY * cur)
 {
   short i;
+  short ntagged;
   char prompt[STRING];
   char buf[HUGE_STRING];
-  char *err = NULL;
   ADDRESS *adr = NULL;
-  int ret = 0;
-  int p   = 0;
 
   if (check_all_msg (idx, idxlen, cur, 1) == -1)
     return;
 
-  /* one or more messages? */
-  p = (cur || count_tagged (idx, idxlen) == 1);
-
-  if (p)
+  ntagged = count_tagged (idx, idxlen);
+  
+  if (cur || ntagged == 1)
     strfcpy (prompt, _("Bounce message to: "), sizeof (prompt));
   else
     strfcpy (prompt, _("Bounce tagged messages to: "), sizeof (prompt));
@@ -153,68 +146,32 @@ void mutt_attach_bounce (FILE * fp, HEADER * hdr,
       || buf[0] == '\0')
     return;
 
-  if (!(adr = rfc822_parse_adrlist (adr, buf)))
-  {
-    mutt_error _("Error parsing address!");
-    return;
-  }
-
+  adr = rfc822_parse_adrlist (adr, buf);
   adr = mutt_expand_aliases (adr);
-  
-  if (mutt_addrlist_to_idna (adr, &err) < 0)
-  {
-    mutt_error (_("Bad IDN: '%s'"), err);
-    FREE (&err);
-    rfc822_free_address (&adr);
-    return;
-  }
-  
   buf[0] = 0;
-  rfc822_write_address (buf, sizeof (buf), adr, 1);
+  rfc822_write_address (buf, sizeof (buf), adr);
 
-#define extra_space (15+7+2)
-  /*
-   * See commands.c.
-   */
-  snprintf (prompt, sizeof (prompt) - 4, 
-   (p ? _("Bounce message to %s") : _("Bounce messages to %s")), buf);
-  
-  if (mutt_strwidth (prompt) > COLS - extra_space)
-  {
-    mutt_format_string (prompt, sizeof (prompt) - 4,
-			0, COLS-extra_space, 0, 0,
-			prompt, sizeof (prompt), 0);
-    safe_strcat (prompt, sizeof (prompt), "...?");
-  }
-  else
-    safe_strcat (prompt, sizeof (prompt), "?");
+  snprintf (prompt, sizeof (prompt), 
+	    cur ? _("Bounce message to %s...?") :  _("Bounce messages to %s...?"), buf);
 
-  if (query_quadoption (OPT_BOUNCE, prompt) != M_YES)
-  {
-    rfc822_free_address (&adr);
-    CLEARLINE (LINES - 1);
-    mutt_message (p ? _("Message not bounced.") : _("Messages not bounced."));
-    return;
-  }
-  
-  CLEARLINE (LINES - 1);
-  
+  if (mutt_yesorno (prompt, 1) != 1)
+    goto bail;
+
   if (cur)
-    ret = mutt_bounce_message (fp, cur->hdr, adr);
+    mutt_bounce_message (fp, cur->hdr, adr);
   else
   {
     for (i = 0; i < idxlen; i++)
     {
       if (idx[i]->content->tagged)
-	if (mutt_bounce_message (fp, idx[i]->content->hdr, adr))
-	  ret = 1;
+	mutt_bounce_message (fp, idx[i]->content->hdr, adr);
     }
   }
 
-  if (!ret)
-    mutt_message (p ? _("Message bounced.") : _("Messages bounced."));
-  else
-    mutt_error (p ? _("Error bouncing message!") : _("Error bouncing messages!"));
+bail:
+
+  rfc822_free_address (&adr);
+  CLEARLINE (LINES - 1);
 }
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #ifdef USE_IMAP
@@ -58,8 +54,17 @@ int mutt_complete (char *s, size_t slen)
       p = NONULL (Spoolfile);
     else
       p = NONULL (Maildir);
-
-    mutt_concat_path (imap_path, p, s+1, sizeof (imap_path));
+    if (s[1])
+    {
+      /* don't append '/' if Maildir/Spoolfile is imap://host/ only */
+      if (mx_is_imap (NONULL (p)) && p[strlen (p)-1] == '/')
+        snprintf (imap_path, sizeof (imap_path), "%s%s", p, s+1);
+      else
+        snprintf (imap_path, sizeof (imap_path), "%s/%s", NONULL (p),
+          s+1);
+    }
+    else
+      strfcpy (imap_path, NONULL(p), sizeof(imap_path));
   }
   else
     strfcpy (imap_path, s, sizeof(imap_path));
@@ -79,12 +84,12 @@ int mutt_complete (char *s, size_t slen)
     if ((p = strrchr (s, '/')))
     {
       char buf[_POSIX_PATH_MAX];
-      if (mutt_concatn_path (buf, sizeof(buf), exp_dirpart, strlen(exp_dirpart), s + 1, (size_t)(p - s - 1)) == NULL) {
-	      return -1;
-      }
+      *p++ = 0;
+      snprintf (buf, sizeof (buf), "%s/%s", exp_dirpart, s+1);
       strfcpy (exp_dirpart, buf, sizeof (exp_dirpart));
-      mutt_substrcpy(dirpart, s, p+1, sizeof(dirpart));
-      strfcpy (filepart, p + 1, sizeof (filepart));
+      snprintf (buf, sizeof (buf), "%s%s/", dirpart, s+1);
+      strfcpy (dirpart, buf, sizeof (dirpart));
+      strfcpy (filepart, p, sizeof (filepart));
     }
     else
       strfcpy (filepart, s + 1, sizeof (filepart));
@@ -104,8 +109,12 @@ int mutt_complete (char *s, size_t slen)
       }
       else
       {
-	mutt_substrcpy(dirpart, s, p, sizeof(dirpart));
-	strfcpy (filepart, p + 1, sizeof (filepart));
+	*p = 0;
+	len = (size_t)(p - s);
+	strncpy (dirpart, s, len);
+	dirpart[len]=0;
+	p++;
+	strfcpy (filepart, p, sizeof (filepart));
 	strfcpy (exp_dirpart, dirpart, sizeof (exp_dirpart));
 	mutt_expand_path (exp_dirpart, sizeof (exp_dirpart));
 	dirp = opendir (exp_dirpart);

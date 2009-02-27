@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,12 +14,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mx.h"
@@ -30,6 +26,10 @@
 #include "keymap.h"
 #include "url.h"
 
+#ifdef HAVE_PGP
+#include "pgp.h"
+#endif
+
 #ifdef USE_IMAP
 #include "imap.h"
 #endif
@@ -38,13 +38,13 @@
 #include "pop.h"
 #endif
 
+#ifdef BUFFY_SIZE
 #include "buffy.h"
+#endif
 
 #ifdef USE_DOTLOCK
 #include "dotlock.h"
 #endif
-
-#include "mutt_crypt.h"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -55,7 +55,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#ifndef BUFFY_SIZE
 #include <utime.h>
+#endif
 
 
 #define mutt_is_spool(s)  (mutt_strcmp (Spoolfile, s) == 0)
@@ -115,7 +117,7 @@ retry_lock:
       
       snprintf(msg, sizeof(msg), _("Lock count exceeded, remove lock for %s?"),
 	       path);
-      if(retry && mutt_yesorno(msg, M_YES) == M_YES)
+      if(retry && mutt_yesorno(msg, 1) == 1)
       {
 	flags |= DL_FL_FORCE;
 	retry--;
@@ -156,13 +158,13 @@ int mx_lock_file (const char *path, int fd, int excl, int dot, int timeout)
 #ifdef USE_FCNTL
   struct flock lck;
   
+
   memset (&lck, 0, sizeof (struct flock));
   lck.l_type = excl ? F_WRLCK : F_RDLCK;
   lck.l_whence = SEEK_SET;
 
   count = 0;
   attempt = 0;
-  prev_sb.st_size = 0; /* silence a GCC warning */
   while (fcntl (fd, F_SETLK, &lck) == -1)
   {
     struct stat sb;
@@ -397,10 +399,6 @@ int mx_get_magic (const char *path)
     snprintf (tmp, sizeof (tmp), "%s/.mew-cache", path);
     if (access (tmp, F_OK) == 0)
       return (M_MH);
-    
-    snprintf (tmp, sizeof (tmp), "%s/.sylpheed_cache", path);
-    if (access (tmp, F_OK) == 0)
-      return (M_MH);
 
     /* 
      * ok, this isn't an mh folder, but mh mode can be used to read
@@ -422,7 +420,9 @@ int mx_get_magic (const char *path)
   }
   else if ((f = fopen (path, "r")) != NULL)
   {
+#ifndef BUFFY_SIZE
     struct utimbuf times;
+#endif
 
     fgets (tmp, sizeof (tmp), f);
     if (mutt_strncmp ("From ", tmp, 5) == 0)
@@ -430,17 +430,15 @@ int mx_get_magic (const char *path)
     else if (mutt_strcmp (MMDF_SEP, tmp) == 0)
       magic = M_MMDF;
     safe_fclose (&f);
-
-    if (!option(OPTCHECKMBOXSIZE))
-    {
-      /* need to restore the times here, the file was not really accessed,
-       * only the type was accessed.  This is important, because detection
-       * of "new mail" depends on those times set correctly.
-       */
-      times.actime = st.st_atime;
-      times.modtime = st.st_mtime;
-      utime (path, &times);
-    }
+#ifndef BUFFY_SIZE
+    /* need to restore the times here, the file was not really accessed,
+     * only the type was accessed.  This is important, because detection
+     * of "new mail" depends on those times set correctly.
+     */
+    times.actime = st.st_atime;
+    times.modtime = st.st_mtime;
+    utime (path, &times);
+#endif
   }
   else
   {
@@ -466,6 +464,8 @@ int mx_set_magic (const char *s)
     DefaultMagic = M_MH;
   else if (ascii_strcasecmp (s, "maildir") == 0)
     DefaultMagic = M_MAILDIR;
+  else if (ascii_strcasecmp (s, "kendra") == 0)
+    DefaultMagic = M_KENDRA;
   else
     return (-1);
 
@@ -630,10 +630,7 @@ CONTEXT *mx_open_mailbox (const char *path, int flags, CONTEXT *pctx)
 
   ctx->msgnotreadyet = -1;
   ctx->collapsed = 0;
-
-  for (rc=0; rc < RIGHTSMAX; rc++)
-    mutt_bit_set(ctx->rights,rc);
-
+  
   if (flags & M_QUIET)
     ctx->quiet = 1;
   if (flags & M_READONLY)
@@ -740,21 +737,24 @@ void mx_fastclose_mailbox (CONTEXT *ctx)
 
   if(!ctx) 
     return;
-
-  if (ctx->mx_close)
-    ctx->mx_close (ctx);
-
-  if (ctx->subj_hash)
-    hash_destroy (&ctx->subj_hash, NULL);
+  
+#ifdef USE_IMAP
+  if (ctx->magic == M_IMAP)
+    imap_close_mailbox (ctx);
+#endif /* USE_IMAP */
+#ifdef USE_POP
+  if (ctx->magic == M_POP)
+    pop_close_mailbox (ctx);
+#endif /* USE_POP */
   if (ctx->id_hash)
     hash_destroy (&ctx->id_hash, NULL);
   mutt_clear_threads (ctx);
   for (i = 0; i < ctx->msgcount; i++)
     mutt_free_header (&ctx->hdrs[i]);
-  FREE (&ctx->hdrs);
-  FREE (&ctx->v2r);
-  FREE (&ctx->path);
-  FREE (&ctx->pattern);
+  safe_free ((void **) &ctx->hdrs);
+  safe_free ((void **) &ctx->v2r);
+  safe_free ((void **) &ctx->path);
+  safe_free ((void **) &ctx->pattern);
   if (ctx->limit_pattern) 
     mutt_pattern_free (&ctx->limit_pattern);
   safe_fclose (&ctx->fp);
@@ -764,7 +764,9 @@ void mx_fastclose_mailbox (CONTEXT *ctx)
 /* save changes to disk */
 static int sync_mailbox (CONTEXT *ctx, int *index_hint)
 {
+#ifdef BUFFY_SIZE
   BUFFY *tmp = NULL;
+#endif
   int rc = -1;
 
   if (!ctx->quiet)
@@ -775,8 +777,9 @@ static int sync_mailbox (CONTEXT *ctx, int *index_hint)
     case M_MBOX:
     case M_MMDF:
       rc = mbox_sync_mailbox (ctx, index_hint);
-      if (option(OPTCHECKMBOXSIZE))
-	tmp = mutt_find_mailbox (ctx->path);
+#ifdef BUFFY_SIZE
+      tmp = mutt_find_mailbox (ctx->path);
+#endif
       break;
       
     case M_MH:
@@ -803,8 +806,10 @@ static int sync_mailbox (CONTEXT *ctx, int *index_hint)
     mutt_error ( _("Could not synchronize mailbox %s!"), ctx->path);
 #endif
   
+#ifdef BUFFY_SIZE
   if (tmp && tmp->new == 0)
     mutt_update_mailbox (tmp);
+#endif
   return rc;
 }
 
@@ -889,11 +894,15 @@ int mx_close_mailbox (CONTEXT *ctx, int *index_hint)
     }
   }
 
+#ifdef USE_IMAP
+  /* IMAP servers manage the OLD flag themselves */
+  if (ctx->magic != M_IMAP)
+#endif
   if (option (OPTMARKOLD))
   {
     for (i = 0; i < ctx->msgcount; i++)
     {
-      if (!ctx->hdrs[i]->deleted && !ctx->hdrs[i]->old && !ctx->hdrs[i]->read)
+      if (!ctx->hdrs[i]->deleted && !ctx->hdrs[i]->old)
 	mutt_set_flag (ctx, ctx->hdrs[i], M_OLD, 1);
     }
   }
@@ -942,7 +951,8 @@ int mx_close_mailbox (CONTEXT *ctx, int *index_hint)
         {
 	  if (mutt_append_message (&f, ctx, ctx->hdrs[i], 0, CH_UPDATE_LEN) == 0)
 	  {
-	    mutt_set_flag (ctx, ctx->hdrs[i], M_DELETE, 1);
+	    ctx->hdrs[i]->deleted = 1;
+	    ctx->deleted++;
 	  }
 	  else
 	  {
@@ -1079,8 +1089,6 @@ void mx_update_tables(CONTEXT *ctx, int committing)
 		      ctx->hdrs[i]->content->offset -
 		      ctx->hdrs[i]->content->hdr_offset);
       /* remove message from the hash tables */
-      if (ctx->subj_hash && ctx->hdrs[i]->env->real_subj)
-	hash_delete (ctx->subj_hash, ctx->hdrs[i]->env->real_subj, ctx->hdrs[i], NULL);
       if (ctx->id_hash && ctx->hdrs[i]->env->message_id)
 	hash_delete (ctx->id_hash, ctx->hdrs[i]->env->message_id, ctx->hdrs[i], NULL);
       mutt_free_header (&ctx->hdrs[i]);
@@ -1150,8 +1158,6 @@ int mx_sync_mailbox (CONTEXT *ctx, int *index_hint)
         ctx->deleted = 0;
       }
     }
-    else if (ctx->last_tag && ctx->last_tag->deleted)
-      ctx->last_tag = NULL; /* reset last tagged msg now useless */
   }
 
   /* really only for IMAP - imap_sync_mailbox results in a call to
@@ -1225,10 +1231,7 @@ int imap_open_new_message (MESSAGE *msg, CONTEXT *dest, HEADER *hdr)
 
   mutt_mktemp(tmp);
   if ((msg->fp = safe_fopen (tmp, "w")) == NULL)
-  {
-    mutt_perror (tmp);
     return (-1);
-  }
   msg->path = safe_strdup(tmp);
   return 0;
 }
@@ -1244,6 +1247,7 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
   MESSAGE *msg;
   int (*func) (MESSAGE *, CONTEXT *, HEADER *);
   ADDRESS *p = NULL;
+  time_t t;
 
   switch (dest->magic)
   {
@@ -1277,11 +1281,7 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
     msg->flags.flagged = hdr->flagged;
     msg->flags.replied = hdr->replied;
     msg->flags.read    = hdr->read;
-    msg->received = hdr->received;
   }
-
-  if(msg->received == 0)
-    time(&msg->received);
   
   if (func (msg, dest, hdr) == 0)
   {
@@ -1299,13 +1299,19 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
 	  p = hdr->env->sender;
 	else
 	  p = hdr->env->from;
-      }
 
-      fprintf (msg->fp, "From %s %s", p ? p->mailbox : NONULL(Username), ctime (&msg->received));
+	if (!hdr->received)
+	  hdr->received = time (NULL);
+	t = hdr->received;
+      }
+      else
+	t = time (NULL);
+
+      fprintf (msg->fp, "From %s %s", p ? p->mailbox : NONULL(Username), ctime (&t));
     }
   }
   else
-    FREE (&msg);
+    safe_free ((void **) &msg);
 
   return msg;
 }
@@ -1346,13 +1352,12 @@ int mx_check_mailbox (CONTEXT *ctx, int *index_hint, int lock)
 
 
       case M_MH:
-	return (mh_check_mailbox (ctx, index_hint));
       case M_MAILDIR:
-	return (maildir_check_mailbox (ctx, index_hint));
+	return (mh_check_mailbox (ctx, index_hint));
 
 #ifdef USE_IMAP
       case M_IMAP:
-	return (imap_check_mailbox (ctx, index_hint, 0));
+	return (imap_check_mailbox (ctx, index_hint));
 #endif /* USE_IMAP */
 
 #ifdef USE_POP
@@ -1456,6 +1461,13 @@ int mx_commit_message (MESSAGE *msg, CONTEXT *ctx)
       break;
     }
 
+    case M_KENDRA:
+    {
+      if (fputs (KENDRA_SEP, msg->fp) == EOF)
+	r = -1;
+      break;
+    }
+
 #ifdef USE_IMAP
     case M_IMAP:
     {
@@ -1478,7 +1490,7 @@ int mx_commit_message (MESSAGE *msg, CONTEXT *ctx)
     }
   }
   
-  if (r == 0 && (ctx->magic == M_MBOX || ctx->magic == M_MMDF)
+  if (r == 0 && (ctx->magic == M_MBOX || ctx->magic == M_MMDF || ctx->magic == M_KENDRA)
       && (fflush (msg->fp) == EOF || fsync (fileno (msg->fp)) == -1))
   {
     mutt_perror _("Can't write message");
@@ -1515,31 +1527,23 @@ int mx_close_message (MESSAGE **msg)
     FREE (&(*msg)->path);
   }
 
-  FREE (msg);		/* __FREE_CHECKED__ */
+  FREE (msg);
   return (r);
 }
 
 void mx_alloc_memory (CONTEXT *ctx)
 {
   int i;
-  size_t s = MAX (sizeof (HEADER *), sizeof (int));
-  
-  if ((ctx->hdrmax + 25) * s < ctx->hdrmax * s)
-  {
-    mutt_error _("Integer overflow -- can't allocate memory.");
-    sleep (1);
-    mutt_exit (1);
-  }
-  
+
   if (ctx->hdrs)
   {
-    safe_realloc (&ctx->hdrs, sizeof (HEADER *) * (ctx->hdrmax += 25));
-    safe_realloc (&ctx->v2r, sizeof (int) * ctx->hdrmax);
+    safe_realloc ((void **) &ctx->hdrs, sizeof (HEADER *) * (ctx->hdrmax += 25));
+    safe_realloc ((void **) &ctx->v2r, sizeof (int) * ctx->hdrmax);
   }
   else
   {
-    ctx->hdrs = safe_calloc ((ctx->hdrmax += 25), sizeof (HEADER *));
-    ctx->v2r = safe_calloc (ctx->hdrmax, sizeof (int));
+    ctx->hdrs = safe_malloc (sizeof (HEADER *) * (ctx->hdrmax += 25));
+    ctx->v2r = safe_malloc (sizeof (int) * ctx->hdrmax);
   }
   for (i = ctx->msgcount ; i < ctx->hdrmax ; i++)
   {
@@ -1560,11 +1564,12 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
   {
     h = ctx->hdrs[msgno];
 
-    if (WithCrypto)
-    {
-      /* NOTE: this _must_ be done before the check for mailcap! */
-      h->security = crypt_query (h->content);
-    }
+
+
+#ifdef HAVE_PGP
+    /* NOTE: this _must_ be done before the check for mailcap! */
+    h->pgp = pgp_query (h->content);
+#endif /* HAVE_PGP */
 
     if (!ctx->pattern)
     {
@@ -1584,7 +1589,7 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
 
       h2 = hash_find (ctx->id_hash, h->env->supersedes);
 
-      /* FREE (&h->env->supersedes); should I ? */
+      /* safe_free (&h->env->supersedes); should I ? */
       if (h2)
       {
 	h2->superseded = 1;
@@ -1596,8 +1601,6 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
     /* add this message to the hash tables */
     if (ctx->id_hash && h->env->message_id)
       hash_insert (ctx->id_hash, h->env->message_id, h, 0);
-    if (ctx->subj_hash && h->env->real_subj)
-      hash_insert (ctx->subj_hash, h->env->real_subj, h, 1);
 
     if (option (OPTSCORE)) 
       mutt_score_message (ctx, h, 0);
@@ -1615,28 +1618,4 @@ void mx_update_context (CONTEXT *ctx, int new_messages)
 	ctx->new++;
     }
   }
-}
-
-/*
- * Return:
- * 1 if the specified mailbox contains 0 messages.
- * 0 if the mailbox contains messages
- * -1 on error
- */
-int mx_check_empty (const char *path)
-{
-  switch (mx_get_magic (path))
-  {
-    case M_MBOX:
-    case M_MMDF:
-      return mbox_check_empty (path);
-    case M_MH:
-      return mh_check_empty (path);
-    case M_MAILDIR:
-      return maildir_check_empty (path);
-    default:
-      errno = EINVAL;
-      return -1;
-  }
-  /* not reached */
 }

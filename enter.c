@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * Copyright (C) 2000 Edmund Grimley Evans <edmundo@rano.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
@@ -14,12 +14,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
@@ -129,30 +125,16 @@ size_t my_mbstowcs (wchar_t **pwbuf, size_t *pwbuflen, size_t i, char *buf)
   size_t wbuflen;
 
   wbuf = *pwbuf, wbuflen = *pwbuflen;
-  
-  while (*buf)
-  {
-    memset (&st, 0, sizeof (st));
-    for (; (k = mbrtowc (&wc, buf, MB_LEN_MAX, &st)) &&
+  memset (&st, 0, sizeof (st));
+  for (; (k = mbrtowc (&wc, buf, MB_LEN_MAX, &st)) &&
 	 k != (size_t)(-1) && k != (size_t)(-2); buf += k)
+  {
+    if (i >= wbuflen)
     {
-      if (i >= wbuflen)
-      {
-	wbuflen = i + 20;
-	safe_realloc (&wbuf, wbuflen * sizeof (*wbuf));
-      }
-      wbuf[i++] = wc;
+      wbuflen = i + 20;
+      safe_realloc ((void **) &wbuf, wbuflen * sizeof (*wbuf));
     }
-    if (*buf && (k == (size_t) -1 || k == (size_t) -2))
-    {
-      if (i >= wbuflen) 
-      {
-	wbuflen = i + 20;
-	safe_realloc (&wbuf, wbuflen * sizeof (*wbuf));
-      }
-      wbuf[i++] = replacement_char();
-      buf++;
-    }
+    wbuf[i++] = wc;
   }
   *pwbuf = wbuf, *pwbuflen = wbuflen;
   return i;
@@ -166,7 +148,7 @@ static void replace_part (ENTER_STATE *state, size_t from, char *buf)
 {
   /* Save the suffix */
   size_t savelen = state->lastchar - state->curpos;
-  wchar_t *savebuf = safe_calloc (savelen, sizeof (wchar_t));
+  wchar_t *savebuf = safe_malloc (savelen * sizeof (wchar_t));
   memcpy (savebuf, state->wbuf + state->curpos, savelen * sizeof (wchar_t));
 
   /* Convert to wide characters */
@@ -176,23 +158,14 @@ static void replace_part (ENTER_STATE *state, size_t from, char *buf)
   if (state->curpos + savelen > state->wbuflen)
   {
     state->wbuflen = state->curpos + savelen;
-    safe_realloc (&state->wbuf, state->wbuflen * sizeof (wchar_t));
+    safe_realloc ((void **) &state->wbuf, state->wbuflen * sizeof (wchar_t));
   }
 
   /* Restore suffix */
   memcpy (state->wbuf + state->curpos, savebuf, savelen * sizeof (wchar_t));
   state->lastchar = state->curpos + savelen;
 
-  FREE (&savebuf);
-}
-
-/*
- * Return 1 if the character is not typically part of a pathname
- */
-inline int is_shell_char(wchar_t ch)
-{
-  static wchar_t shell_chars[] = L"<>&()$?*;{}| "; /* ! not included because it can be part of a pathname in Mutt */
-  return wcschr(shell_chars, ch) != NULL;
+  safe_free ((void **) &savebuf);
 }
 
 /*
@@ -234,7 +207,6 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
   {
     /* Coming back after return 1 */
     redraw = M_REDRAW_LINE;
-    first = 0;
   }
   else
   {
@@ -293,7 +265,7 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
     if (ch != OP_NULL)
     {
       first = 0;
-      if (ch != OP_EDITOR_COMPLETE && ch != OP_EDITOR_COMPLETE_QUERY)
+      if (ch != OP_EDITOR_COMPLETE)
 	state->tabs = 0;
       redraw = M_REDRAW_LINE;
       switch (ch)
@@ -482,11 +454,10 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
 	  /* fall through to completion routine (M_FILE) */
 
 	case OP_EDITOR_COMPLETE:
-	case OP_EDITOR_COMPLETE_QUERY:
 	  state->tabs++;
 	  if (flags & M_CMD)
 	  {
-	    for (i = state->curpos; i && !is_shell_char(state->wbuf[i-1]); i--)
+	    for (i = state->curpos; i && state->wbuf[i-1] != ' '; i--)
 	      ;
 	    my_wcstombs (buf, buflen, state->wbuf + i, state->curpos - i);
 	    if (tempbuf && templen == state->lastchar - i &&
@@ -502,18 +473,17 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
 	    if (!mutt_complete (buf, buflen))
 	    {
 	      templen = state->lastchar - i;
-	      safe_realloc (&tempbuf, templen * sizeof (wchar_t));
+	      safe_realloc ((void **) &tempbuf, templen * sizeof (wchar_t));
 	    }
 	    else
 	      BEEP ();
 
 	    replace_part (state, i, buf);
 	  }
-	  else if (flags & M_ALIAS && ch == OP_EDITOR_COMPLETE)
+	  else if (flags & M_ALIAS)
 	  {
 	    /* invoke the alias-menu to get more addresses */
-	    for (i = state->curpos; i && state->wbuf[i-1] != ',' && 
-		 state->wbuf[i-1] != ':'; i--)
+	    for (i = state->curpos; i && state->wbuf[i-1] != ','; i--)
 	      ;
 	    for (; i < state->lastchar && state->wbuf[i] == ' '; i++)
 	      ;
@@ -526,24 +496,6 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
 	      goto bye;
 	    }
 	    break;
-	  }
-	  else if (flags & M_ALIAS && ch == OP_EDITOR_COMPLETE_QUERY)
-	  {
-	    /* invoke the query-menu to get more addresses */
-	    if ((i = state->curpos))
-	    {
-	      for (; i && state->wbuf[i - 1] != ','; i--)
-		;
-	      for (; i < state->curpos && state->wbuf[i] == ' '; i++)
-		;
-	    }
-
-	    my_wcstombs (buf, buflen, state->wbuf + i, state->curpos - i);
-	    mutt_query_complete (buf, buflen);
-	    replace_part (state, i, buf);
-
-	    rv = 1; 
-	    goto bye;
 	  }
 	  else if (flags & M_COMMAND)
 	  {
@@ -572,7 +524,7 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
 	      {
 		mutt_pretty_mailbox (buf);
 		if (!pass)
-		  mutt_history_add (hclass, buf, 1);
+		  mutt_history_add (hclass, buf);
 		rv = 0;
 		goto bye;
 	      }
@@ -585,7 +537,7 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
 	    if (!mutt_complete (buf, buflen))
 	    {
 	      templen = state->lastchar;
-	      safe_realloc (&tempbuf, templen * sizeof (wchar_t));
+	      safe_realloc ((void **) &tempbuf, templen * sizeof (wchar_t));
 	      memcpy (tempbuf, state->wbuf, templen * sizeof (wchar_t));
 	    }
 	    else
@@ -595,6 +547,28 @@ int _mutt_enter_string (char *buf, size_t buflen, int y, int x,
 	  else
 	    goto self_insert;
 	  break;
+
+	case OP_EDITOR_COMPLETE_QUERY:
+	  if (flags & M_ALIAS)
+	  {
+	    /* invoke the query-menu to get more addresses */
+	    if ((i = state->curpos))
+	    {
+	      for (; i && state->wbuf[i - 1] != ','; i--)
+		;
+	      for (; i < state->curpos && state->wbuf[i] == ' '; i++)
+		;
+	    }
+
+	    my_wcstombs (buf, buflen, state->wbuf + i, state->curpos - i);
+	    mutt_query_complete (buf, buflen);
+	    replace_part (state, i, buf);
+
+	    rv = 1; 
+	    goto bye;
+	  }
+	  else
+	    goto self_insert;
 
 	case OP_EDITOR_QUOTE_CHAR:
 	  {
@@ -677,13 +651,13 @@ self_insert:
 	/* Convert from wide characters */
 	my_wcstombs (buf, buflen, state->wbuf, state->lastchar);
 	if (!pass)
-	  mutt_history_add (hclass, buf, 1);
+	  mutt_history_add (hclass, buf);
 
 	if (multiple)
 	{
 	  char **tfiles;
 	  *numfiles = 1;
-	  tfiles = safe_calloc (*numfiles, sizeof (char *));
+	  tfiles = safe_malloc (*numfiles * sizeof (char *));
 	  mutt_expand_path (buf, buflen);
 	  tfiles[0] = safe_strdup (buf);
 	  *files = tfiles;
@@ -696,7 +670,7 @@ self_insert:
 	if (state->lastchar >= state->wbuflen)
 	{
 	  state->wbuflen = state->lastchar + 20;
-	  safe_realloc (&state->wbuf, state->wbuflen * sizeof (wchar_t));
+	  safe_realloc ((void **) &state->wbuf, state->wbuflen * sizeof (wchar_t));
 	}
 	memmove (state->wbuf + state->curpos + 1, state->wbuf + state->curpos, (state->lastchar - state->curpos) * sizeof (wchar_t));
 	state->wbuf[state->curpos++] = wc;
@@ -712,7 +686,7 @@ self_insert:
   
   bye:
   
-  FREE (&tempbuf);
+  safe_free ((void **) &tempbuf);
   return rv;
 }
 
@@ -720,8 +694,8 @@ void mutt_free_enter_state (ENTER_STATE **esp)
 {
   if (!esp) return;
   
-  FREE (&(*esp)->wbuf);
-  FREE (esp);		/* __FREE_CHECKED__ */
+  safe_free ((void **) &(*esp)->wbuf);
+  safe_free ((void **) esp);
 }
 
 /*

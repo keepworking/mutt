@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996,1997 Michael R. Elkins <me@mutt.org>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1996,1997 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,13 +14,31 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */
 
-#ifdef CRYPT_BACKEND_CLASSIC_PGP
+#ifdef HAVE_PGP
 
-#include "mutt_crypt.h"
+#define PGPENCRYPT  (1 << 0)
+#define PGPSIGN     (1 << 1)
+#define PGPKEY      (1 << 2)
+#define PGPGOODSIGN (1 << 3)
 
+#define KEYFLAG_CANSIGN 		(1 <<  0)
+#define KEYFLAG_CANENCRYPT 		(1 <<  1)
+#define KEYFLAG_SECRET			(1 <<  7)
+#define KEYFLAG_EXPIRED 		(1 <<  8)
+#define KEYFLAG_REVOKED 		(1 <<  9)
+#define KEYFLAG_DISABLED 		(1 << 10)
+#define KEYFLAG_SUBKEY 			(1 << 11)
+#define KEYFLAG_CRITICAL 		(1 << 12)
+#define KEYFLAG_PREFER_ENCRYPTION 	(1 << 13)
+#define KEYFLAG_PREFER_SIGNING 		(1 << 14)
+
+#define KEYFLAG_CANTUSE (KEYFLAG_DISABLED|KEYFLAG_REVOKED|KEYFLAG_EXPIRED)
+#define KEYFLAG_RESTRICTIONS (KEYFLAG_CANTUSE|KEYFLAG_CRITICAL)
+
+#define KEYFLAG_ABILITIES (KEYFLAG_CANSIGN|KEYFLAG_CANENCRYPT|KEYFLAG_PREFER_ENCRYPTION|KEYFLAG_PREFER_SIGNING)
 
 typedef struct pgp_signature
 {
@@ -31,7 +49,7 @@ typedef struct pgp_signature
 }
 pgp_sig_t;
 
-struct pgp_keyinfo
+typedef struct pgp_keyinfo
 {
   char *keyid;
   struct pgp_uid *address;
@@ -43,15 +61,8 @@ struct pgp_keyinfo
   struct pgp_keyinfo *parent;
   struct pgp_signature *sigs;
   struct pgp_keyinfo *next;
-
-  short fp_len;			  /* length of fingerprint.
-				   * 20 for sha-1, 16 for md5.
-				   */
-  unsigned char fingerprint[20];  /* large enough to hold SHA-1 and RIPEMD160
-                                     hashes (20 bytes), MD5 hashes just use the
-                                     first 16 bytes */
-};
-/* Note, that pgp_key_t is now pointer and declared in crypt.h */
+}
+pgp_key_t;
 
 typedef struct pgp_uid
 {
@@ -72,19 +83,27 @@ enum pgp_version
   PGP_UNKNOWN
 };
 
+enum pgp_ring
+{
+  PGP_PUBRING,
+  PGP_SECRING
+};
+
+typedef enum pgp_ring pgp_ring_t;
+
 /* prototypes */
 
 const char *pgp_pkalgbytype (unsigned char);
 
-pgp_key_t pgp_remove_key (pgp_key_t *, pgp_key_t );
-pgp_uid_t *pgp_copy_uids (pgp_uid_t *, pgp_key_t );
+pgp_key_t *pgp_remove_key (pgp_key_t **, pgp_key_t *);
+pgp_uid_t *pgp_copy_uids (pgp_uid_t *, pgp_key_t *);
 
 short pgp_canencrypt (unsigned char);
 short pgp_cansign (unsigned char);
 short pgp_get_abilities (unsigned char);
 
-void pgp_free_key (pgp_key_t *kpp);
+void pgp_free_key (pgp_key_t **kpp);
 
-#define pgp_new_keyinfo() safe_calloc (sizeof *((pgp_key_t)0), 1)
+#define pgp_new_keyinfo() safe_calloc (sizeof (pgp_key_t), 1)
 
-#endif /* CRYPT_BACKEND_CLASSIC_PGP */
+#endif /* HAVE_PGP */

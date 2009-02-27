@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,20 +13,14 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_regex.h"
 #include "mutt_curses.h"
-#include "mutt_idna.h"
 
 #include <string.h>
-#include <ctype.h>
 
 ADDRESS *mutt_lookup_alias (const char *s)
 {
@@ -130,7 +124,7 @@ ADDRESS *mutt_expand_aliases (ADDRESS *a)
 
   t = mutt_expand_aliases_r (a, &expn);
   mutt_free_list (&expn);
-  return (mutt_remove_duplicates (t));
+  return (t);
 }
 
 void mutt_expand_aliases_env (ENVELOPE *env)
@@ -146,16 +140,16 @@ void mutt_expand_aliases_env (ENVELOPE *env)
 
 /* 
  * if someone has an address like
- *	From: Michael `/bin/rm -f ~` Elkins <me@mutt.org>
+ *	From: Michael `/bin/rm -f ~` Elkins <me@cs.hmc.edu>
  * and the user creates an alias for this, Mutt could wind up executing
  * the backtics because it writes aliases like
- *	alias me Michael `/bin/rm -f ~` Elkins <me@mutt.org>
+ *	alias me Michael `/bin/rm -f ~` Elkins <me@cs.hmc.edu>
  * To avoid this problem, use a backslash (\) to quote any backtics.  We also
  * need to quote backslashes as well, since you could defeat the above by
  * doing
- *	From: Michael \`/bin/rm -f ~\` Elkins <me@mutt.org>
+ *	From: Michael \`/bin/rm -f ~\` Elkins <me@cs.hmc.edu>
  * since that would get aliased as
- *	alias me Michael \\`/bin/rm -f ~\\` Elkins <me@mutt.org>
+ *	alias me Michael \\`/bin/rm -f ~\\` Elkins <me@cs.hmc.edu>
  * which still gets evaluated because the double backslash is not a quote.
  * 
  * Additionally, we need to quote ' and " characters - otherwise, mutt will
@@ -215,8 +209,6 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
 {
   ALIAS *new, *t;
   char buf[LONG_STRING], prompt[SHORT_STRING], *pc;
-  char *err = NULL;
-  char fixed[LONG_STRING];
   FILE *rc;
   ADDRESS *adr = NULL;
 
@@ -237,11 +229,7 @@ void mutt_create_alias (ENVELOPE *cur, ADDRESS *iadr)
   }
   else
     buf[0] = '\0';
-
-  /* Don't suggest a bad alias name in the event of a strange local part. */
-  mutt_check_alias_name (buf, buf);
   
-retry_name:
   /* add a new alias */
   if (mutt_get_field (_("Alias as: "), buf, sizeof (buf), 0) != 0 || !buf[0])
     return;
@@ -252,32 +240,16 @@ retry_name:
     mutt_error _("You already have an alias defined with that name!");
     return;
   }
-  
-  if (mutt_check_alias_name (buf, fixed))
-  {
-    switch (mutt_yesorno (_("Warning: This alias name may not work.  Fix it?"), M_YES))
-    {
-      case M_YES:
-      	strfcpy (buf, fixed, sizeof (buf));
-	goto retry_name;
-      case -1: 
-	return;
-    }
-  }
-  
+
   new       = safe_calloc (1, sizeof (ALIAS));
   new->self = new;
   new->name = safe_strdup (buf);
 
-  mutt_addrlist_to_local (adr);
-  
   if (adr)
     strfcpy (buf, adr->mailbox, sizeof (buf));
   else
     buf[0] = 0;
 
-  mutt_addrlist_to_idna (adr, NULL);
-  
   do
   {
     if (mutt_get_field (_("Address: "), buf, sizeof (buf), 0) != 0 || !buf[0])
@@ -288,12 +260,6 @@ retry_name:
     
     if((new->addr = rfc822_parse_adrlist (new->addr, buf)) == NULL)
       BEEP ();
-    if (mutt_addrlist_to_idna (new->addr, &err))
-    {
-      mutt_error (_("Error: '%s' is a bad IDN."), err);
-      mutt_sleep (2);
-      continue;
-    }
   }
   while(new->addr == NULL);
   
@@ -310,9 +276,9 @@ retry_name:
   new->addr->personal = safe_strdup (buf);
 
   buf[0] = 0;
-  rfc822_write_address (buf, sizeof (buf), new->addr, 1);
+  rfc822_write_address (buf, sizeof (buf), new->addr);
   snprintf (prompt, sizeof (prompt), _("[%s = %s] Accept?"), new->name, buf);
-  if (mutt_yesorno (prompt, M_YES) != M_YES)
+  if (mutt_yesorno (prompt, 1) != 1)
   {
     mutt_free_alias (&new);
     return;
@@ -333,13 +299,9 @@ retry_name:
   mutt_expand_path (buf, sizeof (buf));
   if ((rc = fopen (buf, "a")))
   {
-    if (mutt_check_alias_name (new->name, NULL))
-      mutt_quote_filename (buf, sizeof (buf), new->name);
-    else
-      strfcpy (buf, new->name, sizeof (buf));
-    fprintf (rc, "alias %s ", buf);
     buf[0] = 0;
-    rfc822_write_address (buf, sizeof (buf), new->addr, 0);
+    rfc822_write_address (buf, sizeof (buf), new->addr);
+    fprintf (rc, "alias %s ", new->name);
     write_safe_address (rc, buf);
     fputc ('\n', rc);
     fclose (rc);
@@ -347,40 +309,6 @@ retry_name:
   }
   else
     mutt_perror (buf);
-}
-
-/* 
- * Sanity-check an alias name:  Only characters which are non-special to both
- * the RFC 822 and the mutt configuration parser are permitted.
- */
-
-static int check_alias_name_char (char c)
-{
-  return (c == '-' || c == '_' || c == '+' || c == '=' || c == '.' ||
-	  isalnum ((unsigned char) c));
-}
-
-int mutt_check_alias_name (const char *s, char *d)
-{
-  int rv = 0;
-  for (; *s; s++) 
-  {
-    if (!check_alias_name_char (*s))
-    {
-      if (!d)
-	return -1;
-      else
-      {
-	*d++ = '_';
-	rv = -1;
-      }
-    }
-    else if (d)
-      *d++ = *s;
-  }
-  if (d)
-    *d++ = *s;
-  return rv;
 }
 
 /*
@@ -485,7 +413,7 @@ int mutt_alias_complete (char *s, size_t buflen)
   {
     a_cur = a_list;
     a_list = a_list->next;
-    FREE (&a_cur);
+    safe_free ((void **) &a_cur);
   }
 
   /* remove any aliases marked for deletion */
@@ -533,52 +461,25 @@ int mutt_addr_is_user (ADDRESS *addr)
 {
   /* NULL address is assumed to be the user. */
   if (!addr)
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, NULL address\n"));
     return 1;
-  }
   if (!addr->mailbox)
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: no, no mailbox\n"));
     return 0;
-  }
 
   if (ascii_strcasecmp (addr->mailbox, Username) == 0)
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, %s = %s\n", addr->mailbox, Username));
     return 1;
-  }
   if (string_is_address(addr->mailbox, Username, Hostname))
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, %s = %s @ %s \n", addr->mailbox, Username, Hostname));
     return 1;
-  }
   if (string_is_address(addr->mailbox, Username, mutt_fqdn(0)))
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, %s = %s @ %s \n", addr->mailbox, Username, mutt_fqdn (0)));
     return 1;
-  }
   if (string_is_address(addr->mailbox, Username, mutt_fqdn(1)))
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, %s = %s @ %s \n", addr->mailbox, Username, mutt_fqdn (1)));
     return 1;
-  }
 
   if (From && !ascii_strcasecmp (From->mailbox, addr->mailbox))
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, %s = %s\n", addr->mailbox, From->mailbox));
     return 1;
-  }
 
-  if (mutt_match_rx_list (addr->mailbox, Alternates))
-  {
-    dprint (5, (debugfile, "mutt_addr_is_user: yes, %s matched by alternates.\n", addr->mailbox));
-    if (mutt_match_rx_list (addr->mailbox, UnAlternates))
-      dprint (5, (debugfile, "mutt_addr_is_user: but, %s matched by unalternates.\n", addr->mailbox));
-    else
-      return 1;
-  }
+  if (Alternates.pattern &&
+      regexec (Alternates.rx, addr->mailbox, 0, NULL, 0) == 0)
+    return 1;
   
-  dprint (5, (debugfile, "mutt_addr_is_user: no, all failed.\n"));
   return 0;
 }

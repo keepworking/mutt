@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_regex.h"
@@ -26,8 +22,13 @@
 #include "mime.h"
 #include "rfc2047.h"
 #include "rfc2231.h"
-#include "mutt_crypt.h"
-#include "url.h"
+
+
+#ifdef HAVE_PGP
+#include "pgp.h"
+#endif /* HAVE_PGP */
+
+
 
 #include <string.h>
 #include <ctype.h>
@@ -38,7 +39,7 @@
  * lines.  ``line'' must point to a dynamically allocated string; it is
  * increased if more space is required to fit the whole line.
  */
-char *mutt_read_rfc822_line (FILE *f, char *line, size_t *linelen)
+static char *read_rfc822_line (FILE *f, char *line, size_t *linelen)
 {
   char *buf = line;
   char ch;
@@ -82,7 +83,7 @@ char *mutt_read_rfc822_line (FILE *f, char *line, size_t *linelen)
     {
       /* grow the buffer */
       *linelen += STRING;
-      safe_realloc (&line, *linelen);
+      safe_realloc ((void **) &line, *linelen);
       buf = line + offset;
     }
   }
@@ -138,7 +139,7 @@ static LIST *mutt_parse_references (char *s, int in_reply_to)
        */
       if (!(at = strchr (new, '@')) || strchr (at + 1, '@')
 	  || (in_reply_to && at - new <= 8))
-	FREE (&new);
+	safe_free ((void **) &new);
       else
       {
 	t = (LIST *) safe_malloc (sizeof (LIST));
@@ -213,23 +214,9 @@ static PARAMETER *parse_parameters (const char *s)
 
       if (*s == '"')
       {
-        int state_ascii = 1;
 	s++;
-	for (i=0; *s && i < sizeof (buffer) - 1; i++, s++)
+	for (i=0; *s && *s != '"' && i < sizeof (buffer) - 1; i++, s++)
 	{
-	  if (AssumedCharset && *AssumedCharset) {
-            /* As iso-2022-* has a characer of '"' with non-ascii state,
-	     * ignore it. */
-            if (*s == 0x1b && i < sizeof (buffer) - 2)
-            {
-              if (s[1] == '(' && (s[2] == 'B' || s[2] == 'J'))
-                state_ascii = 1;
-              else
-                state_ascii = 0;
-            }
-          }
-          if (state_ascii && *s == '"')
-            break;
 	  if (*s == '\\')
 	  {
 	    /* Quote the next character */
@@ -314,10 +301,6 @@ int mutt_check_mime_type (const char *s)
     return TYPEVIDEO;
   else if (ascii_strcasecmp ("model", s) == 0)
     return TYPEMODEL;
-  else if (ascii_strcasecmp ("*", s) == 0)
-    return TYPEANY;
-  else if (ascii_strcasecmp (".*", s) == 0)
-    return TYPEANY;
   else
     return TYPEOTHER;
 }
@@ -327,7 +310,7 @@ void mutt_parse_content_type (char *s, BODY *ct)
   char *pc;
   char *subtype;
 
-  FREE (&ct->subtype);
+  safe_free((void **)&ct->subtype);
   mutt_free_parameter(&ct->parameter);
 
   /* First extract any existing parameters */
@@ -402,9 +385,7 @@ void mutt_parse_content_type (char *s, BODY *ct)
   if (ct->type == TYPETEXT)
   {
     if (!(pc = mutt_get_parameter ("charset", ct->parameter)))
-      mutt_set_parameter ("charset", (AssumedCharset && *AssumedCharset) ?
-                         (const char *) mutt_get_default_charset ()
-                         : "us-ascii", &ct->parameter);
+      mutt_set_parameter ("charset", "us-ascii", &ct->parameter);
   }
 
 }
@@ -447,13 +428,13 @@ BODY *mutt_read_mime_header (FILE *fp, int digest)
   char *line = safe_malloc (LONG_STRING);
   size_t linelen = LONG_STRING;
   
-  p->hdr_offset  = ftello (fp);
+  p->hdr_offset  = ftell(fp);
 
   p->encoding    = ENC7BIT; /* default from RFC1521 */
   p->type        = digest ? TYPEMESSAGE : TYPETEXT;
   p->disposition = DISPINLINE;
   
-  while (*(line = mutt_read_rfc822_line (fp, line, &linelen)) != 0)
+  while (*(line = read_rfc822_line (fp, line, &linelen)) != 0)
   {
     /* Find the value of the current header */
     if ((c = strchr (line, ':')))
@@ -495,7 +476,7 @@ BODY *mutt_read_mime_header (FILE *fp, int digest)
       else if (!ascii_strcasecmp ("encoding-info", line + 6))
         p->encoding = mutt_check_encoding (c);
       else if (!ascii_strcasecmp ("content-lines", line + 6))
-        mutt_set_parameter ("content-lines", c, &(p->parameter));
+        mutt_set_parameter ("content-lines", safe_strdup (c), &(p->parameter));
       else if (!ascii_strcasecmp ("data-description", line + 6))
       {
 	mutt_str_replace (&p->description, c);
@@ -504,7 +485,7 @@ BODY *mutt_read_mime_header (FILE *fp, int digest)
     }
 #endif
   }
-  p->offset = ftello (fp); /* Mark the start of the real data */
+  p->offset = ftell (fp); /* Mark the start of the real data */
   if (p->type == TYPETEXT && !p->subtype)
     p->subtype = safe_strdup ("plain");
   else if (p->type == TYPEMESSAGE && !p->subtype)
@@ -529,7 +510,7 @@ void mutt_parse_part (FILE *fp, BODY *b)
 #endif
           bound = mutt_get_parameter ("boundary", b->parameter);
 
-      fseeko (fp, b->offset, SEEK_SET);
+      fseek (fp, b->offset, SEEK_SET);
       b->parts =  mutt_parse_multipart (fp, bound, 
 					b->offset + b->length,
 					ascii_strcasecmp ("digest", b->subtype) == 0);
@@ -538,7 +519,7 @@ void mutt_parse_part (FILE *fp, BODY *b)
     case TYPEMESSAGE:
       if (b->subtype)
       {
-	fseeko (fp, b->offset, SEEK_SET);
+	fseek (fp, b->offset, SEEK_SET);
 	if (mutt_is_message_type(b->type, b->subtype))
 	  b->parts = mutt_parse_messageRFC822 (fp, b);
 	else if (ascii_strcasecmp (b->subtype, "external-body") == 0)
@@ -576,7 +557,7 @@ BODY *mutt_parse_messageRFC822 (FILE *fp, BODY *parent)
   BODY *msg;
 
   parent->hdr = mutt_new_header ();
-  parent->hdr->offset = ftello (fp);
+  parent->hdr->offset = ftell (fp);
   parent->hdr->env = mutt_read_rfc822_header (fp, parent->hdr, 0, 0);
   msg = parent->hdr->content;
 
@@ -606,7 +587,7 @@ BODY *mutt_parse_messageRFC822 (FILE *fp, BODY *parent)
  *	digest		1 if reading a multipart/digest, 0 otherwise
  */
 
-BODY *mutt_parse_multipart (FILE *fp, const char *boundary, LOFF_T end_off, int digest)
+BODY *mutt_parse_multipart (FILE *fp, const char *boundary, long end_off, int digest)
 {
 #ifdef SUN_ATTACHMENT
   int lines;
@@ -624,7 +605,7 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, LOFF_T end_off, int 
   }
 
   blen = mutt_strlen (boundary);
-  while (ftello (fp) < end_off && fgets (buffer, LONG_STRING, fp) != NULL)
+  while (ftell (fp) < end_off && fgets (buffer, LONG_STRING, fp) != NULL)
   {
     len = mutt_strlen (buffer);
 
@@ -635,9 +616,9 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, LOFF_T end_off, int 
     {
       if (last)
       {
-	last->length = ftello (fp) - last->offset - len - 1 - crlf;
+	last->length = ftell (fp) - last->offset - len - 1 - crlf;
 	if (last->parts && last->parts->length == 0)
-	  last->parts->length = ftello (fp) - last->parts->offset - len - 1 - crlf;
+	  last->parts->length = ftell (fp) - last->parts->offset - len - 1 - crlf;
 	/* if the body is empty, we can end up with a -1 length */
 	if (last->length < 0)
 	  last->length = 0;
@@ -661,7 +642,7 @@ BODY *mutt_parse_multipart (FILE *fp, const char *boundary, LOFF_T end_off, int 
         if (mutt_get_parameter ("content-lines", new->parameter)) {
 	  for (lines = atoi(mutt_get_parameter ("content-lines", new->parameter));
 	       lines; lines-- )
-	     if (ftello (fp) >= end_off || fgets (buffer, LONG_STRING, fp) == NULL)
+	     if (ftell (fp) >= end_off || fgets (buffer, LONG_STRING, fp) == NULL)
 	       break;
 	}
 #endif
@@ -945,26 +926,24 @@ void mutt_parse_mime_message (CONTEXT *ctx, HEADER *cur)
 {
   MESSAGE *msg;
 
-  do {
-    if (cur->content->type != TYPEMESSAGE &&
-        cur->content->type != TYPEMULTIPART)
-      break; /* nothing to do */
+  if (cur->content->type != TYPEMESSAGE && cur->content->type != TYPEMULTIPART)
+    return; /* nothing to do */
 
-    if (cur->content->parts)
-      break; /* The message was parsed earlier. */
+  if (cur->content->parts)
+    return; /* The message was parsed earlier. */
 
-    if ((msg = mx_open_message (ctx, cur->msgno)))
-    {
-      mutt_parse_part (msg->fp, cur->content);
+  if ((msg = mx_open_message (ctx, cur->msgno)))
+  {
+    mutt_parse_part (msg->fp, cur->content);
 
-      if (WithCrypto)
-        cur->security = crypt_query (cur->content);
 
-      mx_close_message (&msg);
-    }
-  } while (0);
+#ifdef HAVE_PGP
+    cur->pgp = pgp_query (cur->content);
+#endif /* HAVE_PGP */
 
-  cur->attach_valid = 0;
+
+    mx_close_message (&msg);
+  }
 }
 
 int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short user_hdrs, short weed,
@@ -1083,40 +1062,7 @@ int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short
     if (!ascii_strcasecmp (line + 1, "ines"))
     {
       if (hdr)
-      {
 	hdr->lines = atoi (p);
-
-	/* 
-	 * HACK - mutt has, for a very short time, produced negative
-	 * Lines header values.  Ignore them. 
-	 */
-	if (hdr->lines < 0)
-	  hdr->lines = 0;
-      }
-
-      matched = 1;
-    }
-    else if (!ascii_strcasecmp (line + 1, "ist-Post"))
-    {
-      /* RFC 2369.  FIXME: We should ignore whitespace, but don't. */
-      if (strncmp (p, "NO", 2))
-      {
-	char *beg, *end;
-	for (beg = strchr (p, '<'); beg; beg = strchr (end, ','))
-	{
-	  ++beg;
-	  if (!(end = strchr (beg, '>')))
-	    break;
-	  
-	  /* Take the first mailto URL */
-	  if (url_check_scheme (beg) == U_MAILTO)
-	  {
-	    FREE (&e->list_post);
-	    e->list_post = mutt_substrdup (beg, end);
-	    break;
-	  }
-	}
-      }
       matched = 1;
     }
     break;
@@ -1130,8 +1076,8 @@ int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short
     }
     else if (!ascii_strcasecmp (line + 1, "essage-id"))
     {
-      /* We add a new "Message-ID:" when building a message */
-      FREE (&e->message_id);
+      /* We add a new "Message-Id:" when building a message */
+      safe_free ((void **) &e->message_id);
       e->message_id = extract_message_id (p);
       matched = 1;
     }
@@ -1205,6 +1151,7 @@ int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short
 	    hdr->replied = 1;
 	    break;
 	    case 'O':
+	    if (option (OPTMARKOLD))
 	      hdr->old = 1;
 	    break;
 	    case 'R':
@@ -1309,8 +1256,6 @@ int mutt_parse_rfc822_line (ENVELOPE *e, HEADER *hdr, char *line, char *p, short
  * 		$weed option, honor the header weed list for user headers.
  * 	        Used for recall-message.
  * 
- * Returns:     newly allocated envelope structure.  You should free it by
- *              mutt_free_envelope() when envelope stay unneeded.
  */
 ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
 				   short weed)
@@ -1319,10 +1264,9 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
   LIST *last = NULL;
   char *line = safe_malloc (LONG_STRING);
   char *p;
-  LOFF_T loc;
+  long loc;
   int matched;
   size_t linelen = LONG_STRING;
-  char buf[LONG_STRING+1];
 
   if (hdr)
   {
@@ -1341,8 +1285,8 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
     }
   }
 
-  while ((loc = ftello (f)),
-	  *(line = mutt_read_rfc822_line (f, line, &linelen)) != 0)
+  while ((loc = ftell (f)),
+	  *(line = read_rfc822_line (f, line, &linelen)) != 0)
   {
     matched = 0;
 
@@ -1362,51 +1306,8 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
 	continue;
       }
 
-      fseeko (f, loc, 0);
+      fseek (f, loc, 0);
       break; /* end of header */
-    }
-
-    *buf = '\0';
-
-    if (mutt_match_spam_list(line, SpamList, buf, sizeof(buf)))
-    {
-      if (!mutt_match_rx_list(line, NoSpamList))
-      {
-
-	/* if spam tag already exists, figure out how to amend it */
-	if (e->spam && *buf)
-	{
-	  /* If SpamSep defined, append with separator */
-	  if (SpamSep)
-	  {
-	    mutt_buffer_addstr(e->spam, SpamSep);
-	    mutt_buffer_addstr(e->spam, buf);
-	  }
-
-	  /* else overwrite */
-	  else
-	  {
-	    e->spam->dptr = e->spam->data;
-	    *e->spam->dptr = '\0';
-	    mutt_buffer_addstr(e->spam, buf);
-	  }
-	}
-
-	/* spam tag is new, and match expr is non-empty; copy */
-	else if (!e->spam && *buf)
-	{
-	  e->spam = mutt_buffer_from(NULL, buf);
-	}
-
-	/* match expr is empty; plug in null string if no existing tag */
-	else if (!e->spam)
-	{
-	  e->spam = mutt_buffer_from(NULL, "");
-	}
-
-	if (e->spam && e->spam->data)
-          dprint(5, (debugfile, "p822: spam = %s\n", e->spam->data));
-      }
     }
 
     *p = 0;
@@ -1424,13 +1325,12 @@ ENVELOPE *mutt_read_rfc822_header (FILE *f, HEADER *hdr, short user_hdrs,
   if (hdr)
   {
     hdr->content->hdr_offset = hdr->offset;
-    hdr->content->offset = ftello (f);
+    hdr->content->offset = ftell (f);
 
     /* do RFC2047 decoding */
     rfc2047_decode_adrlist (e->from);
     rfc2047_decode_adrlist (e->to);
     rfc2047_decode_adrlist (e->cc);
-    rfc2047_decode_adrlist (e->bcc);
     rfc2047_decode_adrlist (e->reply_to);
     rfc2047_decode_adrlist (e->mail_followup_to);
     rfc2047_decode_adrlist (e->return_path);
@@ -1481,160 +1381,4 @@ ADDRESS *mutt_parse_adrlist (ADDRESS *p, const char *s)
     p = rfc822_parse_adrlist (p, s);
   
   return p;
-}
-
-/* Compares mime types to the ok and except lists */
-int count_body_parts_check(LIST **checklist, BODY *b, int dflt)
-{
-  LIST *type;
-  ATTACH_MATCH *a;
-
-  /* If list is null, use default behavior. */
-  if (! *checklist)
-  {
-    /*return dflt;*/
-    return 0;
-  }
-
-  for (type = *checklist; type; type = type->next)
-  {
-    a = (ATTACH_MATCH *)type->data;
-    dprint(5, (debugfile, "cbpc: %s %d/%s ?? %s/%s [%d]... ",
-		dflt ? "[OK]   " : "[EXCL] ",
-		b->type, b->subtype, a->major, a->minor, a->major_int));
-    if ((a->major_int == TYPEANY || a->major_int == b->type) &&
-	!regexec(&a->minor_rx, b->subtype, 0, NULL, 0))
-    {
-      dprint(5, (debugfile, "yes\n"));
-      return 1;
-    }
-    else
-    {
-      dprint(5, (debugfile, "no\n"));
-    }
-  }
-
-  return 0;
-}
-
-#define AT_COUNT(why)   { shallcount = 1; }
-#define AT_NOCOUNT(why) { shallcount = 0; }
-
-int count_body_parts (BODY *body, int flags)
-{
-  int count = 0;
-  int shallcount, shallrecurse;
-  BODY *bp;
-
-  if (body == NULL)
-    return 0;
-
-  for (bp = body; bp != NULL; bp = bp->next)
-  {
-    /* Initial disposition is to count and not to recurse this part. */
-    AT_COUNT("default");
-    shallrecurse = 0;
-
-    dprint(5, (debugfile, "bp: desc=\"%s\"; fn=\"%s\", type=\"%d/%s\"\n",
-	   bp->description ? bp->description : ("none"),
-	   bp->filename ? bp->filename :
-			bp->d_filename ? bp->d_filename : "(none)",
-	   bp->type, bp->subtype ? bp->subtype : "*"));
-
-    if (bp->type == TYPEMESSAGE)
-    {
-      shallrecurse = 1;
-
-      /* If it's an external body pointer, don't recurse it. */
-      if (!ascii_strcasecmp (bp->subtype, "external-body"))
-	shallrecurse = 0;
-
-      /* Don't count containers if they're top-level. */
-      if (flags & M_PARTS_TOPLEVEL)
-	AT_NOCOUNT("top-level message/*");
-    }
-    else if (bp->type == TYPEMULTIPART)
-    {
-      /* Always recurse multiparts, except multipart/alternative. */
-      shallrecurse = 1;
-      if (!ascii_strcasecmp(bp->subtype, "alternative"))
-        shallrecurse = 0;
-
-      /* Don't count containers if they're top-level. */
-      if (flags & M_PARTS_TOPLEVEL)
-	AT_NOCOUNT("top-level multipart");
-    }
-
-    if (bp->disposition == DISPINLINE &&
-        bp->type != TYPEMULTIPART && bp->type != TYPEMESSAGE && bp == body)
-      AT_NOCOUNT("ignore fundamental inlines");
-
-    /* If this body isn't scheduled for enumeration already, don't bother
-     * profiling it further.
-     */
-    if (shallcount)
-    {
-      /* Turn off shallcount if message type is not in ok list,
-       * or if it is in except list. Check is done separately for
-       * inlines vs. attachments.
-       */
-
-      if (bp->disposition == DISPATTACH)
-      {
-        if (!count_body_parts_check(&AttachAllow, bp, 1))
-	  AT_NOCOUNT("attach not allowed");
-        if (count_body_parts_check(&AttachExclude, bp, 0))
-	  AT_NOCOUNT("attach excluded");
-      }
-      else
-      {
-        if (!count_body_parts_check(&InlineAllow, bp, 1))
-	  AT_NOCOUNT("inline not allowed");
-        if (count_body_parts_check(&InlineExclude, bp, 0))
-	  AT_NOCOUNT("excluded");
-      }
-    }
-
-    if (shallcount)
-      count++;
-    bp->attach_qualifies = shallcount ? 1 : 0;
-
-    dprint(5, (debugfile, "cbp: %08x shallcount = %d\n", (unsigned int)bp, shallcount));
-
-    if (shallrecurse)
-    {
-      dprint(5, (debugfile, "cbp: %08x pre count = %d\n", (unsigned int)bp, count));
-      bp->attach_count = count_body_parts(bp->parts, flags & ~M_PARTS_TOPLEVEL);
-      count += bp->attach_count;
-      dprint(5, (debugfile, "cbp: %08x post count = %d\n", (unsigned int)bp, count));
-    }
-  }
-
-  dprint(5, (debugfile, "bp: return %d\n", count < 0 ? 0 : count));
-  return count < 0 ? 0 : count;
-}
-
-int mutt_count_body_parts (CONTEXT *ctx, HEADER *hdr)
-{
-  short keep_parts = 0;
-
-  if (hdr->attach_valid)
-    return hdr->attach_total;
-  
-  if (hdr->content->parts)
-    keep_parts = 1;
-  else
-    mutt_parse_mime_message (ctx, hdr);
-  
-  if (AttachAllow || AttachExclude || InlineAllow || InlineExclude)
-    hdr->attach_total = count_body_parts(hdr->content, M_PARTS_TOPLEVEL);
-  else
-    hdr->attach_total = 0;
-
-  hdr->attach_valid = 1;
-  
-  if (!keep_parts)
-    mutt_free_body (&hdr->content->parts);
-  
-  return hdr->attach_total;
 }

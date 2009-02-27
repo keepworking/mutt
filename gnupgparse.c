@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 1998-2000 Werner Koch <werner.koch@guug.de>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  *
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -16,8 +16,8 @@
  *
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */
 
 /*
@@ -29,10 +29,6 @@
  * gpg's output format.
  * 
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -111,12 +107,12 @@ static void fix_uid (char *uid)
       else if (ob-buf == n && (buf[n] = 0, strlen (buf) < n))
 	memcpy (uid, buf, n);
     }
-    FREE (&buf);
+    safe_free ((void **) &buf);
     iconv_close (cd);
   }
 }
 
-static pgp_key_t parse_pub_line (char *buf, int *is_subkey, pgp_key_t k)
+static pgp_key_t *parse_pub_line (char *buf, int *is_subkey, pgp_key_t *k)
 {
   pgp_uid_t *uid = NULL;
   int field = 0, is_uid = 0;
@@ -158,7 +154,7 @@ static pgp_key_t parse_pub_line (char *buf, int *is_subkey, pgp_key_t k)
 	  return NULL;
 	
 	if (!(is_uid || (*is_subkey && option (OPTPGPIGNORESUB))))
-	  k = safe_calloc (sizeof *k, 1);
+	  k = safe_calloc (sizeof (pgp_key_t), 1);
 
 	break;
       }
@@ -215,6 +211,8 @@ static pgp_key_t parse_pub_line (char *buf, int *is_subkey, pgp_key_t k)
 	  k->numalg = atoi (p);
 	  k->algorithm = pgp_pkalgbytype (atoi (p));
 	}
+
+	k->flags |= pgp_get_abilities (atoi (p));
 	break;
       }
       case 5:			/* 16 hex digits with the long keyid. */
@@ -283,35 +281,7 @@ static pgp_key_t parse_pub_line (char *buf, int *is_subkey, pgp_key_t k)
       case 11:			/* signature class  */
         break;
       case 12:			/* key capabilities */
-	dprint (2, (debugfile, "capabilities info: %s\n", p));
-	
-	while(*p)
-	  {
-	    switch(*p++)
-	      {
-	      case 'D':
-		flags |= KEYFLAG_DISABLED;
-		break;
-
-	      case 'e':
-		flags |= KEYFLAG_CANENCRYPT;
-		break;
-
-	      case 's':
-		flags |= KEYFLAG_CANSIGN;
-		break;
-	      }
-	  }
-
-        if (!is_uid && 
-	    (!*is_subkey || !option (OPTPGPIGNORESUB)
-	     || !((flags & KEYFLAG_DISABLED)
-		  || (flags & KEYFLAG_REVOKED)
-		  || (flags & KEYFLAG_EXPIRED))))
-	  k->flags |= flags;
-
-	break;
-      
+        break;
       default:
         break;
     }
@@ -319,12 +289,12 @@ static pgp_key_t parse_pub_line (char *buf, int *is_subkey, pgp_key_t k)
   return k;
 }
 
-pgp_key_t pgp_get_candidates (pgp_ring_t keyring, LIST * hints)
+pgp_key_t *pgp_get_candidates (pgp_ring_t keyring, LIST * hints)
 {
   FILE *fp;
   pid_t thepid;
   char buf[LONG_STRING];
-  pgp_key_t db = NULL, *kend, k = NULL, kk, mainkey = NULL;
+  pgp_key_t *db = NULL, **kend, *k = NULL, *kk, *mainkey = NULL;
   int is_sub;
   int devnull;
 

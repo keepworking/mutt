@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,17 +15,13 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */ 
 
 /*
  * Mixmaster support for Mutt
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -108,7 +104,7 @@ static void mix_add_entry (REMAILER ***type2_list, REMAILER *entry,
   if (*used == *slots)
   {
     *slots += 5;
-    safe_realloc (type2_list, sizeof (REMAILER *) * (*slots));
+    safe_realloc ((void **) type2_list, sizeof (REMAILER *) * (*slots));
   }
   
   (*type2_list)[(*used)++] = entry;
@@ -122,11 +118,11 @@ static REMAILER *mix_new_remailer (void)
 
 static void mix_free_remailer (REMAILER **r)
 {
-  FREE (&(*r)->shortname);
-  FREE (&(*r)->addr);
-  FREE (&(*r)->ver);
+  safe_free ((void **) &(*r)->shortname);
+  safe_free ((void **) &(*r)->addr);
+  safe_free ((void **) &(*r)->ver);
   
-  FREE (r);		/* __FREE_CHECKED__ */
+  safe_free ((void **) r);
 }
 
 /* parse the type2.list as given by mixmaster -T */
@@ -216,7 +212,7 @@ static void mix_free_type2_list (REMAILER ***ttlp)
   for (i = 0; type2_list[i]; i++)
     mix_free_remailer (&type2_list[i]);
   
-  FREE (type2_list);		/* __FREE_CHECKED__ */
+  safe_free ((void **) type2_list);
 }
 
 
@@ -236,7 +232,7 @@ static void mix_screen_coordinates (REMAILER **type2_list,
   if (!chain->cl)
     return;
   
-  safe_realloc (coordsp, sizeof (struct coord) * chain->cl);
+  safe_realloc ((void **) coordsp, sizeof (struct coord) * chain->cl);
   
   coords = *coordsp;
   
@@ -381,7 +377,6 @@ static const char *mix_format_caps (REMAILER *r)
 
 static const char *mix_entry_fmt (char *dest,
 				  size_t destlen,
-				  size_t col,
 				  char op,
 				  const char *src,
 				  const char *prefix,
@@ -434,9 +429,9 @@ static const char *mix_entry_fmt (char *dest,
   }
 
   if (optional)
-    mutt_FormatString (dest, destlen, col, ifstring, mutt_attach_fmt, data, 0);
+    mutt_FormatString (dest, destlen, ifstring, mutt_attach_fmt, data, 0);
   else if (flags & M_FORMAT_OPTIONAL)
-    mutt_FormatString (dest, destlen, col, elsestring, mutt_attach_fmt, data, 0);
+    mutt_FormatString (dest, destlen, elsestring, mutt_attach_fmt, data, 0);
   return (src);
 }
 
@@ -445,7 +440,7 @@ static const char *mix_entry_fmt (char *dest,
 static void mix_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 {
   REMAILER **type2_list = (REMAILER **) menu->data;
-  mutt_FormatString (b, blen, 0, NONULL (MixEntryFormat), mix_entry_fmt,
+  mutt_FormatString (b, blen, NONULL (MixEntryFormat), mix_entry_fmt,
 		     (unsigned long) type2_list[num], M_FORMAT_ARROWCURSOR);
 }
 
@@ -505,7 +500,7 @@ void mix_make_chain (LIST **chainp, int *redraw)
   struct coord *coords = NULL;
   
   MUTTMENU *menu;
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   short loop = 1;
   int op;
   
@@ -698,8 +693,8 @@ void mix_make_chain (LIST **chainp, int *redraw)
   }
   
   mix_free_type2_list (&type2_list);
-  FREE (&coords);
-  FREE (&chain);
+  safe_free ((void **) &coords);
+  safe_free ((void **) &chain);
 }
 
 /* some safety checks before piping the message to mixmaster */

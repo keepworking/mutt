@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 2000 Thomas Roessler <roessler@guug.de>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,16 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 /*
  * A simple URL parser.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mapping.h"
@@ -37,12 +33,10 @@ static struct mapping_t UrlMap[] =
   { "file", 	U_FILE },
   { "imap", 	U_IMAP },
   { "imaps", 	U_IMAPS },
-  { "pop",  	U_POP },
-  { "pops", 	U_POPS },
+  { "pop",  	U_POP  },
+  { "pops", 	U_POPS  },
   { "mailto",	U_MAILTO },
-  { "smtp",     U_SMTP },
-  { "smtps",    U_SMTPS },
-  { NULL,	U_UNKNOWN }
+  { NULL,	U_UNKNOWN}
 };
 
 
@@ -56,9 +50,7 @@ static void url_pct_decode (char *s)
   for (d = s; *s; s++)
   {
     if (*s == '%' && s[1] && s[2] &&
-	isxdigit ((unsigned char) s[1]) &&
-        isxdigit ((unsigned char) s[2]) &&
-	hexval (s[1]) >= 0 && hexval (s[2]) >= 0)
+	hexval (s[1]) >= 0 && hexval(s[2]) >= 0)
     {
       *d++ = (hexval (s[1]) << 4) | (hexval (s[2]));
       s += 2;
@@ -172,11 +164,8 @@ int url_parse_ciss (ciss_url_t *ciss, char *src)
 }
 
 /* url_ciss_tostring: output the URL string for a given CISS object. */
-
 int url_ciss_tostring (ciss_url_t* ciss, char* dest, size_t len, int flags)
 {
-  long l;
-
   if (ciss->scheme == U_UNKNOWN)
     return -1;
 
@@ -184,27 +173,25 @@ int url_ciss_tostring (ciss_url_t* ciss, char* dest, size_t len, int flags)
 
   if (ciss->host)
   {
-    if (!(flags & U_PATH))
-      safe_strcat (dest, len, "//");
-    len -= (l = strlen (dest)); dest += l;
-    
+    strncat (dest, "//", len - strlen (dest));
     if (ciss->user) {
       if (flags & U_DECODE_PASSWD && ciss->pass)
-	snprintf (dest, len, "%s:%s@", ciss->user, ciss->pass);
+	snprintf (dest + strlen (dest), len - strlen (dest), "%s:%s@",
+		  ciss->user, ciss->pass);
       else
-	snprintf (dest, len, "%s@", ciss->user);
-
-      len -= (l = strlen (dest)); dest += l;
+	snprintf (dest + strlen (dest), len - strlen (dest), "%s@",
+		  ciss->user);
     }
 
     if (ciss->port)
-      snprintf (dest, len, "%s:%hu/", ciss->host, ciss->port);
+      snprintf (dest + strlen (dest), len - strlen (dest), "%s:%hu/",
+		ciss->host, ciss->port);
     else
-      snprintf (dest, len, "%s/", ciss->host);
+      snprintf (dest + strlen (dest), len - strlen (dest), "%s/", ciss->host);
   }
 
   if (ciss->path)
-    safe_strcat (dest, len, ciss->path);
+    strncat (dest, ciss->path, len - strlen (dest));
 
   return 0;
 }
@@ -246,10 +233,7 @@ int url_parse_mailto (ENVELOPE *e, char **body, const char *src)
     url_pct_decode (value);
 
     if (!ascii_strcasecmp (tag, "body"))
-    {
-      if (body)
-	mutt_str_replace (body, value);
-    }
+      mutt_str_replace (body, value);
     else 
     {
       taglen = strlen (tag);
@@ -262,7 +246,7 @@ int url_parse_mailto (ENVELOPE *e, char **body, const char *src)
     }
   }
   
-  FREE (&tmp);
+  safe_free ((void **) &tmp);
   return 0;
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 #ifndef _MAILBOX_H
@@ -51,7 +51,6 @@ typedef struct
     unsigned flagged : 1;
     unsigned replied : 1;
   } flags;
-  time_t received;	/* the time at which this message was received */
 } MESSAGE;
 
 CONTEXT *mx_open_mailbox (const char *, int, CONTEXT *);
@@ -76,6 +75,5 @@ int mx_is_pop (const char *);
 #endif
 
 int mx_access (const char*, int);
-int mx_check_empty (const char *);
 
 #endif

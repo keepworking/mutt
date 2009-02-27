@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 /*
@@ -28,25 +28,9 @@
  * - If you need to bind a control char, use the octal value because the \cX
  * construct does not work at this level.
  *
- * - The magic "map:" comments define how the map will be called in the
- * manual. Lines starting with "**" will be included in the manual.
- *
  */
 
-#ifdef _MAKEDOC
-# include "config.h"
-# include "makedoc-defs.h"
-#endif
-
-struct binding_t OpGeneric[] = { /* map: generic */
-  /*
-  ** <para>
-  ** The <emphasis>generic</emphasis> menu is not a real menu, but specifies common functions
-  ** (such as movement) available in all menus except for <emphasis>pager</emphasis> and
-  ** <emphasis>editor</emphasis>.  Changing settings for this menu will affect the default
-  ** bindings for all menus (except as noted).
-  ** </para>
-  */
+struct binding_t OpGeneric[] = {
   { "top-page",		OP_TOP_PAGE,		"H" },
   { "next-entry",	OP_NEXT_ENTRY,		"j" },
   { "previous-entry",	OP_PREV_ENTRY,		"k" },
@@ -67,8 +51,6 @@ struct binding_t OpGeneric[] = { /* map: generic */
   { "half-down", 	OP_HALF_DOWN,		"]" },
   { "help",		OP_HELP,		"?" },
   { "tag-prefix",	OP_TAG_PREFIX,		";" },
-  { "tag-prefix-cond",	OP_TAG_PREFIX_COND,	NULL },
-  { "end-cond",		OP_END_COND,		NULL },
   { "shell-escape",	OP_SHELL_ESCAPE,	"!" },
   { "select-entry",	OP_GENERIC_SELECT_ENTRY,M_ENTER_S },
   { "search",		OP_SEARCH,		"/" },
@@ -78,17 +60,14 @@ struct binding_t OpGeneric[] = { /* map: generic */
   { "current-top",      OP_CURRENT_TOP,		NULL },
   { "current-middle",   OP_CURRENT_MIDDLE,	NULL },
   { "current-bottom",   OP_CURRENT_BOTTOM,	NULL },
-  { "what-key",		OP_WHAT_KEY,		NULL },
   { NULL,		0,			NULL }
 };
 
-struct binding_t OpMain[] = { /* map: index */
+struct binding_t OpMain[] = {
   { "create-alias",		OP_CREATE_ALIAS,		"a" },
   { "bounce-message",		OP_BOUNCE_MESSAGE,		"b" },
-  { "break-thread",		OP_MAIN_BREAK_THREAD,		"#" },
   { "change-folder",		OP_MAIN_CHANGE_FOLDER,		"c" },
   { "change-folder-readonly",	OP_MAIN_CHANGE_FOLDER_READONLY,	"\033c" },
-  { "next-unread-mailbox",	OP_MAIN_NEXT_UNREAD_MAILBOX,    NULL },
   { "collapse-thread",		OP_MAIN_COLLAPSE_THREAD,	"\033v" },
   { "collapse-all",		OP_MAIN_COLLAPSE_ALL,		"\033V" },
   { "copy-message",		OP_COPY_MESSAGE,		"C" },
@@ -113,7 +92,6 @@ struct binding_t OpMain[] = { /* map: index */
   { "next-undeleted",		OP_MAIN_NEXT_UNDELETED,		"j" },
   { "previous-undeleted",	OP_MAIN_PREV_UNDELETED,		"k" },
   { "limit",			OP_MAIN_LIMIT,			"l" },
-  { "link-threads",		OP_MAIN_LINK_THREADS,		"&" },
   { "list-reply",		OP_LIST_REPLY,			"L" },
   { "mail",			OP_MAIL,			"m" },
   { "toggle-new",		OP_TOGGLE_NEW,			"N" },
@@ -147,37 +125,35 @@ struct binding_t OpMain[] = { /* map: index */
   { "set-flag",			OP_MAIN_SET_FLAG,		"w" },
   { "clear-flag",		OP_MAIN_CLEAR_FLAG,		"W" },
   { "display-message",		OP_DISPLAY_MESSAGE,		M_ENTER_S },
-  { "buffy-list",		OP_BUFFY_LIST,			"." },
   { "sync-mailbox",		OP_MAIN_SYNC_FOLDER,		"$" },
   { "display-address",		OP_DISPLAY_ADDRESS,		"@" },
   { "pipe-message",		OP_PIPE,			"|" },
-  { "next-new",			OP_MAIN_NEXT_NEW,		NULL },
-  { "next-new-then-unread",	OP_MAIN_NEXT_NEW_THEN_UNREAD,	"\t" },
-  { "previous-new",		OP_MAIN_PREV_NEW,		NULL },
-  { "previous-new-then-unread",	OP_MAIN_PREV_NEW_THEN_UNREAD,	"\033\t" },
+  { "next-new",			OP_MAIN_NEXT_NEW,		"\t" },
+  { "previous-new",		OP_MAIN_PREV_NEW,		"\033\t" },
   { "next-unread",		OP_MAIN_NEXT_UNREAD,		NULL },
   { "previous-unread",		OP_MAIN_PREV_UNREAD,		NULL },
   { "parent-message",		OP_MAIN_PARENT_MESSAGE,		"P" },
 
 
+#ifdef HAVE_PGP
+  { "check-traditional-pgp",	OP_CHECK_TRADITIONAL,		"\033P" },
   { "extract-keys",		OP_EXTRACT_KEYS,		"\013" },
   { "forget-passphrase",	OP_FORGET_PASSPHRASE,		"\006" },
-  { "check-traditional-pgp",	OP_CHECK_TRADITIONAL,		"\033P" },
   { "mail-key",			OP_MAIL_KEY,			"\033k" },
   { "decrypt-copy",		OP_DECRYPT_COPY,		NULL },
   { "decrypt-save",		OP_DECRYPT_SAVE,		NULL },
+#endif
+
 
 
   { NULL,			0,				NULL }
 };
 
-struct binding_t OpPager[] = { /* map: pager */
-  { "break-thread",	OP_MAIN_BREAK_THREAD,		"#" },
+struct binding_t OpPager[] = {
   { "create-alias",	OP_CREATE_ALIAS,		"a" },
   { "bounce-message",	OP_BOUNCE_MESSAGE,		"b" },
   { "change-folder",	OP_MAIN_CHANGE_FOLDER,		"c" },
   { "change-folder-readonly",	OP_MAIN_CHANGE_FOLDER_READONLY,	"\033c" },
-  { "next-unread-mailbox",	OP_MAIN_NEXT_UNREAD_MAILBOX, NULL },
   { "copy-message",	OP_COPY_MESSAGE,		"C" },
   { "decode-copy",	OP_DECODE_COPY,			"\033C" },
   { "delete-message",	OP_DELETE,			"d" },
@@ -196,7 +172,6 @@ struct binding_t OpPager[] = { /* map: pager */
   { "next-entry",	OP_NEXT_ENTRY,			"J" },
   { "previous-undeleted",OP_MAIN_PREV_UNDELETED,	"k" },
   { "previous-entry",	OP_PREV_ENTRY,			"K" },
-  { "link-threads",	OP_MAIN_LINK_THREADS,		"&" },
   { "list-reply",	OP_LIST_REPLY,			"L" },
   { "redraw-screen",	OP_REDRAW,			"\014" },
   { "mail",		OP_MAIL,			"m" },
@@ -226,9 +201,7 @@ struct binding_t OpPager[] = { /* map: pager */
   { "show-version",	OP_VERSION,			"V" },
   { "search-toggle",	OP_SEARCH_TOGGLE,		"\\" },
   { "display-address",	OP_DISPLAY_ADDRESS,		"@" },
-  { "next-new",		OP_MAIN_NEXT_NEW,		NULL },
-  { "next-new-then-unread", 
-                        OP_MAIN_NEXT_NEW_THEN_UNREAD,   "\t" },
+  { "next-new",		OP_MAIN_NEXT_NEW,		"\t" },
   { "pipe-message",	OP_PIPE,			"|" },
   { "help",		OP_HELP,			"?" },
   { "next-page",	OP_NEXT_PAGE,			" " },
@@ -237,7 +210,6 @@ struct binding_t OpPager[] = { /* map: pager */
   { "sync-mailbox",	OP_MAIN_SYNC_FOLDER,            "$" },
   { "shell-escape",	OP_SHELL_ESCAPE,		"!" },
   { "enter-command",	OP_ENTER_COMMAND,		":" },
-  { "buffy-list",	OP_BUFFY_LIST,			"." },
   { "search",		OP_SEARCH,			"/" },
   { "search-reverse",	OP_SEARCH_REVERSE,		"\033/" },
   { "search-opposite",	OP_SEARCH_OPPOSITE,		NULL },
@@ -245,8 +217,6 @@ struct binding_t OpPager[] = { /* map: pager */
   { "jump",		OP_JUMP,			NULL },
   { "next-unread",	OP_MAIN_NEXT_UNREAD,		NULL },
   { "previous-new",	OP_MAIN_PREV_NEW,		NULL },
-  { "previous-new-then-unread",
-      			OP_MAIN_PREV_NEW_THEN_UNREAD,   NULL },
   { "previous-unread",	OP_MAIN_PREV_UNREAD,		NULL },
   { "half-up",		OP_HALF_UP,			NULL },
   { "half-down",	OP_HALF_DOWN,			NULL },
@@ -257,18 +227,22 @@ struct binding_t OpPager[] = { /* map: pager */
 
 
 
-  { "check-traditional-pgp",	OP_CHECK_TRADITIONAL,	"\033P"   },
-  { "mail-key",		OP_MAIL_KEY,			"\033k" },
+#ifdef HAVE_PGP
+  { "check-traditional-pgp",	OP_CHECK_TRADITIONAL,		"\033P"   },
   { "extract-keys",	OP_EXTRACT_KEYS,		"\013" },
   { "forget-passphrase",OP_FORGET_PASSPHRASE,		"\006" },
-  { "decrypt-copy",	OP_DECRYPT_COPY,		NULL },
-  { "decrypt-save",    	OP_DECRYPT_SAVE,		NULL },
+  { "mail-key",		OP_MAIL_KEY,			"\033k" },
+  { "decrypt-copy",		OP_DECRYPT_COPY,		NULL },
+  { "decrypt-save",		OP_DECRYPT_SAVE,		NULL },
+#endif
+
+
 
 
   { NULL,		0,				NULL }
 };
 
-struct binding_t OpAttach[] = { /* map: attach */
+struct binding_t OpAttach[] = {
   { "bounce-message",	OP_BOUNCE_MESSAGE,		"b" },
   { "display-toggle-weed",	OP_DISPLAY_HEADERS,	"h" },
   { "edit-type",	OP_EDIT_TYPE,			"\005" },
@@ -286,15 +260,20 @@ struct binding_t OpAttach[] = { /* map: attach */
   { "delete-entry",	OP_DELETE,			"d" },
   { "undelete-entry",	OP_UNDELETE,			"u" },
   { "collapse-parts",	OP_ATTACH_COLLAPSE,		"v" },
+  
 
+#ifdef HAVE_PGP
   { "check-traditional-pgp",	OP_CHECK_TRADITIONAL,		"\033P"   },
   { "extract-keys",		OP_EXTRACT_KEYS,		"\013" },
   { "forget-passphrase",	OP_FORGET_PASSPHRASE,		"\006" },
+#endif
+
+
 
   { NULL,		0,				NULL }
 };
 
-struct binding_t OpCompose[] = { /* map: compose */
+struct binding_t OpCompose[] = {
   { "attach-file",	OP_COMPOSE_ATTACH_FILE,		"a" },
   { "attach-message",	OP_COMPOSE_ATTACH_MESSAGE,	"A" },
   { "edit-bcc",		OP_COMPOSE_EDIT_BCC,		"b" },
@@ -330,12 +309,11 @@ struct binding_t OpCompose[] = { /* map: compose */
   { "send-message",	OP_COMPOSE_SEND_MESSAGE,	"y" },
   { "pipe-entry",	OP_PIPE,			"|" },
 
+#ifdef HAVE_PGP
   { "attach-key",	OP_COMPOSE_ATTACH_KEY,		"\033k" },
-  { "pgp-menu",		OP_COMPOSE_PGP_MENU,		"p" 	},
-
   { "forget-passphrase",OP_FORGET_PASSPHRASE,		"\006"  },
-
-  { "smime-menu",	OP_COMPOSE_SMIME_MENU,		"S" 	},
+  { "pgp-menu",		OP_COMPOSE_PGP_MENU,		"p" 	},
+#endif
 
 #ifdef MIXMASTER
   { "mix",		OP_COMPOSE_MIX,			"M" },
@@ -344,13 +322,13 @@ struct binding_t OpCompose[] = { /* map: compose */
   { NULL,		0,				NULL }
 };
 
-struct binding_t OpPost[] = { /* map: postpone */
+struct binding_t OpPost[] = {
   { "delete-entry",	OP_DELETE,	"d" },
   { "undelete-entry",	OP_UNDELETE,	"u" },
   { NULL,		0,		NULL }
 };
 
-struct binding_t OpAlias[] = { /* map: alias */
+struct binding_t OpAlias[] = {
   { "delete-entry",	OP_DELETE,	"d" },
   { "undelete-entry",	OP_UNDELETE,	"u" },
   { NULL,		0,		NULL }
@@ -358,7 +336,7 @@ struct binding_t OpAlias[] = { /* map: alias */
   
 
 /* The file browser */
-struct binding_t OpBrowser[] = { /* map: browser */
+struct binding_t OpBrowser[] = {
   { "change-dir",	OP_CHANGE_DIRECTORY,	"c" },
   { "display-filename",	OP_BROWSER_TELL,	"@" },
   { "enter-mask",	OP_ENTER_MASK,		"m" },
@@ -368,11 +346,9 @@ struct binding_t OpBrowser[] = { /* map: browser */
   { "check-new",	OP_CHECK_NEW,		NULL },
   { "toggle-mailboxes", OP_TOGGLE_MAILBOXES, 	"\t" },
   { "view-file",	OP_BROWSER_VIEW_FILE,	" " },
-  { "buffy-list",	OP_BUFFY_LIST,		"." },
 #ifdef USE_IMAP
   { "create-mailbox",   OP_CREATE_MAILBOX,      "C" },
   { "delete-mailbox",   OP_DELETE_MAILBOX,      "d" },
-  { "rename-mailbox",   OP_RENAME_MAILBOX,      "r" },
   { "subscribe",	OP_BROWSER_SUBSCRIBE,	"s" },
   { "unsubscribe",	OP_BROWSER_UNSUBSCRIBE,	"u" },
   { "toggle-subscribed", OP_BROWSER_TOGGLE_LSUB, "T" },
@@ -381,7 +357,7 @@ struct binding_t OpBrowser[] = { /* map: browser */
 };
 
 /* External Query Menu */
-struct binding_t OpQuery[] = { /* map: query */
+struct binding_t OpQuery[] = {
   { "create-alias",	OP_CREATE_ALIAS,	"a" },
   { "mail",		OP_MAIL,		"m" },
   { "query",		OP_QUERY,		"Q" },
@@ -389,7 +365,7 @@ struct binding_t OpQuery[] = { /* map: query */
   { NULL,		0,			NULL }
 };
 
-struct binding_t OpEditor[] = { /* map: editor */
+struct binding_t OpEditor[] = {
   { "bol",		OP_EDITOR_BOL,			"\001" },
   { "backward-char",	OP_EDITOR_BACKWARD_CHAR,	"\002" },
   { "backward-word",	OP_EDITOR_BACKWARD_WORD,	"\033b"},
@@ -417,28 +393,17 @@ struct binding_t OpEditor[] = { /* map: editor */
 
 
 
-struct binding_t OpPgp[] = { /* map: pgp */
+#ifdef HAVE_PGP
+struct binding_t OpPgp[] = {
   { "verify-key",	OP_VERIFY_KEY,		"c" },
   { "view-name",	OP_VIEW_ID,		"%" },
   { NULL,		0,				NULL }
 };
-
-
-
-/* When using the GPGME based backend we have some useful functions
-   for the SMIME menu.  */
-struct binding_t OpSmime[] = { /* map: smime */
-#ifdef CRYPT_BACKEND_GPGME
-  { "verify-key",    OP_VERIFY_KEY,             "c" },
-  { "view-name",     OP_VIEW_ID,	        "%" },
-#endif
-  { NULL,	0,	NULL }
-};
-
+#endif /* HAVE_PGP */
 
 
 #ifdef MIXMASTER
-struct binding_t OpMix[] = { /* map: mix */
+struct binding_t OpMix[] = {
   { "accept",		OP_MIX_USE,	M_ENTER_S },
   { "append",		OP_MIX_APPEND,	"a"       },
   { "insert",		OP_MIX_INSERT,	"i"       },
