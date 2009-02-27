@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mx.h"
@@ -29,8 +25,13 @@
 #include <unistd.h>
 
 #ifdef USE_SASL
+#ifdef USE_SASL2
 #include <sasl/sasl.h>
 #include <sasl/saslutil.h>
+#else
+#include <sasl.h>
+#include <saslutil.h>
+#endif
 
 #include "mutt_sasl.h"
 #endif
@@ -45,8 +46,13 @@ static pop_auth_res_t pop_auth_sasl (POP_DATA *pop_data, const char *method)
   char buf[LONG_STRING];
   char inbuf[LONG_STRING];
   const char* mech;
+#ifdef USE_SASL2
   const char *pc = NULL;
-  unsigned int len, olen, client_start;
+#else
+  char* pc = NULL;
+#endif
+  unsigned int len, olen;
+  unsigned char client_start;
 
   if (mutt_sasl_client_new (pop_data->conn, &saslconn) < 0)
   {
@@ -59,7 +65,12 @@ static pop_auth_res_t pop_auth_sasl (POP_DATA *pop_data, const char *method)
 
   FOREVER
   {
-    rc = sasl_client_start(saslconn, method, &interaction, &pc, &olen, &mech);
+#ifdef USE_SASL2
+	rc = sasl_client_start(saslconn, method, &interaction, &pc, &olen, &mech);
+#else
+    rc = sasl_client_start (saslconn, method, NULL,
+			    &interaction, &pc, &olen, &mech);
+#endif
     if (rc != SASL_INTERACT)
       break;
     mutt_sasl_interact (interaction);
@@ -73,7 +84,7 @@ static pop_auth_res_t pop_auth_sasl (POP_DATA *pop_data, const char *method)
     return POP_A_UNAVAIL;
   }
 
-  client_start = olen;
+  client_start = (olen > 0);
 
   mutt_message _("Authenticating (SASL)...");
 
@@ -92,11 +103,16 @@ static pop_auth_res_t pop_auth_sasl (POP_DATA *pop_data, const char *method)
       return POP_A_SOCKET;
     }
 
-    if (!client_start && rc != SASL_CONTINUE)
+    if (rc != SASL_CONTINUE)
       break;
 
+#ifdef USE_SASL2
     if (!mutt_strncmp (inbuf, "+ ", 2)
-        && sasl_decode64 (inbuf+2, strlen (inbuf+2), buf, LONG_STRING-1, &len) != SASL_OK)
+        && sasl_decode64 (inbuf, strlen (inbuf), buf, LONG_STRING-1, &len) != SASL_OK)
+#else
+    if (!mutt_strncmp (inbuf, "+ ", 2)
+        && sasl_decode64 (inbuf, strlen (inbuf), buf, &len) != SASL_OK)
+#endif
     {
       dprint (1, (debugfile, "pop_auth_sasl: error base64-decoding server response.\n"));
       goto bail;
@@ -111,10 +127,7 @@ static pop_auth_res_t pop_auth_sasl (POP_DATA *pop_data, const char *method)
 	mutt_sasl_interact (interaction);
       }
     else
-    {
-      olen = client_start;
       client_start = 0;
-    }
 
     if (rc != SASL_CONTINUE && (olen == 0 || rc != SASL_OK))
       break;
@@ -127,6 +140,12 @@ static pop_auth_res_t pop_auth_sasl (POP_DATA *pop_data, const char *method)
 	dprint (1, (debugfile, "pop_auth_sasl: error base64-encoding client response.\n"));
 	goto bail;
       }
+
+      /* sasl_client_st(art|ep) allocate pc with malloc, expect me to 
+       * free it */
+#ifndef USE_SASL2
+      FREE (&pc);
+#endif
     }
   }
 

@@ -13,14 +13,10 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 /* Close approximation of the mailx(1) builtin editor for sending mail. */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -38,7 +34,7 @@
  * SLcurses_waddnstr() can't take a "const char *", so this is only
  * declared "static" (sigh)
  */
-static char* EditorHelp1 = N_("\
+static char* EditorHelp = N_("\
 ~~		insert a line begining with a single ~\n\
 ~b users	add users to the Bcc: field\n\
 ~c users	add users to the Cc: field\n\
@@ -47,9 +43,7 @@ static char* EditorHelp1 = N_("\
 ~h		edit the message header\n\
 ~m messages	include and quote messages\n\
 ~M messages	same as ~m, except include headers\n\
-~p		print the message\n");
-
-static char* EditorHelp2 = N_("\
+~p		print the message\n\
 ~q		write file and quit editor\n\
 ~r file		read a file into the editor\n\
 ~t users	add users to the To: field\n\
@@ -61,7 +55,7 @@ static char* EditorHelp2 = N_("\
 .		on a line by itself ends input\n");
 
 static char **
-be_snarf_data (FILE *f, char **buf, int *bufmax, int *buflen, LOFF_T offset,
+be_snarf_data (FILE *f, char **buf, int *bufmax, int *buflen, int offset,
 	       int bytes, int prefix)
 {
   char tmp[HUGE_STRING];
@@ -77,7 +71,7 @@ be_snarf_data (FILE *f, char **buf, int *bufmax, int *buflen, LOFF_T offset,
     tmplen = sizeof (tmp) - tmplen;
   }
 
-  fseeko (f, offset, 0);
+  fseek (f, offset, 0);
   while (bytes > 0)
   {
     if (fgets (p, tmplen - 1, f) == NULL) break;
@@ -354,8 +348,7 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
       switch (tmp[1])
       {
 	case '?':
-	  addstr (_(EditorHelp1));
-          addstr (_(EditorHelp2));
+	  addstr (_(EditorHelp));
 	  break;
 	case 'b':
 	  msg->env->bcc = mutt_parse_adrlist (msg->env->bcc, p);

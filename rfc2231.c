@@ -15,8 +15,8 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */
 
 /*
@@ -28,10 +28,6 @@
  * interesting manner.
  *
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mime.h"
@@ -117,8 +113,6 @@ void rfc2231_decode_parameters (PARAMETER **headp)
 
       if (option (OPTRFC2047PARAMS) && p->value && strstr (p->value, "=?"))
 	rfc2047_decode (&p->value);
-      else if (AssumedCharset && *AssumedCharset)
-        convert_nonmime_string (&p->value);
 
       *last = p;
       last = &p->next;
@@ -131,7 +125,6 @@ void rfc2231_decode_parameters (PARAMETER **headp)
       s = rfc2231_get_charset (p->value, charset, sizeof (charset));
       rfc2231_decode_one (p->value, s);
       mutt_convert_string (&p->value, charset, Charset, M_ICONV_HOOK_FROM);
-      mutt_filter_unprintable (&p->value);
 
       *last = p;
       last = &p->next;
@@ -186,7 +179,7 @@ static void rfc2231_free_parameter (struct rfc2231_parameter **p)
   {
     FREE (&(*p)->attribute);
     FREE (&(*p)->value);
-    FREE (p);		/* __FREE_CHECKED__ */
+    FREE (p);
   }
 }
 
@@ -367,12 +360,12 @@ int rfc2231_encode_string (char **pd)
 
     if (d != *pd)
       FREE (&d);
-    FREE (pd);		/* __FREE_CHECKED__ */
+    FREE (pd);
     *pd = e;
   }
   else if (d != *pd)
   {
-    FREE (pd);		/* __FREE_CHECKED__ */
+    FREE (pd);
     *pd = d;
   }
   

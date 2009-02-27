@@ -14,12 +14,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
@@ -89,7 +85,7 @@ int mutt_num_postponed (int force)
     {
       short newpc;
 
-      newpc = imap_status (Postponed, 0);
+      newpc = imap_mailbox_check (Postponed, 0);
       if (newpc >= 0)
       {
 	PostCount = newpc;
@@ -157,7 +153,7 @@ static HEADER *select_msg (void)
 {
   MUTTMENU *menu;
   int i, done=0, r=-1;
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   short orig_sort;
 
   menu = mutt_new_menu ();
@@ -340,8 +336,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
 						       */
                  || mutt_strncmp ("X-Mutt-PGP:", tmp->data, 11) == 0))
     {
-      hdr->security = mutt_parse_crypt_hdr (strchr (tmp->data, ':') + 1, 1,
-					    APPLICATION_PGP);
+      hdr->security = mutt_parse_crypt_hdr (strchr (tmp->data, ':') + 1, 1);
       hdr->security |= APPLICATION_PGP;
        
       /* remove the pgp field */
@@ -357,8 +352,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
     else if ((WithCrypto & APPLICATION_SMIME)
              && mutt_strncmp ("X-Mutt-SMIME:", tmp->data, 13) == 0)
     {
-      hdr->security = mutt_parse_crypt_hdr (strchr (tmp->data, ':') + 1, 1,
-					    APPLICATION_SMIME);
+      hdr->security = mutt_parse_crypt_hdr (strchr (tmp->data, ':') + 1, 1);
       hdr->security |= APPLICATION_SMIME;
        
       /* remove the smime field */
@@ -407,11 +401,11 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
 
 
 
-int mutt_parse_crypt_hdr (char *p, int set_signas, int crypt_app)
+int mutt_parse_crypt_hdr (char *p, int set_signas)
 {
+  int pgp = 0;
+  char pgp_sign_as[LONG_STRING] = "\0", *q;
   char smime_cryptalg[LONG_STRING] = "\0";
-  char sign_as[LONG_STRING] = "\0", *q;
-  int flags = 0;
 
   if (!WithCrypto)
     return 0;
@@ -424,24 +418,24 @@ int mutt_parse_crypt_hdr (char *p, int set_signas, int crypt_app)
     {
       case 'e':
       case 'E':
-        flags |= ENCRYPT;
+        pgp |= ENCRYPT;
         break;
 
       case 's':    
       case 'S':
-        flags |= SIGN;
-        q = sign_as;
+        pgp |= SIGN;
+        q = pgp_sign_as;
       
         if (*(p+1) == '<')
         {
           for (p += 2; 
-	       *p && *p != '>' && q < sign_as + sizeof (sign_as) - 1;
+	       *p && *p != '>' && q < pgp_sign_as + sizeof (pgp_sign_as) - 1;
                *q++ = *p++)
 	    ;
 
           if (*p!='>')
           {
-            mutt_error _("Illegal crypto header");
+            mutt_error _("Illegal PGP header");
             return 0;
           }
         }
@@ -462,7 +456,7 @@ int mutt_parse_crypt_hdr (char *p, int set_signas, int crypt_app)
 	    ;
 	  if(*p != '>')
 	  {
-	    mutt_error _("Illegal crypto header");
+	    mutt_error _("Illegal PGP header");
 	    return 0;
 	  }
 	}
@@ -492,31 +486,24 @@ int mutt_parse_crypt_hdr (char *p, int set_signas, int crypt_app)
 
       case 'i':
       case 'I':
-	flags |= INLINE;
+	pgp |= INLINE;
 	break;
 
       default:
-        mutt_error _("Illegal crypto header");
+        mutt_error _("Illegal PGP header");
         return 0;
     }
      
   }
-
+ 
   /* the cryptalg field must not be empty */
   if ((WithCrypto & APPLICATION_SMIME) && *smime_cryptalg)
     mutt_str_replace (&SmimeCryptAlg, smime_cryptalg);
 
-  /* Set {Smime,Pgp}SignAs, if desired. */
+  if ((WithCrypto & APPLICATION_PGP) && (set_signas || *pgp_sign_as))
+    mutt_str_replace (&PgpSignAs, pgp_sign_as);
 
-  if ((WithCrypto & APPLICATION_PGP) && (crypt_app == APPLICATION_PGP)
-      && (set_signas || *sign_as))
-    mutt_str_replace (&PgpSignAs, sign_as);
-
-  if ((WithCrypto & APPLICATION_SMIME) && (crypt_app == APPLICATION_SMIME)
-      && (set_signas || *sign_as))
-    mutt_str_replace (&SmimeDefaultKey, sign_as);
-
-  return flags;
+  return pgp;
 }
 
 
@@ -543,7 +530,7 @@ int mutt_prepare_template (FILE *fp, CONTEXT *ctx, HEADER *newhdr, HEADER *hdr,
 
   /* parse the message header and MIME structure */
 
-  fseeko (fp, hdr->offset, 0);
+  fseek (fp, hdr->offset, 0);
   newhdr->offset = hdr->offset;
   newhdr->env = mutt_read_rfc822_header (fp, newhdr, 1, weed);
   newhdr->content->length = hdr->content->length;

@@ -14,11 +14,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#ifndef _MUTT_CURSES_H_
-#define _MUTT_CURSES_H_ 1
 
 #ifdef USE_SLANG_CURSES
 
@@ -26,9 +23,7 @@
 #define unix
 #endif /* unix */
 
-#include <slang.h>	/* in addition to slcurses.h, we need slang.h for the version
-			   number to test for 2.x having UTF-8 support in main.c */
-#include <slcurses.h>
+#include "slcurses.h"
 
 #define KEY_DC SL_KEY_DELETE
 #define KEY_IC SL_KEY_IC
@@ -40,16 +35,16 @@
 #define M_ENTER_C '\r'
 #define M_ENTER_S "\r"
 
-#else /* USE_SLANG_CURSES */
-
-#if HAVE_NCURSESW_NCURSES_H
-# include <ncursesw/ncurses.h>
-#elif HAVE_NCURSES_NCURSES_H
-# include <ncurses/ncurses.h>
-#elif HAVE_NCURSES_H
-# include <ncurses.h>
 #else
-# include <curses.h>
+
+#ifdef HAVE_NCURSESW_NCURSES_H
+#include <ncursesw/ncurses.h>
+#else
+#ifdef HAVE_NCURSES_H
+#include <ncurses.h>
+#else
+#include <curses.h>
+#endif
 #endif
 
 #define M_ENTER_C '\n'
@@ -141,34 +136,6 @@ typedef struct color_line
   struct color_line *next;
 } COLOR_LINE;
 
-#define M_PROGRESS_SIZE		(1<<0)	/* traffic-based progress */
-#define M_PROGRESS_MSG		(1<<1)	/* message-based progress */
-
-typedef struct
-{
-  unsigned short inc;
-  unsigned short flags;
-  const char* msg;
-  long pos;
-  long size;
-  char sizestr[SHORT_STRING];
-} progress_t;
-
-void mutt_progress_init (progress_t* progress, const char *msg,
-			 unsigned short flags, unsigned short inc,
-			 long size);
-void mutt_progress_update (progress_t* progress, long pos);
-
-static inline int mutt_term_width(short wrap)
-{
-  if (wrap < 0)
-    return COLS > -wrap ? COLS + wrap : COLS;
-  else if (wrap)
-    return wrap < COLS ? wrap : COLS;
-  else
-    return COLS;
-}
-
 extern int *ColorQuote;
 extern int ColorQuoteUsed;
 extern int ColorDefs[];
@@ -207,5 +174,3 @@ extern int wclear();
 extern int waddstr();
 extern int wclrtoeol();
 #endif
-
-#endif /* _MUTT_CURSES_H_ */

@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
@@ -78,12 +74,12 @@ alias_format_str (char *dest, size_t destlen, char op, const char *src,
   return (src);
 }
 
-static void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
+void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
 {
   mutt_FormatString (s, slen, NONULL (AliasFmt), alias_format_str, (unsigned long) ((ALIAS **) m->data)[num], M_FORMAT_ARROWCURSOR);
 }
 
-static int alias_tag (MUTTMENU *menu, int n, int m)
+int alias_tag (MUTTMENU *menu, int n, int m)
 {
   ALIAS *cur = ((ALIAS **) menu->data)[n];
   int ot = cur->tagged;
@@ -136,7 +132,7 @@ void mutt_alias_menu (char *buf, size_t buflen, ALIAS *aliases)
   int t = -1;
   int i, done = 0;
   int op;
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
 
   int omax;
   

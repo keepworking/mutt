@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
@@ -83,9 +79,6 @@ static struct mapping_t KeyNames[] = {
 #ifdef KEY_BTAB
   { "<BackTab>", KEY_BTAB },
 #endif
-#ifdef KEY_NEXT
-  { "<Next>",    KEY_NEXT },
-#endif  
   { NULL,	0 }
 };
 
@@ -344,7 +337,7 @@ static void push_string (char *s)
 	}
       }
     }
-    mutt_ungetch ((unsigned char)*p--, 0);	/* independent 8 bits chars */
+    mutt_ungetch (*p--, 0);
   }
 }
 

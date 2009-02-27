@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */
 
 /*parameter to mutt_parse_mailboxes*/
@@ -23,7 +23,9 @@
 typedef struct buffy_t
 {
   char *path;
+#ifdef BUFFY_SIZE
   long size;
+#endif				/* BUFFY_SIZE */
   struct buffy_t *next;
   short new;			/* mailbox has new mail */
   short notified;		/* user has been notified */
@@ -37,5 +39,7 @@ WHERE short BuffyTimeout INITVAL (3);
 
 extern time_t BuffyDoneTime;	/* last time we knew for sure how much mail there was */
 
+#ifdef BUFFY_SIZE
 BUFFY *mutt_find_mailbox (const char *path);
 void mutt_update_mailbox (BUFFY * b);
+#endif

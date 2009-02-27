@@ -13,17 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
 #include "mutt_menu.h"
-#include "attach.h"
 #include "mailbox.h"
 #include "mapping.h"
 #include "sort.h"
@@ -49,20 +44,11 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#include <assert.h>
-
 static const char *No_mailbox_is_open = N_("No mailbox is open.");
 static const char *There_are_no_messages = N_("There are no messages.");
 static const char *Mailbox_is_read_only = N_("Mailbox is read-only.");
 static const char *Function_not_permitted_in_attach_message_mode = N_("Function not permitted in attach-message mode.");
 static const char *No_visible = N_("No visible messages.");
-
-#define CHECK_IN_MAILBOX if (!Context) \
-	{ \
-		mutt_flushinp (); \
-		mutt_error _(No_mailbox_is_open); \
-		break; \
-	}
 
 #define CHECK_MSGCOUNT if (!Context) \
 	{ \
@@ -92,12 +78,16 @@ static const char *No_visible = N_("No visible messages.");
 				break; \
 			}
 
-#define CHECK_ACL(aclbit,action) \
-		if (!mutt_bit_isset(Context->rights,aclbit)) { \
+#ifdef USE_IMAP 
+/* the error message returned here could be better. */
+#define CHECK_IMAP_ACL(aclbit) if (Context->magic == M_IMAP) \
+		if (mutt_bit_isset (((IMAP_DATA *)Context->data)->capabilities, ACL) \
+		&& !mutt_bit_isset(((IMAP_DATA *)Context->data)->rights,aclbit)){ \
 			mutt_flushinp(); \
-			mutt_error (_("Cannot %s: Operation not permitted by ACL"), action); \
+			mutt_error ("Operation not permitted by the IMAP ACL for this mailbox"); \
 			break; \
 		}
+#endif
 
 #define CHECK_ATTACH if(option(OPTATTACHMSG)) \
 		     {\
@@ -110,6 +100,7 @@ static const char *No_visible = N_("No visible messages.");
 #define OLDHDR Context->hdrs[Context->v2r[menu->oldcurrent]]
 #define UNREAD(h) mutt_thread_contains_unread (Context, h)
 
+extern const char *ReleaseDate;
 extern size_t UngetCount;
 
 void index_make_entry (char *s, size_t l, MUTTMENU *menu, int num)
@@ -178,7 +169,7 @@ int index_color (int index_no)
 {
   HEADER *h = Context->hdrs[Context->v2r[index_no]];
 
-  if (h && h->pair)
+  if (h->pair)
     return h->pair;
 
   mutt_set_header_color (Context, h);
@@ -278,7 +269,7 @@ static void update_index (MUTTMENU *menu, CONTEXT *ctx, int check,
   /* take note of the current message */
   if (oldcount)
   {
-    if (menu->current < ctx->vcount)
+    if (menu->current < Context->vcount)
       menu->oldcurrent = index_hint;
     else
       oldcount = 0; /* invalid message number! */
@@ -287,24 +278,23 @@ static void update_index (MUTTMENU *menu, CONTEXT *ctx, int check,
   /* We are in a limited view. Check if the new message(s) satisfy
    * the limit criteria. If they do, set their virtual msgno so that
    * they will be visible in the limited view */
-  if (ctx->pattern)
+  if (Context->pattern)
   {
-#define THIS_BODY ctx->hdrs[j]->content
-    for (j = (check == M_REOPENED) ? 0 : oldcount; j < ctx->msgcount; j++)
+#define THIS_BODY Context->hdrs[j]->content
+    if (oldcount || check == M_REOPENED)
     {
-      if (!j)
-	ctx->vcount = 0;
-
-      if (mutt_pattern_exec (ctx->limit_pattern,
-			     M_MATCH_FULL_ADDRESS, 
-			     ctx, ctx->hdrs[j]))
+      for (j = (check == M_REOPENED) ? 0 : oldcount; j < Context->msgcount; j++)
       {
-	assert (ctx->vcount < ctx->msgcount);
-	ctx->hdrs[j]->virtual = ctx->vcount;
-	ctx->v2r[ctx->vcount] = j;
-	ctx->hdrs[j]->limited = 1;
-	ctx->vcount++;
-	ctx->vsize += THIS_BODY->length + THIS_BODY->offset - THIS_BODY->hdr_offset;
+	if (mutt_pattern_exec (Context->limit_pattern,
+			       M_MATCH_FULL_ADDRESS, 
+			       Context, Context->hdrs[j]))
+	{
+	  Context->hdrs[j]->virtual = Context->vcount;
+	  Context->v2r[Context->vcount] = j;
+	  Context->hdrs[j]->limited = 1;
+	  Context->vcount++;
+	  Context->vsize += THIS_BODY->length + THIS_BODY->offset - THIS_BODY->hdr_offset;
+	}
       }
     }
 #undef THIS_BODY
@@ -314,13 +304,13 @@ static void update_index (MUTTMENU *menu, CONTEXT *ctx, int check,
   if (oldcount && check != M_REOPENED
       && ((Sort & SORT_MASK) == SORT_THREADS))
   {
-    save_new = (HEADER **) safe_malloc (sizeof (HEADER *) * (ctx->msgcount - oldcount));
-    for (j = oldcount; j < ctx->msgcount; j++)
-      save_new[j-oldcount] = ctx->hdrs[j];
+    save_new = (HEADER **) safe_malloc (sizeof (HEADER *) * (Context->msgcount - oldcount));
+    for (j = oldcount; j < Context->msgcount; j++)
+      save_new[j-oldcount] = Context->hdrs[j];
   }
   
   /* if the mailbox was reopened, need to rethread from scratch */
-  mutt_sort_headers (ctx, (check == M_REOPENED));
+  mutt_sort_headers (Context, (check == M_REOPENED));
 
   /* uncollapse threads with new mail */
   if ((Sort & SORT_MASK) == SORT_THREADS)
@@ -329,31 +319,31 @@ static void update_index (MUTTMENU *menu, CONTEXT *ctx, int check,
     {
       THREAD *h, *j;
       
-      ctx->collapsed = 0;
+      Context->collapsed = 0;
       
-      for (h = ctx->tree; h; h = h->next)
+      for (h = Context->tree; h; h = h->next)
       {
 	for (j = h; !j->message; j = j->child)
 	  ;
-	mutt_uncollapse_thread (ctx, j->message);
+	mutt_uncollapse_thread (Context, j->message);
       }
-      mutt_set_virtual (ctx);
+      mutt_set_virtual (Context);
     }
     else if (oldcount)
     {
-      for (j = 0; j < ctx->msgcount - oldcount; j++)
+      for (j = 0; j < Context->msgcount - oldcount; j++)
       {
 	int k;
 	
-	for (k = 0; k < ctx->msgcount; k++)
+	for (k = 0; k < Context->msgcount; k++)
 	{
-	  HEADER *h = ctx->hdrs[k];
-	  if (h == save_new[j] && (!ctx->pattern || h->limited))
-	    mutt_uncollapse_thread (ctx, h);
+	  HEADER *h = Context->hdrs[k];
+	  if (h == save_new[j] && (!Context->pattern || h->limited))
+	    mutt_uncollapse_thread (Context, h);
 	}
       }
       FREE (&save_new);
-      mutt_set_virtual (ctx);
+      mutt_set_virtual (Context);
     }
   }
   
@@ -361,9 +351,9 @@ static void update_index (MUTTMENU *menu, CONTEXT *ctx, int check,
   if (oldcount)
   {
     /* restore the current message to the message it was pointing to */
-    for (j = 0; j < ctx->vcount; j++)
+    for (j = 0; j < Context->vcount; j++)
     {
-      if (ctx->hdrs[ctx->v2r[j]]->index == menu->oldcurrent)
+      if (Context->hdrs[Context->v2r[j]]->index == menu->oldcurrent)
       {
 	menu->current = j;
 	break;
@@ -420,7 +410,7 @@ struct mapping_t IndexHelp[] = {
  */
 int mutt_index_menu (void)
 {
-  char buf[LONG_STRING], helpstr[LONG_STRING];
+  char buf[LONG_STRING], helpstr[SHORT_STRING];
   int op = OP_NULL;
   int done = 0;                /* controls when to exit the "event" loop */
   int i = 0, j;
@@ -569,10 +559,8 @@ int mutt_index_menu (void)
 	menu_status_line (buf, sizeof (buf), menu, NONULL (Status));
 	CLEARLINE (option (OPTSTATUSONTOP) ? 0 : LINES-2);
 	SETCOLOR (MT_COLOR_STATUS);
-        BKGDSET (MT_COLOR_STATUS);
 	mutt_paddstr (COLS, buf);
 	SETCOLOR (MT_COLOR_NORMAL);
-        BKGDSET (MT_COLOR_NORMAL);
 	menu->redraw &= ~REDRAW_STATUS;
       }
 
@@ -584,11 +572,13 @@ int mutt_index_menu (void)
 
       if (option (OPTARROWCURSOR))
 	move (menu->current - menu->top + menu->offset, 2);
-      else if (option (OPTBRAILLEFRIENDLY))
-	move (menu->current - menu->top + menu->offset, 0);
       else
 	move (menu->current - menu->top + menu->offset, COLS - 1);
       mutt_refresh ();
+
+      op = km_dokey (MENU_MAIN);
+
+      dprint(4, (debugfile, "mutt_index_menu[%d]: Got op %d\n", __LINE__, op));
 
 #if defined (USE_SLANG_CURSES) || defined (HAVE_RESIZETERM)
       if (SigWinch)
@@ -607,10 +597,6 @@ int mutt_index_menu (void)
 	continue;
       }
 #endif
-
-      op = km_dokey (MENU_MAIN);
-
-      dprint(4, (debugfile, "mutt_index_menu[%d]: Got op %d\n", __LINE__, op));
 
       if (op == -1)
 	continue; /* either user abort or timeout */
@@ -805,7 +791,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("delete message(s)"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_DELETE);
+#endif
 
 	CHECK_ATTACH;
 	mutt_pattern_func (M_DELETE, _("Delete messages matching: "));
@@ -828,7 +817,7 @@ int mutt_index_menu (void)
 	break;
 
       case OP_MAIN_SHOW_LIMIT:
-	CHECK_IN_MAILBOX;
+        CHECK_MSGCOUNT;
 	if (!Context->pattern)
 	   mutt_message _("No limit pattern is in effect.");
 	else
@@ -842,7 +831,7 @@ int mutt_index_menu (void)
 
       case OP_MAIN_LIMIT:
 
-	CHECK_IN_MAILBOX;
+	CHECK_MSGCOUNT;
 	menu->oldcurrent = (Context->vcount && menu->current >= 0 && menu->current < Context->vcount) ?
 		CURHDR->index : -1;
 	if (mutt_pattern_func (M_LIMIT, _("Limit to messages matching: ")) == 0)
@@ -862,12 +851,10 @@ int mutt_index_menu (void)
 	  else
 	    menu->current = 0;
 	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
-	  if (Context->msgcount && (Sort & SORT_MASK) == SORT_THREADS)
+	  if ((Sort & SORT_MASK) == SORT_THREADS)
 	    mutt_draw_tree (Context);
 	  menu->redraw = REDRAW_FULL;
 	}
-        if (Context->pattern)
-	  mutt_message _("To view all messages, limit to \"all\".");
 	break;	  
 
       case OP_QUIT:
@@ -943,11 +930,6 @@ int mutt_index_menu (void)
 	else
 	{
 	  mutt_set_flag (Context, CURHDR, M_TAG, !CURHDR->tagged);
-
-	  Context->last_tag = CURHDR->tagged ? CURHDR :
-	    ((Context->last_tag == CURHDR && !CURHDR->tagged)
-	     ? NULL : Context->last_tag);
-
 	  menu->redraw = REDRAW_STATUS;
 	  if (option (OPTRESOLVE) && menu->current < Context->vcount - 1)
 	  {
@@ -972,7 +954,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("undelete message(s)"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_DELETE);
+#endif
 
 	if (mutt_pattern_func (M_UNDELETE, _("Undelete messages matching: ")) == 0)
 	  menu->redraw = REDRAW_INDEX | REDRAW_STATUS;
@@ -992,15 +977,12 @@ int mutt_index_menu (void)
 
 #ifdef USE_IMAP
       case OP_MAIN_IMAP_FETCH:
-	if (Context && Context->magic == M_IMAP)
+	if (Context->magic == M_IMAP)
 	  imap_check_mailbox (Context, &index_hint, 1);
         break;
 #endif
       
       case OP_MAIN_SYNC_FOLDER:
-
-	if (Context && !Context->msgcount)
-	  break;
 
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
@@ -1069,15 +1051,7 @@ int mutt_index_menu (void)
 	mutt_buffy (buf, sizeof (buf));
 
 	if (mutt_enter_fname (cp, buf, sizeof (buf), &menu->redraw, 1) == -1)
-        {
-          if (menu->menu == MENU_PAGER)
-          {
-            op = OP_DISPLAY_MESSAGE;
-            continue;
-          }
-          else
-            break;
-        }
+	  break;
 	if (!buf[0])
 	{
 	  CLEARLINE (LINES-1);
@@ -1090,7 +1064,6 @@ int mutt_index_menu (void)
 	  mutt_error (_("%s is not a mailbox."), buf);
 	  break;
 	}
-	mutt_str_replace (&CurrentFolder, buf);
 
         if (Context)
         {
@@ -1159,8 +1132,6 @@ int mutt_index_menu (void)
 	    menu->current = mutt_thread_next_unread (Context, CURHDR);
 	}
  
-	if (option (OPTPGPAUTODEC) && (tag || !(CURHDR->security & PGP_TRADITIONAL_CHECKED))) 
-	  mutt_check_traditional_pgp (tag ? NULL : CURHDR, &menu->redraw);
 	if ((op = mutt_display_message (CURHDR)) == -1)
 	{
 	  unset_option (OPTNEEDRESORT);
@@ -1191,78 +1162,6 @@ int mutt_index_menu (void)
 	  }
 	  done = 1;
 	}
-	break;
-
-      case OP_MAIN_BREAK_THREAD:
-
-	CHECK_MSGCOUNT;
-        CHECK_VISIBLE;
-	CHECK_READONLY;
-
-        if ((Sort & SORT_MASK) != SORT_THREADS)
-	  mutt_error _("Threading is not enabled.");
-	else
-	{
-	  {
-	    HEADER *oldcur = CURHDR;
-
-	    mutt_break_thread (CURHDR);
-	    mutt_sort_headers (Context, 1);
-	    menu->current = oldcur->virtual;
-	  }
-
-	  Context->changed = 1;
-	  mutt_message _("Thread broken");
-
-	  if (menu->menu == MENU_PAGER)
-	  {
-	    op = OP_DISPLAY_MESSAGE;
-	    continue;
-	  }
-	  else
-	    menu->redraw |= REDRAW_INDEX;
-	}
-
-	  break;
-
-      case OP_MAIN_LINK_THREADS:
-
-	CHECK_MSGCOUNT;
-        CHECK_VISIBLE;
-	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("link threads"));
-
-        if ((Sort & SORT_MASK) != SORT_THREADS)
-	  mutt_error _("Threading is not enabled.");
-	else if (!CURHDR->env->message_id)
-	  mutt_error _("No Message-ID: header available to link thread");
-	else if (!tag && (!Context->last_tag || !Context->last_tag->tagged))
-	  mutt_error _("First, please tag a message to be linked here");
-	else 
-	{
-	  HEADER *oldcur = CURHDR;
-
-	  if (mutt_link_threads (CURHDR, tag ? NULL : Context->last_tag,
-				 Context))
-	  {
-	    mutt_sort_headers (Context, 1);
-	    menu->current = oldcur->virtual;
-	    
-	    Context->changed = 1;
-	    mutt_message _("Threads linked");
-	  }
-	  else
-	    mutt_error _("No thread linked");
-	}
-
-	if (menu->menu == MENU_PAGER)
-	{
-	  op = OP_DISPLAY_MESSAGE;
-	  continue;
-	}
-	else
-	  menu->redraw |= REDRAW_STATUS | REDRAW_INDEX;
-
 	break;
 
       case OP_EDIT_TYPE:
@@ -1498,7 +1397,19 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_WRITE, _("flag message"));
+
+#ifdef USE_POP
+	if (Context->magic == M_POP)
+	{
+	  mutt_flushinp ();
+	  mutt_error _("Can't change 'important' flag on POP server.");
+	  break;
+	}
+#endif
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_WRITE);
+#endif
 
         if (tag)
         {
@@ -1535,7 +1446,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_SEEN, _("toggle new"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_SEEN);
+#endif
 
 	if (tag)
 	{
@@ -1577,7 +1491,7 @@ int mutt_index_menu (void)
 
       case OP_TOGGLE_WRITE:
 
-	CHECK_IN_MAILBOX;
+	CHECK_MSGCOUNT;
 	if (mx_toggle_write (Context) == 0)
 	  menu->redraw |= REDRAW_STATUS;
 	break;
@@ -1649,7 +1563,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	/* CHECK_ACL(M_ACL_WRITE); */
+	
+/* #ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_WRITE);
+#endif */
 
 	if (mutt_change_flag (tag ? NULL : CURHDR, (op == OP_MAIN_SET_FLAG)) == 0)
 	{
@@ -1789,7 +1706,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("delete message"));
+	
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_DELETE);
+#endif
 
 	if (tag)
 	{
@@ -1830,7 +1750,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("delete message(s)"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_DELETE);
+#endif
 
 	rc = mutt_thread_set_flag (CURHDR, M_DELETE, 1,
 				   op == OP_DELETE_THREAD ? 0 : 1);
@@ -1871,10 +1794,20 @@ int mutt_index_menu (void)
         CHECK_VISIBLE;
 	CHECK_READONLY;
 	CHECK_ATTACH;
-	CHECK_ACL(M_ACL_INSERT, _("edit message"));
 
-	if (option (OPTPGPAUTODEC) && (tag || !(CURHDR->security & PGP_TRADITIONAL_CHECKED))) 
-	  mutt_check_traditional_pgp (tag ? NULL : CURHDR, &menu->redraw);
+#ifdef USE_POP
+	if (Context->magic == M_POP)
+	{
+	  mutt_flushinp ();
+	  mutt_error _("Can't edit message on POP server.");
+	  break;
+	}
+#endif
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_INSERT);
+#endif
+
         mutt_edit_message (Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 
@@ -1885,8 +1818,6 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_ATTACH;
-	if (option (OPTPGPAUTODEC) && (tag || !(CURHDR->security & PGP_TRADITIONAL_CHECKED))) 
-	  mutt_check_traditional_pgp (tag ? NULL : CURHDR, &menu->redraw);
 	ci_send_message (SENDFORWARD, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -1901,8 +1832,6 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_ATTACH;
-	if (option (OPTPGPAUTODEC) && (tag || !(CURHDR->security & PGP_TRADITIONAL_CHECKED))) 
-	  mutt_check_traditional_pgp (tag ? NULL : CURHDR, &menu->redraw);
 	ci_send_message (SENDREPLY|SENDGROUPREPLY, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -1912,8 +1841,6 @@ int mutt_index_menu (void)
 	CHECK_ATTACH;
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
-	if (option (OPTPGPAUTODEC) && (tag || !(CURHDR->security & PGP_TRADITIONAL_CHECKED))) 
-	  mutt_check_traditional_pgp (tag ? NULL : CURHDR, &menu->redraw);
 	ci_send_message (SENDREPLY|SENDLISTREPLY, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -1958,51 +1885,32 @@ int mutt_index_menu (void)
 	  continue;
 	}
         break;
-
+      
       case OP_PIPE:
 
 	CHECK_MSGCOUNT;
-	CHECK_VISIBLE;
+        CHECK_VISIBLE;
 	mutt_pipe_message (tag ? NULL : CURHDR);
-
-#ifdef USE_IMAP
-	/* in an IMAP folder index with imap_peek=no, piping could change
-	 * new or old messages status to read. Redraw what's needed.
-	 */
-	if (Context->magic == M_IMAP && !option (OPTIMAPPEEK))
-	{
-	  menu->redraw = (tag ? REDRAW_INDEX : REDRAW_CURRENT) | REDRAW_STATUS;
-	}
-#endif
-
 	MAYBE_REDRAW (menu->redraw);
 	break;
 
       case OP_PRINT:
 
 	CHECK_MSGCOUNT;
-	CHECK_VISIBLE;
+        CHECK_VISIBLE;
 	mutt_print_message (tag ? NULL : CURHDR);
-
-#ifdef USE_IMAP
-	/* in an IMAP folder index with imap_peek=no, printing could change
-	 * new or old messages status to read. Redraw what's needed.
-	 */
-	if (Context->magic == M_IMAP && !option (OPTIMAPPEEK))
-	{
-	  menu->redraw = (tag ? REDRAW_INDEX : REDRAW_CURRENT) | REDRAW_STATUS;
-	}
-#endif
-
 	break;
 
       case OP_MAIN_READ_THREAD:
       case OP_MAIN_READ_SUBTHREAD:
 
 	CHECK_MSGCOUNT;
-	CHECK_VISIBLE;
+        CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_SEEN, _("mark message(s) as read"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_SEEN);
+#endif
 
 	rc = mutt_thread_set_flag (CURHDR, M_READ, 1,
 				   op == OP_MAIN_READ_THREAD ? 0 : 1);
@@ -2051,8 +1959,6 @@ int mutt_index_menu (void)
 	CHECK_ATTACH;
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
-	if (option (OPTPGPAUTODEC) && (tag || !(CURHDR->security & PGP_TRADITIONAL_CHECKED))) 
-	  mutt_check_traditional_pgp (tag ? NULL : CURHDR, &menu->redraw);
 	ci_send_message (SENDREPLY, NULL, NULL, Context, tag ? NULL : CURHDR);
 	menu->redraw = REDRAW_FULL;
 	break;
@@ -2089,7 +1995,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("undelete message"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_DELETE);
+#endif
 	
 	if (tag)
 	{
@@ -2116,7 +2025,10 @@ int mutt_index_menu (void)
 	CHECK_MSGCOUNT;
         CHECK_VISIBLE;
 	CHECK_READONLY;
-	CHECK_ACL(M_ACL_DELETE, _("undelete message(s)"));
+
+#ifdef USE_IMAP
+CHECK_IMAP_ACL(IMAP_ACL_DELETE);
+#endif
 
 	rc = mutt_thread_set_flag (CURHDR, M_DELETE, 0,
 				   op == OP_UNDELETE_THREAD ? 0 : 1);
@@ -2177,6 +2089,12 @@ int mutt_index_menu (void)
 
     if (done) break;
   }
+
+#ifdef USE_IMAP
+  /* Close all open IMAP connections */
+  if (!attach_msg)
+    imap_logout_all ();
+#endif
 
   mutt_menuDestroy (&menu);
   return (close);

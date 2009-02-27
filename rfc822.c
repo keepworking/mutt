@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <string.h>
 #include <ctype.h>
@@ -687,7 +683,7 @@ done:
 }
 
 /* note: it is assumed that `buf' is nul terminated! */
-int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
+void rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
 {
   char *pbuf = buf;
   size_t len = mutt_strlen (buf);
@@ -697,7 +693,7 @@ int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
   if (len > 0)
   {
     if (len > buflen)
-      return pbuf - buf; /* safety check for bogus arguments */
+      return; /* safety check for bogus arguments */
 
     pbuf += len;
     buflen -= len;
@@ -739,7 +735,6 @@ int rfc822_write_address (char *buf, size_t buflen, ADDRESS *addr, int display)
   }
 done:
   *pbuf = 0;
-  return pbuf - buf;
 }
 
 /* this should be rfc822_cpy_adr */
@@ -793,7 +788,7 @@ ADDRESS *rfc822_append (ADDRESS **a, ADDRESS *b)
 }
 
 #ifdef TESTING
-int safe_free (void **p)	/* __SAFE_FREE_CHECKED__ */
+int safe_free (void **p)
 {
   free(*p);		/* __MEM_CHECKED__ */
   *p = 0;

@@ -13,12 +13,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -129,7 +125,7 @@ static void mutt_free_color_line(COLOR_LINE **l,
   regfree(&tmp->rx);
   mutt_pattern_free(&tmp->color_pattern);
   FREE (&tmp->pattern);
-  FREE (l);		/* __FREE_CHECKED__ */
+  FREE (l);
 }
 
 void ci_start_color (void)
@@ -159,7 +155,7 @@ void ci_start_color (void)
 #ifdef USE_SLANG_CURSES
 static char *get_color_name (char *dest, size_t destlen, int val)
 {
-  static char * missing[3] = {"brown", "lightgray", "default"};
+  static char * missing[3] = {"brown", "lightgray", ""};
   int i;
 
   switch (val)
@@ -309,14 +305,14 @@ parse_color_name (const char *s, int *col, int *attr, int brite, BUFFER *err)
 {
   char *eptr;
 
-  if (ascii_strncasecmp (s, "bright", 6) == 0)
+  if (mutt_strncasecmp (s, "bright", 6) == 0)
   {
     *attr |= brite;
     s += 6;
   }
 
   /* allow aliases for xterm color resources */
-  if (ascii_strncasecmp (s, "color", 5) == 0)
+  if (mutt_strncasecmp (s, "color", 5) == 0)
   {
     s += 5;
     *col = strtol (s, &eptr, 10);
@@ -515,7 +511,7 @@ add_pattern (COLOR_LINE **top, const char *s, int sensitive,
   else
   {
     int r;
-    char buf[LONG_STRING];
+    char buf[STRING];
 
     tmp = mutt_new_color_line ();
     if (is_index) 

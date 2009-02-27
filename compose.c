@@ -14,12 +14,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -406,7 +402,7 @@ static unsigned long cum_attachs_size (MUTTMENU *menu)
 }
 
 /* prototype for use below */
-static void compose_status_line (char *buf, size_t buflen, MUTTMENU *menu, 
+void compose_status_line (char *buf, size_t buflen, MUTTMENU *menu, 
       const char *p);
 
 /*
@@ -472,7 +468,7 @@ compose_format_str (char *buf, size_t buflen, char op, const char *src,
   return (src);
 }
 
-static void compose_status_line (char *buf, size_t buflen, MUTTMENU *menu, 
+void compose_status_line (char *buf, size_t buflen, MUTTMENU *menu, 
       const char *p)
 {
   mutt_FormatString (buf, buflen, p, compose_format_str, 
@@ -491,7 +487,7 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 		    size_t fcclen,
 		    HEADER *cur)   /* current message */
 {
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   char buf[LONG_STRING];
   char fname[_POSIX_PATH_MAX];
   MUTTMENU *menu;
@@ -686,7 +682,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	  {
 	    char *att = files[i];
 	    idx[idxlen] = (ATTACHPTR *) safe_calloc (1, sizeof (ATTACHPTR));
-            idx[idxlen]->unowned = 1;
 	    idx[idxlen]->content = mutt_make_file_attach (att);
 	    if (idx[idxlen]->content != NULL)
 	      update_idx (menu, idx, idxlen++);
@@ -815,8 +810,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 
       case OP_DELETE:
 	CHECK_COUNT;
-        if (idx[menu->current]->unowned)
-          idx[menu->current]->content->unlink = 0;
 	if (delete_attachment (menu, &idxlen, menu->current) == -1)
 	  break;
 	mutt_update_tree (idx, idxlen);
@@ -1146,8 +1139,6 @@ int mutt_compose_menu (HEADER *msg,   /* structure for new message */
 	    /* avoid freeing other attachments */
 	    idx[idxlen]->content->next = NULL;
 	    idx[idxlen]->content->parts = NULL;
-            if (idx[idxlen]->unowned)
-              idx[idxlen]->content->unlink = 0;
 	    mutt_free_body (&idx[idxlen]->content);
 	    FREE (&idx[idxlen]->tree);
 	    FREE (&idx[idxlen]);

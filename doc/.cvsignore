@@ -1,8 +1,6 @@
 Makefile
-Makefile.in
 *.html
 muttrc.man
-mutt.1
 manual.sgml
 manual.txt
 stamp-*

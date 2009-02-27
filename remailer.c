@@ -15,17 +15,13 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */ 
 
 /*
  * Mixmaster support for Mutt
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -126,7 +122,7 @@ static void mix_free_remailer (REMAILER **r)
   FREE (&(*r)->addr);
   FREE (&(*r)->ver);
   
-  FREE (r);		/* __FREE_CHECKED__ */
+  FREE (r);
 }
 
 /* parse the type2.list as given by mixmaster -T */
@@ -216,7 +212,7 @@ static void mix_free_type2_list (REMAILER ***ttlp)
   for (i = 0; type2_list[i]; i++)
     mix_free_remailer (&type2_list[i]);
   
-  FREE (type2_list);		/* __FREE_CHECKED__ */
+  FREE (type2_list);
 }
 
 
@@ -504,7 +500,7 @@ void mix_make_chain (LIST **chainp, int *redraw)
   struct coord *coords = NULL;
   
   MUTTMENU *menu;
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   short loop = 1;
   int op;
   

@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 #ifndef _POP_H
@@ -21,8 +21,6 @@
 
 #include "mailbox.h"
 #include "mutt_socket.h"
-#include "mutt_curses.h"
-#include "bcache.h"
 
 #define POP_PORT 110
 #define POP_SSL_PORT 995
@@ -75,7 +73,6 @@ typedef struct
   time_t login_delay;		/* minimal login delay  capability */
   char *auth_list;		/* list of auth mechanisms */
   char *timestamp;
-  body_cache_t *bcache;		/* body cache */
   char err_msg[POP_CMD_RESPONSE];
   POP_CACHE cache[POP_CACHE_LEN];
 } POP_DATA;
@@ -99,7 +96,7 @@ int pop_parse_path (const char *, ACCOUNT *);
 int pop_connect (POP_DATA *);
 int pop_open_connection (POP_DATA *);
 int pop_query_d (POP_DATA *, char *, size_t, char *);
-int pop_fetch_data (POP_DATA *, char *, progress_t *, int (*funct) (char *, void *), void *);
+int pop_fetch_data (POP_DATA *, char *, char *, int (*funct) (char *, void *), void *);
 int pop_reconnect (CONTEXT *);
 void pop_logout (CONTEXT *);
 void pop_error (POP_DATA *, char *);
@@ -109,7 +106,7 @@ int pop_check_mailbox (CONTEXT *, int *);
 int pop_open_mailbox (CONTEXT *);
 int pop_sync_mailbox (CONTEXT *, int *);
 int pop_fetch_message (MESSAGE *, CONTEXT *, int);
-int pop_close_mailbox (CONTEXT *);
+void pop_close_mailbox (CONTEXT *);
 void pop_fetch_mail (void);
 
 #endif

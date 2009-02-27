@@ -15,12 +15,8 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -106,9 +102,7 @@ int smime_valid_passphrase (void)
     /* Use cached copy.  */
     return 1;
 
-  smime_void_passphrase();
-  
-  if (mutt_get_password (_("Enter S/MIME passphrase:"), SmimePass, sizeof (SmimePass)) == 0)
+  if (mutt_get_password (_("Enter SMIME passphrase:"), SmimePass, sizeof (SmimePass)) == 0)
     {
       SmimeExptime = time (NULL) + SmimeTimeout;
       return (1);
@@ -464,8 +458,8 @@ char* smime_ask_for_key (char *prompt, char *mailbox, short public)
       }
     }
     if (hash) {
-      fname = safe_malloc(13); /* Hash + '.' + Suffix + \0 */
-      sprintf(fname, "%.8x.%i", Table[cur].hash, Table[cur].suffix);
+      fname = safe_malloc(14); /* Hash + '.' + Suffix + \n + \0 */
+      sprintf(fname, "%.8x.%i\n", Table[cur].hash, Table[cur].suffix);
     }
     else fname = NULL;
   
@@ -1577,7 +1571,7 @@ int smime_verify_one (BODY *sigbdy, STATE *s, const char *tempfile)
 
   mutt_decode_attachment (sigbdy, s);
 
-  sigbdy->length = ftello (s->fpout);
+  sigbdy->length = ftell (s->fpout);
   sigbdy->offset = 0;
   fclose (s->fpout);
 
@@ -1621,7 +1615,7 @@ int smime_verify_one (BODY *sigbdy, STATE *s, const char *tempfile)
       rewind (smimeerr);
       
       line = mutt_read_line (line, &linelen, smimeerr, &lineno);
-      if (linelen && !ascii_strcasecmp (line, "verification successful"))
+      if (linelen && !mutt_strcasecmp (line, "verification successful"))
 	badsig = 0;
 
       FREE (&line);
@@ -1702,7 +1696,7 @@ static BODY *smime_handle_entity (BODY *m, STATE *s, FILE *outFile)
     return NULL;
   }
 
-  fseeko (s->fpin, m->offset, 0);
+  fseek (s->fpin, m->offset, 0);
   last_pos = m->offset;
 
   mutt_copy_bytes (s->fpin, tmpfp,  m->length);
@@ -1716,8 +1710,7 @@ static BODY *smime_handle_entity (BODY *m, STATE *s, FILE *outFile)
   {
     fclose (smimeout); smimeout = NULL;
     mutt_unlink (tmpfname);
-    if (s->flags & M_DISPLAY)
-      state_attach_puts (_("[-- Error: unable to create OpenSSL subprocess! --]\n"), s);
+    state_attach_puts (_("[-- Error: unable to create OpenSSL subprocess! --]\n"), s);
     return NULL;
   }
   else if ((type & SIGNOPAQUE) &&
@@ -1727,8 +1720,7 @@ static BODY *smime_handle_entity (BODY *m, STATE *s, FILE *outFile)
   {
     fclose (smimeout); smimeout = NULL;
     mutt_unlink (tmpfname);
-    if (s->flags & M_DISPLAY)
-      state_attach_puts (_("[-- Error: unable to create OpenSSL subprocess! --]\n"), s);
+    state_attach_puts (_("[-- Error: unable to create OpenSSL subprocess! --]\n"), s);
     return NULL;
   }
 
@@ -1842,7 +1834,7 @@ static BODY *smime_handle_entity (BODY *m, STATE *s, FILE *outFile)
     rewind (smimeerr);
     
     line = mutt_read_line (line, &linelen, smimeerr, &lineno);
-    if (linelen && !ascii_strcasecmp (line, "verification successful"))
+    if (linelen && !mutt_strcasecmp (line, "verification successful"))
       m->goodsig = 1;
     FREE (&line);
   }
@@ -1870,7 +1862,6 @@ int smime_decrypt_mime (FILE *fpin, FILE **fpout, BODY *b, BODY **cur)
   size_t tmplength = b->length;
   int origType = b->type;
   FILE *tmpfp=NULL;
-  int rv = 0;
 
   if (!mutt_is_application_smime (b))
     return -1;
@@ -1880,7 +1871,7 @@ int smime_decrypt_mime (FILE *fpin, FILE **fpout, BODY *b, BODY **cur)
   
   memset (&s, 0, sizeof (s));
   s.fpin = fpin;
-  fseeko (s.fpin, b->offset, 0);
+  fseek (s.fpin, b->offset, 0);
 
   mutt_mktemp (tempfile);
   if ((tmpfp = safe_fopen (tempfile, "w+")) == NULL)
@@ -1893,7 +1884,7 @@ int smime_decrypt_mime (FILE *fpin, FILE **fpout, BODY *b, BODY **cur)
   s.fpout = tmpfp;
   mutt_decode_attachment (b, &s);
   fflush (tmpfp);
-  b->length = ftello (s.fpout);
+  b->length = ftell (s.fpout);
   b->offset = 0;
   rewind (tmpfp);
   s.fpin = tmpfp;
@@ -1903,35 +1894,29 @@ int smime_decrypt_mime (FILE *fpin, FILE **fpout, BODY *b, BODY **cur)
   if ((*fpout = safe_fopen (tempfile, "w+")) == NULL)
   {
     mutt_perror (tempfile);
-    rv = -1;
-    goto bail;
+    return (-1);
   }
   mutt_unlink (tempfile);
 
-  if (!(*cur = smime_handle_entity (b, &s, *fpout)))
-  {
-    rv = -1;
-    goto bail;
-  }
-    
+  *cur = smime_handle_entity (b, &s, *fpout);
   (*cur)->goodsig = b->goodsig;
-  (*cur)->badsig  = b->badsig;
-
-bail:
+  (*cur)->badsig = b->badsig;
   b->type = origType;
   b->length = tmplength;
   b->offset = tmpoffset;
-  safe_fclose (&tmpfp);
-  if (*fpout)
-    rewind (*fpout);
-  
-  return rv;
+  fclose (tmpfp);
+
+  rewind (*fpout);
+  return (0);
+
 }
 
 
-int smime_application_smime_handler (BODY *m, STATE *s)
+void smime_application_smime_handler (BODY *m, STATE *s)
 {
-  return smime_handle_entity (m, s, NULL) ? 0 : -1;
+    
+    smime_handle_entity (m, s, NULL);
+
 }
 
 int smime_send_menu (HEADER *msg, int *redraw)
@@ -1950,71 +1935,27 @@ int smime_send_menu (HEADER *msg, int *redraw)
     break;
 
   case 3: /* encrypt (w)ith */
-    {
-      int choice = 0;
-
-      msg->security |= ENCRYPT;
-      do
-      {
-        /* I use "dra" because "123" is recognized anyway */
-        switch (mutt_multi_choice (_("Choose algorithm family:"
-                                     " 1: DES, 2: RC2, 3: AES,"
-                                     " or (c)lear? "),
-                                   _("drac")))
-        {
-        case 1:
-          switch (choice = mutt_multi_choice (_("1: DES, 2: Triple-DES "),
-                                              _("dt")))
-          {
-          case 1:
-            mutt_str_replace (&SmimeCryptAlg, "des");
-            break;
-          case 2:
-            mutt_str_replace (&SmimeCryptAlg, "des3");
-            break;
-          }
-          break;
-
-        case 2:
-          switch (choice = mutt_multi_choice (_("1: RC2-40, 2: RC2-64, 3: RC2-128 "),
-                                              _("468")))
-          {
-          case 1:
-            mutt_str_replace (&SmimeCryptAlg, "rc2-40");
-            break;
-          case 2:
-            mutt_str_replace (&SmimeCryptAlg, "rc2-64");
-            break;
-          case 3:
-            mutt_str_replace (&SmimeCryptAlg, "rc2-128");
-            break;
-          }
-          break;
-
-        case 3:
-          switch (choice = mutt_multi_choice (_("1: AES128, 2: AES192, 3: AES256 "),
-                                              _("895")))
-          {
-          case 1:
-            mutt_str_replace (&SmimeCryptAlg, "aes128");
-            break;
-          case 2:
-            mutt_str_replace (&SmimeCryptAlg, "aes192");
-            break;
-          case 3:
-            mutt_str_replace (&SmimeCryptAlg, "aes256");
-            break;
-          }
-          break;
-
-        case 4: /* (c)lear */
-          FREE (&SmimeCryptAlg);
-          /* fallback */
-        case -1: /* Ctrl-G or Enter */
-          choice = 0;
-          break;
-        }
-      } while (choice == -1);
+    msg->security |= ENCRYPT;
+    switch (mutt_multi_choice (_("1: DES, 2: Triple-DES, 3: RC2-40,"
+				 " 4: RC2-64, 5: RC2-128, or (f)orget it? "),
+			       _("12345f"))) {
+    case 1:
+	mutt_str_replace (&SmimeCryptAlg, "des");
+	break;
+    case 2:
+	mutt_str_replace (&SmimeCryptAlg, "des3");
+	break;
+    case 3:
+	mutt_str_replace (&SmimeCryptAlg, "rc2-40");
+	break;
+    case 4:
+	mutt_str_replace (&SmimeCryptAlg, "rc2-64");
+	break;
+    case 5:
+	mutt_str_replace (&SmimeCryptAlg, "rc2-128");
+	break;
+    case 6: /* forget it */
+	break;
     }
     break;
 
@@ -2033,6 +1974,7 @@ int smime_send_menu (HEADER *msg, int *redraw)
 
     if ((p = smime_ask_for_key (_("Sign as: "), NULL, 0))) 
     {
+      p[mutt_strlen (p)-1] = '\0';
       mutt_str_replace (&SmimeDefaultKey, p);
 	
       msg->security |= SIGN;

@@ -13,16 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 /*
  * A simple URL parser.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mapping.h"
@@ -37,12 +33,10 @@ static struct mapping_t UrlMap[] =
   { "file", 	U_FILE },
   { "imap", 	U_IMAP },
   { "imaps", 	U_IMAPS },
-  { "pop",  	U_POP },
-  { "pops", 	U_POPS },
+  { "pop",  	U_POP  },
+  { "pops", 	U_POPS  },
   { "mailto",	U_MAILTO },
-  { "smtp",     U_SMTP },
-  { "smtps",    U_SMTPS },
-  { NULL,	U_UNKNOWN }
+  { NULL,	U_UNKNOWN}
 };
 
 

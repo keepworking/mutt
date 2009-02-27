@@ -15,17 +15,13 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
- *     Boston, MA  02110-1301, USA.
+ *     Software Foundation, Inc., 59 Temple Place - Suite 330,
+ *     Boston, MA  02111, USA.
  */ 
 
 /* This file contains the new pgp invocation code.  Note that this
  * is almost entirely format based.
  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -127,7 +123,7 @@ const char *_mutt_fmt_pgp_command (char *dest,
 	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
 	snprintf (dest, destlen, fmt, cctx->need_passphrase ? "PGPPASSFD=0" : "");
       }
-      else if (!cctx->need_passphrase || pgp_use_gpg_agent())
+      else if (!cctx->need_passphrase)
 	optional = 0;
       break;
     }

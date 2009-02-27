@@ -14,7 +14,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */
 
 /*
@@ -27,10 +27,6 @@
    system.  Consequently there's a 1:1 mapping between the functions
    contained in this file and the functions implemented by the crypto
    modules.  */
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_crypt.h"
@@ -87,9 +83,7 @@ void crypt_init (void)
       crypto_module_register (&crypt_mod_smime_gpgme);
 #else
       mutt_message (_("\"crypt_use_gpgme\" set"
-                      " but not built with GPGME support."));
-      if (mutt_any_key_to_continue (NULL) == -1)
-	mutt_exit(1);
+                      " but not build with GPGME support."));
 #endif
     }
 
@@ -109,7 +103,7 @@ void crypt_invoke_message (int type)
   if ((WithCrypto & APPLICATION_PGP) && (type & APPLICATION_PGP))
     mutt_message _("Invoking PGP...");
   else if ((WithCrypto & APPLICATION_SMIME) && (type & APPLICATION_SMIME))
-    mutt_message _("Invoking S/MIME...");
+    mutt_message _("Invoking SMIME...");
 }
 
 
@@ -147,21 +141,17 @@ int crypt_pgp_decrypt_mime (FILE *a, FILE **b, BODY *c, BODY **d)
 }
 
 /* MIME handler for the application/pgp content-type. */
-int crypt_pgp_application_pgp_handler (BODY *m, STATE *s)
+void crypt_pgp_application_pgp_handler (BODY *m, STATE *s)
 {
   if (CRYPT_MOD_CALL_CHECK (PGP, application_handler))
-    return (CRYPT_MOD_CALL (PGP, application_handler)) (m, s);
-  
-  return -1;
+    (CRYPT_MOD_CALL (PGP, application_handler)) (m, s);
 }
 
 /* MIME handler for an PGP/MIME encrypted message. */
-int crypt_pgp_encrypted_handler (BODY *a, STATE *s)
+void crypt_pgp_encrypted_handler (BODY *a, STATE *s)
 {
   if (CRYPT_MOD_CALL_CHECK (PGP, encrypted_handler))
-    return (CRYPT_MOD_CALL (PGP, encrypted_handler)) (a, s);
-  
-  return -1;
+    (CRYPT_MOD_CALL (PGP, encrypted_handler)) (a, s);
 }
 
 /* fixme: needs documentation. */
@@ -260,15 +250,8 @@ void crypt_pgp_extract_keys_from_attachment_list (FILE *fp, int tag, BODY *top)
     (CRYPT_MOD_CALL (PGP, pgp_extract_keys_from_attachment_list)) (fp, tag, top);
 }
 
-void crypt_pgp_set_sender (const char *sender)
-{
-  if (CRYPT_MOD_CALL_CHECK (PGP, set_sender))
-    (CRYPT_MOD_CALL (PGP, set_sender)) (sender);
-}
-
 
 
-
 /* 
 
    S/MIME 
@@ -301,12 +284,10 @@ int crypt_smime_decrypt_mime (FILE *a, FILE **b, BODY *c, BODY **d)
 }
 
 /* MIME handler for the application/smime content-type. */
-int crypt_smime_application_smime_handler (BODY *m, STATE *s)
+void crypt_smime_application_smime_handler (BODY *m, STATE *s)
 {
   if (CRYPT_MOD_CALL_CHECK (SMIME, application_handler))
-    return (CRYPT_MOD_CALL (SMIME, application_handler)) (m, s);
-  
-  return -1;
+    (CRYPT_MOD_CALL (SMIME, application_handler)) (m, s);
 }
 
 /* MIME handler for an PGP/MIME encrypted message. */
@@ -382,10 +363,4 @@ int crypt_smime_send_menu (HEADER *msg, int *redraw)
     return (CRYPT_MOD_CALL (SMIME, send_menu)) (msg, redraw);
 
   return 0;
-}
-
-void crypt_smime_set_sender (const char *sender)
-{
-  if (CRYPT_MOD_CALL_CHECK (SMIME, set_sender))
-    (CRYPT_MOD_CALL (SMIME, set_sender)) (sender);
 }

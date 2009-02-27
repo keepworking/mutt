@@ -15,14 +15,10 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
  */ 
 
 #define MAIN_C 1
-
-#if HAVE_CONFIG_H
-# include "config.h"
-#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -31,14 +27,6 @@
 #include "url.h"
 #include "mutt_crypt.h"
 #include "mutt_idna.h"
-
-#ifdef USE_SASL
-#include "mutt_sasl.h"
-#endif
-
-#ifdef USE_IMAP
-#include "imap/imap.h"
-#endif
 
 #include <string.h>
 #include <stdlib.h>
@@ -58,27 +46,26 @@
 
 static const char *ReachingUs = N_("\
 To contact the developers, please mail to <mutt-dev@mutt.org>.\n\
-To report a bug, please visit http://bugs.mutt.org/.\n");
+To report a bug, please use the flea(1) utility.\n");
 
 static const char *Notice = N_("\
-Copyright (C) 1996-2007 Michael R. Elkins and others.\n\
+Copyright (C) 1996-2002 Michael R. Elkins and others.\n\
 Mutt comes with ABSOLUTELY NO WARRANTY; for details type `mutt -vv'.\n\
 Mutt is free software, and you are welcome to redistribute it\n\
 under certain conditions; type `mutt -vv' for details.\n");
 
 static const char *Copyright = N_("\
-Copyright (C) 1996-2004 Michael R. Elkins <me@mutt.org>\n\
+Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>\n\
 Copyright (C) 1996-2002 Brandon Long <blong@fiction.net>\n\
-Copyright (C) 1997-2007 Thomas Roessler <roessler@does-not-exist.org>\n\
-Copyright (C) 1998-2005 Werner Koch <wk@isil.d.shuttle.de>\n\
-Copyright (C) 1999-2007 Brendan Cully <brendan@kublai.com>\n\
+Copyright (C) 1997-2002 Thomas Roessler <roessler@does-not-exist.org>\n\
+Copyright (C) 1998-2002 Werner Koch <wk@isil.d.shuttle.de>\n\
+Copyright (C) 1999-2002 Brendan Cully <brendan@kublai.com>\n\
 Copyright (C) 1999-2002 Tommi Komulainen <Tommi.Komulainen@iki.fi>\n\
 Copyright (C) 2000-2002 Edmund Grimley Evans <edmundo@rano.org>\n\
 \n\
-Many others not mentioned here contributed code, fixes,\n\
-and suggestions.\n");
-
-static const char *Licence = N_("\
+Lots of others not mentioned here contributed lots of code,\n\
+fixes, and suggestions.\n\
+\n\
     This program is free software; you can redistribute it and/or modify\n\
     it under the terms of the GNU General Public License as published by\n\
     the Free Software Foundation; either version 2 of the License, or\n\
@@ -87,11 +74,11 @@ static const char *Licence = N_("\
     This program is distributed in the hope that it will be useful,\n\
     but WITHOUT ANY WARRANTY; without even the implied warranty of\n\
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n\
-    GNU General Public License for more details.\n");
-static const char *Obtaining = N_("\
+    GNU General Public License for more details.\n\
+\n\
     You should have received a copy of the GNU General Public License\n\
     along with this program; if not, write to the Free Software\n\
-    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.\n\
+    Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.\n\
 ");
 
 void mutt_exit (int code)
@@ -108,32 +95,23 @@ static void mutt_usage (void)
 "usage: mutt [ -nRyzZ ] [ -e <cmd> ] [ -F <file> ] [ -m <type> ] [ -f <file> ]\n\
        mutt [ -nR ] [ -e <cmd> ] [ -F <file> ] -Q <query> [ -Q <query> ] [...]\n\
        mutt [ -nR ] [ -e <cmd> ] [ -F <file> ] -A <alias> [ -A <alias> ] [...]\n\
-       mutt [ -nR ] [ -e <cmd> ] [ -F <file> ] -D\n\
-       mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] [ -- ] <addr> [ ... ]\n\
+       mutt [ -nx ] [ -e <cmd> ] [ -a <file> ] [ -F <file> ] [ -H <file> ] [ -i <file> ] [ -s <subj> ] [ -b <addr> ] [ -c <addr> ] <addr> [ ... ]\n\
        mutt [ -n ] [ -e <cmd> ] [ -F <file> ] -p\n\
-       mutt -v[v]\n");
-
-  puts _("\
+       mutt -v[v]\n\
+\n\
 options:\n\
   -A <alias>\texpand the given alias\n\
   -a <file>\tattach a file to the message\n\
   -b <address>\tspecify a blind carbon-copy (BCC) address\n\
   -c <address>\tspecify a carbon-copy (CC) address\n\
-  -D\t\tprint the value of all variables to stdout");
-#if DEBUG
-  puts _("  -d <level>\tlog debugging output to ~/.muttdebug0");
-#endif
-  puts _(
-"  -e <command>\tspecify a command to be executed after initialization\n\
+  -e <command>\tspecify a command to be executed after initialization\n\
   -f <file>\tspecify which mailbox to read\n\
   -F <file>\tspecify an alternate muttrc file\n\
-  -H <file>\tspecify a draft file to read header and body from\n\
-  -i <file>\tspecify a file which Mutt should include in the body\n\
+  -H <file>\tspecify a draft file to read header from\n\
+  -i <file>\tspecify a file which Mutt should include in the reply\n\
   -m <type>\tspecify a default mailbox type\n\
   -n\t\tcauses Mutt not to read the system Muttrc\n\
-  -p\t\trecall a postponed message");
-  
-  puts _("\
+  -p\t\trecall a postponed message\n\
   -Q <variable>\tquery a configuration variable\n\
   -R\t\topen mailbox in read-only mode\n\
   -s <subj>\tspecify a subject (must be in quotes if it has spaces)\n\
@@ -143,7 +121,6 @@ options:\n\
   -z\t\texit immediately if there are no messages in the mailbox\n\
   -Z\t\topen the first folder with new message, exit immediately if none\n\
   -h\t\tthis help message");
-  puts _("  --\t\ttreat remaining arguments as addr even if starting with a dash");
 
   exit (0);
 }
@@ -168,18 +145,18 @@ static void show_version (void)
   printf (" (%s)", uts.machine);
 
 #ifdef NCURSES_VERSION
-  printf ("\nncurses: %s (compiled with %s)", curses_version(), NCURSES_VERSION);
+  printf (" [using ncurses %s]", NCURSES_VERSION);
 #elif defined(USE_SLANG_CURSES)
-  printf ("\nslang: %d", SLANG_VERSION);
+  printf (" [using slang %d]", SLANG_VERSION);
 #endif
 
 #ifdef _LIBICONV_VERSION
-  printf ("\nlibiconv: %d.%d", _LIBICONV_VERSION >> 8,
+  printf (" [using libiconv %d.%d]", _LIBICONV_VERSION >> 8,
 	  _LIBICONV_VERSION & 0xff);
 #endif
 
 #ifdef HAVE_LIBIDN
-  printf ("\nlibidn: %s (compiled with %s)", stringprep_check_version (NULL), 
+  printf (" [using libidn %s (compiled with %s)]", stringprep_check_version (NULL), 
 	  STRINGPREP_VERSION);
 #endif
   
@@ -234,15 +211,9 @@ static void show_version (void)
 #endif
 
 #ifdef USE_FLOCK
-	"+USE_FLOCK   "
+	"+USE_FLOCK"
 #else
-	"-USE_FLOCK   "
-#endif
-	
-#ifdef USE_INODESORT
-	"+USE_INODESORT   "
-#else
-	"-USE_INODESORT   "
+	"-USE_FLOCK"
 #endif
 	);
   puts (
@@ -258,12 +229,6 @@ static void show_version (void)
         "-USE_IMAP  "
 #endif
 
-#ifdef USE_SMTP
-	"+USE_SMTP  "
-#else
-	"-USE_SMTP  "
-#endif
-
 #ifdef USE_GSS
 	"+USE_GSS  "
 #else
@@ -271,16 +236,10 @@ static void show_version (void)
 #endif
 
 	
-#ifdef USE_SSL_OPENSSL
-	"+USE_SSL_OPENSSL  "
+#ifdef USE_SSL
+	"+USE_SSL  "
 #else
-	"-USE_SSL_OPENSSL  "
-#endif
-
-#ifdef USE_SSL_GNUTLS
-	"+USE_SSL_GNUTLS  "
-#else
-	"-USE_SSL_GNUTLS  "
+	"-USE_SSL  "
 #endif
 
 #ifdef USE_SASL
@@ -288,15 +247,13 @@ static void show_version (void)
 #else
 	"-USE_SASL  "
 #endif
-
-#if HAVE_GETADDRINFO
-	"+HAVE_GETADDRINFO  "
+#ifdef USE_SASL2
+	"+USE_SASL2  "
 #else
-	"-HAVE_GETADDRINFO  "
+	"-USE_SASL2  "
 #endif
-        );
-  	
-  puts (
+	"\n"
+	
 #ifdef HAVE_REGCOMP
 	"+HAVE_REGCOMP  "
 #else
@@ -372,9 +329,12 @@ static void show_version (void)
 #else
         "-CRYPT_BACKEND_GPGME  "
 #endif
-        );
-  
-  puts (
+
+#ifdef BUFFY_SIZE
+	"+BUFFY_SIZE "
+#else
+	"-BUFFY_SIZE "
+#endif
 #ifdef EXACT_ADDRESS
 	"+EXACT_ADDRESS  "
 #else
@@ -446,10 +406,10 @@ static void show_version (void)
 	"-HAVE_GETSID  "
 #endif
 
-#if USE_HCACHE
-	"+USE_HCACHE  "
+#if HAVE_GETADDRINFO
+	"+HAVE_GETADDRINFO  "
 #else
-	"-USE_HCACHE  "
+	"-HAVE_GETADDRINFO  "
 #endif
 
 	);
@@ -485,10 +445,6 @@ static void start_curses (void)
 #ifdef USE_SLANG_CURSES
   SLtt_Ignore_Beep = 1; /* don't do that #*$@^! annoying visual beep! */
   SLsmg_Display_Eight_Bit = 128; /* characters above this are printable */
-  SLtt_set_color(0, NULL, "default", "default");
-#if SLANG_VERSION >= 20000
-  SLutf8_enable(-1);
-#endif
 #else
   /* should come before initscr() so that ncurses 4.2 doesn't try to install
      its own SIGWINCH handler */
@@ -538,7 +494,6 @@ int main (int argc, char **argv)
   int version = 0;
   int i;
   int explicit_folder = 0;
-  int dump_variables = 0;
   extern char *optarg;
   extern int optind;
 
@@ -568,7 +523,7 @@ int main (int argc, char **argv)
   memset (Options, 0, sizeof (Options));
   memset (QuadOptions, 0, sizeof (QuadOptions));
   
-  while ((i = getopt (argc, argv, "A:a:b:F:f:c:Dd:e:H:s:i:hm:npQ:RvxyzZ")) != EOF)
+  while ((i = getopt (argc, argv, "A:a:b:F:f:c:d:e:H:s:i:hm:npQ:RvxyzZ")) != EOF)
     switch (i)
     {
       case 'A':
@@ -597,10 +552,6 @@ int main (int argc, char **argv)
 	  msg->env->bcc = rfc822_parse_adrlist (msg->env->bcc, optarg);
 	else
 	  msg->env->cc = rfc822_parse_adrlist (msg->env->cc, optarg);
-	break;
-
-      case 'D':
-	dump_variables = 1;
 	break;
 
       case 'd':
@@ -683,14 +634,12 @@ int main (int argc, char **argv)
     default:
       puts (mutt_make_version ());
       puts (_(Copyright));
-      puts (_(Licence));
-      puts (_(Obtaining));
       puts (_(ReachingUs));
       exit (0);
   }
 
   /* Check for a batch send. */
-  if (!isatty (0) || queries || alias_queries || dump_variables)
+  if (!isatty (0) || queries || alias_queries)
   {
     set_option (OPTNOCURSES);
     sendflags = SENDBATCH;
@@ -710,8 +659,6 @@ int main (int argc, char **argv)
 
   if (queries)
     return mutt_query_variables (queries);
-  if (dump_variables)
-    return mutt_dump_variables();
 
   if (alias_queries)
   {
@@ -940,7 +887,6 @@ int main (int argc, char **argv)
       strfcpy (folder, NONULL(Spoolfile), sizeof (folder));
     mutt_expand_path (folder, sizeof (folder));
 
-    mutt_str_replace (&CurrentFolder, folder);
     mutt_str_replace (&LastFolder, folder);
 
     if (flags & M_IGNORE)
@@ -966,13 +912,6 @@ int main (int argc, char **argv)
       if (Context)
 	FREE (&Context);
     }
-#ifdef USE_IMAP
-    imap_logout_all ();
-#endif
-#ifdef USE_SASL
-    mutt_sasl_done ();
-#endif
-    mutt_free_opts ();
     mutt_endwin (Errorbuf);
   }
 
