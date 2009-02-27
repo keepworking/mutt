@@ -56,7 +56,7 @@ mutt_copy_hdr (FILE *in, FILE *out, LOFF_T off_start, LOFF_T off_end, int flags,
   int hdr_count;
   int x;
   char *this_one = NULL;
-  size_t this_one_len = 0;
+  size_t this_one_len;
   int error;
 
   if (ftello (in) != off_start)
@@ -851,7 +851,7 @@ static void format_address_header (char **h, ADDRESS *a)
   char buf[HUGE_STRING];
   char cbuf[STRING];
   char c2buf[STRING];
-  char *p = NULL;
+  char *p;
   int l, linelen, buflen, count, cbuflen, c2buflen, plen;
 
   linelen = mutt_strlen (*h);
