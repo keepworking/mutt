@@ -81,9 +81,7 @@ uninstall-local:
 
 check:
 manual.txt: manual.html
-	-lynx -dump -nolist -with_backspaces $^ > $@ || \
-	w3m -dump $^ > $@ || \
-	elinks -dump -no-numbering -no-references $^ > $@
+	-lynx -dump -nolist -with_backspaces $^ > $@ || w3m -dump $^ > $@
 
 manual.html: $(srcdir)/html.xsl stamp-doc-xml
 	-xsltproc --nonet -o $@ $(srcdir)/html.xsl manual.xml

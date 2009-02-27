@@ -141,7 +141,7 @@ static int link_is_dir (const char *folder, const char *path)
 }
 
 static const char *
-folder_format_str (char *dest, size_t destlen, char op, const char *src,
+folder_format_str (char *dest, size_t destlen, size_t col, char op, const char *src,
 		   const char *fmt, const char *ifstring, const char *elsestring,
 		   unsigned long data, format_flag flags)
 {
@@ -300,9 +300,9 @@ folder_format_str (char *dest, size_t destlen, char op, const char *src,
   }
 
   if (optional)
-    mutt_FormatString (dest, destlen, ifstring, folder_format_str, data, 0);
+    mutt_FormatString (dest, destlen, col, ifstring, folder_format_str, data, 0);
   else if (flags & M_FORMAT_OPTIONAL)
-    mutt_FormatString (dest, destlen, elsestring, folder_format_str, data, 0);
+    mutt_FormatString (dest, destlen, col, elsestring, folder_format_str, data, 0);
 
   return (src);
 }
@@ -483,7 +483,7 @@ static void folder_entry (char *s, size_t slen, MUTTMENU *menu, int num)
   folder.ff = &((struct folder_file *) menu->data)[num];
   folder.num = num;
   
-  mutt_FormatString (s, slen, NONULL(FolderFormat), folder_format_str, 
+  mutt_FormatString (s, slen, 0, NONULL(FolderFormat), folder_format_str, 
       (unsigned long) &folder, M_FORMAT_ARROWCURSOR);
 }
 
@@ -620,15 +620,7 @@ void _mutt_select_file (char *f, size_t flen, int flags, char ***files, int *num
       imap_browse (LastDir, &state);
       browser_sort (&state);
     }
-    else
 #endif
-    {
-      i = mutt_strlen (LastDir);
-      while (i && LastDir[--i] == '/')
-        LastDir[i] = '\0';
-      if (!LastDir[0])
-        getcwd (LastDir, sizeof (LastDir));
-    }
   }
 
   *f = 0;
