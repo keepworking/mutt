@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,13 +13,11 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
 
 #ifndef rfc822_h
 #define rfc822_h
-
-#include "config.h"
 
 /* possible values for RFC822Error */
 enum
@@ -50,9 +48,8 @@ ADDRESS *rfc822_parse_adrlist (ADDRESS *, const char *s);
 ADDRESS *rfc822_cpy_adr (ADDRESS *addr);
 ADDRESS *rfc822_cpy_adr_real (ADDRESS *addr);
 ADDRESS *rfc822_append (ADDRESS **a, ADDRESS *b);
-void rfc822_write_address (char *, size_t, ADDRESS *);
-void rfc822_write_address_single (char *, size_t, ADDRESS *);
-void rfc822_write_list (char *, size_t, ADDRESS *);
+int rfc822_write_address (char *, size_t, ADDRESS *, int);
+void rfc822_write_address_single (char *, size_t, ADDRESS *, int);
 void rfc822_free_address (ADDRESS **addr);
 void rfc822_cat (char *, size_t, const char *, const char *);
 int rfc822_valid_msgid (const char *msgid);

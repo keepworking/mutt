@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>, and others
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>, and others
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,11 +13,16 @@
  *
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mailbox.h"
+#include "mutt_crypt.h"
 
 #include <limits.h>
 #include <string.h>
@@ -65,7 +70,7 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     goto error;
   }
 
-  mutt_extract_token (&command, s, (data & (M_FOLDERHOOK | M_SENDHOOK | M_ACCOUNTHOOK)) ?  M_TOKEN_SPACE : 0);
+  mutt_extract_token (&command, s, (data & (M_FOLDERHOOK | M_SENDHOOK | M_SEND2HOOK | M_ACCOUNTHOOK | M_REPLYHOOK)) ?  M_TOKEN_SPACE : 0);
 
   if (!command.data)
   {
@@ -87,11 +92,16 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
     memset (&pattern, 0, sizeof (pattern));
     pattern.data = safe_strdup (path);
   }
-  else if (DefaultHook && (data & (M_FOLDERHOOK | M_MBOXHOOK | M_SENDHOOK |
-				   M_FCCHOOK | M_SAVEHOOK | M_MESSAGEHOOK)))
+  else if (DefaultHook && !(data & (M_CHARSETHOOK | M_ICONVHOOK | M_ACCOUNTHOOK))
+           && (!WithCrypto || !(data & M_CRYPTHOOK))
+      )
   {
     char tmp[HUGE_STRING];
 
+    /* At this stage remain only message-hooks, reply-hooks, send-hooks,
+     * send2-hooks, save-hooks, and fcc-hooks: All those allowing full
+     * patterns. If given a simple regexp, we expand $default_hook.
+     */
     strfcpy (tmp, pattern.data, sizeof (tmp));
     mutt_check_simple (tmp, sizeof (tmp), DefaultHook);
     FREE (&pattern.data);
@@ -115,7 +125,7 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 	ptr->rx.not == not &&
 	!mutt_strcmp (pattern.data, ptr->rx.pattern))
     {
-      if (data & (M_FOLDERHOOK | M_SENDHOOK | M_MESSAGEHOOK | M_ACCOUNTHOOK))
+      if (data & (M_FOLDERHOOK | M_SENDHOOK | M_SEND2HOOK | M_MESSAGEHOOK | M_ACCOUNTHOOK | M_REPLYHOOK))
       {
 	/* these hooks allow multiple commands with the same
 	 * pattern, so if we've already seen this pattern/command pair, just
@@ -144,25 +154,26 @@ int mutt_parse_hook (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
       break;
   }
 
-  if (data & (M_SENDHOOK | M_SAVEHOOK | M_FCCHOOK | M_MESSAGEHOOK))
+  if (data & (M_SENDHOOK | M_SEND2HOOK | M_SAVEHOOK | M_FCCHOOK | M_MESSAGEHOOK | M_REPLYHOOK))
   {
     if ((pat = mutt_pattern_comp (pattern.data,
-	   (data & (M_SENDHOOK | M_FCCHOOK)) ? 0 : M_FULL_MSG,
+	   (data & (M_SENDHOOK | M_SEND2HOOK | M_FCCHOOK)) ? 0 : M_FULL_MSG,
 				  err)) == NULL)
       goto error;
   }
   else
   {
+    /* Hooks not allowing full patterns: Check syntax of regexp */
     rx = safe_malloc (sizeof (regex_t));
-#ifdef M_PGPHOOK
-    if ((rc = REGCOMP (rx, NONULL(pattern.data), ((data & (M_PGPHOOK|M_CHARSETHOOK)) ? REG_ICASE : 0))) != 0)
+#ifdef M_CRYPTHOOK
+    if ((rc = REGCOMP (rx, NONULL(pattern.data), ((data & (M_CRYPTHOOK|M_CHARSETHOOK|M_ICONVHOOK)) ? REG_ICASE : 0))) != 0)
 #else
     if ((rc = REGCOMP (rx, NONULL(pattern.data), (data & (M_CHARSETHOOK|M_ICONVHOOK)) ? REG_ICASE : 0)) != 0)
-#endif /* HAVE_PGP */
+#endif /* M_CRYPTHOOK */
     {
       regerror (rc, rx, err->data, err->dsize);
       regfree (rx);
-      safe_free ((void **) &rx);
+      FREE (&rx);
       goto error;
     }
   }
@@ -408,7 +419,7 @@ void mutt_select_fcc (char *path, size_t pathlen, HEADER *hdr)
     {
       adr = env->to ? env->to : (env->cc ? env->cc : env->bcc);
       mutt_safe_path (buf, sizeof (buf), adr);
-      snprintf (path, pathlen, "%s/%s", NONULL (Maildir), buf);
+      mutt_concat_path (path, NONULL(Maildir), buf, pathlen);
       if (!option (OPTFORCENAME) && mx_access (path, W_OK) != 0)
 	strfcpy (path, NONULL (Outbox), pathlen);
     }
@@ -441,12 +452,10 @@ char *mutt_iconv_hook (const char *chs)
   return _mutt_string_hook (chs, M_ICONVHOOK);
 }
 
-#ifdef HAVE_PGP
-char *mutt_pgp_hook (ADDRESS *adr)
+char *mutt_crypt_hook (ADDRESS *adr)
 {
-  return _mutt_string_hook (adr->mailbox, M_PGPHOOK);
+  return _mutt_string_hook (adr->mailbox, M_CRYPTHOOK);
 }
-#endif /* HAVE_PGP */
 
 #ifdef USE_SOCKET
 void mutt_account_hook (const char* url)

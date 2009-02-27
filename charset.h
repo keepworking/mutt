@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  *
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #ifndef _CHARSET_H
@@ -43,13 +43,17 @@ typedef void * FGETCONV;
 
 FGETCONV *fgetconv_open (FILE *, const char *, const char *, int);
 int fgetconv (FGETCONV *);
+char * fgetconvs (char *, size_t, FGETCONV *);
 void fgetconv_close (FGETCONV **);
 
 void mutt_set_langinfo_charset (void);
+char *mutt_get_default_charset ();
 
-#define M_ICONV_HOOK_FROM 1
-#if 0
-#define M_ICONV_HOOK_TO   2
-#endif
+/* flags for charset.c:mutt_convert_string(), fgetconv_open(), and
+ * mutt_iconv_open(). Note that applying charset-hooks to tocode is
+ * never needed, and sometimes hurts: Hence there is no M_ICONV_HOOK_TO
+ * flag.
+ */
+#define M_ICONV_HOOK_FROM 1	/* apply charset-hooks to fromcode */
 
 #endif /* _CHARSET_H */

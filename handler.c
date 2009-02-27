@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,8 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include <stdlib.h>
 #include <string.h>
@@ -30,20 +34,14 @@
 #include "mime.h"
 #include "copy.h"
 #include "charset.h"
-
-
-
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
-
+#include "mutt_crypt.h"
+#include "rfc3676.h"
 
 #define BUFI_SIZE 1000
 #define BUFO_SIZE 2000
 
 
-typedef void handler_f (BODY *, STATE *);
-typedef handler_f *handler_t;
+typedef int (*handler_t) (BODY *, STATE *);
 
 int Index_hex[128] = {
     -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
@@ -76,7 +74,7 @@ static void state_prefix_put (const char *d, size_t dlen, STATE *s)
     fwrite (d, dlen, 1, s->fpout);
 }
 
-static void convert_to_state(iconv_t cd, char *bufi, size_t *l, STATE *s)
+void mutt_convert_to_state(iconv_t cd, char *bufi, size_t *l, STATE *s)
 {
   char bufo[BUFO_SIZE];
   ICONV_CONST char *ib;
@@ -140,11 +138,11 @@ void mutt_decode_xbit (STATE *s, long len, int istext, iconv_t cd)
 
       bufi[l++] = c;
       if (l == sizeof (bufi))
-	convert_to_state (cd, bufi, &l, s);
+	mutt_convert_to_state (cd, bufi, &l, s);
     }
 
-    convert_to_state (cd, bufi, &l, s);
-    convert_to_state (cd, 0, 0, s);
+    mutt_convert_to_state (cd, bufi, &l, s);
+    mutt_convert_to_state (cd, 0, 0, s);
 
     state_reset_prefix (s);
   }
@@ -159,7 +157,9 @@ static int qp_decode_triple (char *s, char *d)
     return 1;
   
   /* quoted-printable triple */
-  if (*s == '=' && isxdigit (*(s+1)) && isxdigit (*(s+2)))
+  if (*s == '=' &&
+      isxdigit ((unsigned char) *(s+1)) &&
+      isxdigit ((unsigned char) *(s+2)))
   {
     *d = (hexval (*(s+1)) << 4) | hexval (*(s+2));
     return 0;
@@ -177,16 +177,6 @@ static void qp_decode_line (char *dest, char *src, size_t *l,
 
   int kind;
   int soft = 0;
-
-  /* chop trailing whitespace */
-
-  if (*src)
-  {
-    s = src + strlen(src) - 1;
-    while (s >= src && ISSPACE(*s))
-      s--;
-    *(++s) = '\0';
-  }
 
   /* decode the line */
   
@@ -222,7 +212,7 @@ static void qp_decode_line (char *dest, char *src, size_t *l,
  * result of qp_decode_line.
  * 
  * Finally, at soft line breaks, some part of a multibyte character
- * may have been left over by convert_to_state().  This shouldn't
+ * may have been left over by mutt_convert_to_state().  This shouldn't
  * be more than 6 characters, so STRING + 7 should be sufficient
  * memory to store the decoded data.
  * 
@@ -236,10 +226,10 @@ void mutt_decode_quoted (STATE *s, long len, int istext, iconv_t cd)
   char line[STRING];
   char decline[2*STRING];
   size_t l = 0;
-  size_t l2;
+  size_t linelen;      /* number of input bytes in `line' */
   size_t l3;
   
-  int last;
+  int last;    /* store the last character in the input line */
   
   if (istext)
     state_set_prefix(s);
@@ -248,31 +238,40 @@ void mutt_decode_quoted (STATE *s, long len, int istext, iconv_t cd)
   {
     last = 0;
     
-    if (fgets (line, MIN (sizeof (line), len + 1), s->fpin) == NULL)
+    /*
+     * It's ok to use a fixed size buffer for input, even if the line turns
+     * out to be longer than this.  Just process the line in chunks.  This
+     * really shouldn't happen according the MIME spec, since Q-P encoded
+     * lines are at most 76 characters, but we should be liberal about what
+     * we accept.
+     */
+    if (fgets (line, MIN ((ssize_t)sizeof (line), len + 1), s->fpin) == NULL)
       break;
 
-    len -= (l2 = strlen (line));
+    linelen = strlen(line);
+    len -= linelen;
 
-    /* 
-     * Skip over pending input data until end of line - at this
-     * point, the only thing we may see is trailing whitespace,
-     * i.e. garbage.
+    /*
+     * inspect the last character we read so we can tell if we got the
+     * entire line.
      */
+    last = linelen ? line[linelen - 1] : 0;
 
-    if (l2 && (last = line[l2 - 1]) != '\n')
-      while (len > 0 && (last = fgetc (s->fpin)) != '\n')
-	len--;
+    /* chop trailing whitespace if we got the full line */
+    if (last == '\n')
+    {
+      while (linelen > 0 && ISSPACE (line[linelen-1]))
+       linelen--;
+      line[linelen]=0;
+    }
 
-    /* 
-     * decode and do character set conversion
-     */
-    
+    /* decode and do character set conversion */
     qp_decode_line (decline + l, line, &l3, last);
     l += l3;
-    convert_to_state (cd, decline, &l, s);
+    mutt_convert_to_state (cd, decline, &l, s);
   }
 
-  convert_to_state (cd, 0, 0, s);
+  mutt_convert_to_state (cd, 0, 0, s);
   state_reset_prefix(s);
 }
 
@@ -293,8 +292,8 @@ void mutt_decode_base64 (STATE *s, long len, int istext, iconv_t cd)
     for (i = 0 ; i < 4 && len > 0 ; len--)
     {
       if ((ch = fgetc (s->fpin)) == EOF)
-	return;
-      if (!ISSPACE (ch))
+	break;
+      if (ch >= 0 && ch < 128 && (base64val(ch) != -1 || ch == '='))
 	buf[i++] = ch;
     }
     if (i != 4)
@@ -347,13 +346,13 @@ void mutt_decode_base64 (STATE *s, long len, int istext, iconv_t cd)
       bufi[l++] = ch;
     
     if (l + 8 >= sizeof (bufi))
-      convert_to_state (cd, bufi, &l, s);
+      mutt_convert_to_state (cd, bufi, &l, s);
   }
 
   if (cr) bufi[l++] = '\r';
 
-  convert_to_state (cd, bufi, &l, s);
-  convert_to_state (cd, 0, 0, s);
+  mutt_convert_to_state (cd, bufi, &l, s);
+  mutt_convert_to_state (cd, 0, 0, s);
 
   state_reset_prefix(s);
 }
@@ -406,13 +405,13 @@ void mutt_decode_uuencoded (STATE *s, long len, int istext, iconv_t cd)
 	if (c == linelen)
 	  break;
       }
-      convert_to_state (cd, bufi, &k, s);
+      mutt_convert_to_state (cd, bufi, &k, s);
       pt++;
     }
   }
 
-  convert_to_state (cd, bufi, &k, s);
-  convert_to_state (cd, 0, 0, s);
+  mutt_convert_to_state (cd, bufi, &k, s);
+  mutt_convert_to_state (cd, 0, 0, s);
   
   state_reset_prefix(s);
 }
@@ -591,7 +590,7 @@ static void enriched_flush (struct enriched_state *stte, int wrap)
     if (stte->line_used > stte->line_max)
     {
       stte->line_max = stte->line_used;
-      safe_realloc ((void **) &stte->line, stte->line_max + 1);
+      safe_realloc (&stte->line, stte->line_max + 1);
     }
     strcat (stte->line, stte->buffer);	/* __STRCAT_CHECKED__ */
     stte->line_len += stte->word_len;
@@ -610,7 +609,7 @@ static void enriched_putc (int c, struct enriched_state *stte)
     if (stte->tag_level[RICH_COLOR]) 
     {
       if (stte->param_used + 1 >= stte->param_len)
-	safe_realloc ((void **) &stte->param, (stte->param_len += STRING));
+	safe_realloc (&stte->param, (stte->param_len += STRING));
 
       stte->param[stte->param_used++] = c;
     }
@@ -621,7 +620,7 @@ static void enriched_putc (int c, struct enriched_state *stte)
   if (stte->buff_len < stte->buff_used + 3)
   {
     stte->buff_len += LONG_STRING;
-    safe_realloc ((void **) &stte->buffer, stte->buff_len + 1);
+    safe_realloc (&stte->buffer, stte->buff_len + 1);
   }
 
   if ((!stte->tag_level[RICH_NOFILL] && ISSPACE (c)) || c == '\0' )
@@ -677,7 +676,7 @@ static void enriched_puts (char *s, struct enriched_state *stte)
   if (stte->buff_len < stte->buff_used + mutt_strlen(s))
   {
     stte->buff_len += LONG_STRING;
-    safe_realloc ((void **) &stte->buffer, stte->buff_len + 1);
+    safe_realloc (&stte->buffer, stte->buff_len + 1);
   }
   c = s;
   while (*c)
@@ -767,7 +766,7 @@ static void enriched_set_flags (const char *tag, struct enriched_state *stte)
   }
 }
 
-void text_enriched_handler (BODY *a, STATE *s)
+int text_enriched_handler (BODY *a, STATE *s)
 {
   enum {
     TEXT, LANGLE, TAG, BOGUS_TAG, NEWLINE, ST_EOF, DONE
@@ -889,320 +888,40 @@ void text_enriched_handler (BODY *a, STATE *s)
   FREE (&(stte.buffer));
   FREE (&(stte.line));
   FREE (&(stte.param));
+
+  return 0;
 }                                                                              
-
-/*
- * An implementation of RFC 2646.
- *
- * NOTE: This still has to be made UTF-8 aware.
- *
- */
-
-#define FLOWED_MAX 77
-
-static void flowed_quote (STATE *s, int level)
-{
-  int i;
-  
-  if (s->prefix)
-  {
-    if (option (OPTTEXTFLOWED))
-      level++;
-    else
-      state_puts (s->prefix, s);
-  }
-  
-  for (i = 0; i < level; i++)
-    state_putc ('>', s);
-}
-
-static int flowed_maybe_quoted (char *cont)
-{
-  return regexec ((regex_t *) QuoteRegexp.rx, cont, 0, NULL, 0) == 0;
-}
-
-static void flowed_stuff (STATE *s, char *cont, int level)
-{
-  if (!option (OPTTEXTFLOWED) && !(s->flags & M_DISPLAY))
-    return;
-
-  if (s->flags & M_DISPLAY)
-  {
-    /* 
-     * Hack: If we are in the beginning of the line and there is 
-     * some text on the line which looks like it's quoted, turn off 
-     * ANSI colors, so quote coloring doesn't affect this line. 
-     */
-    if (*cont && !level && !mutt_strcmp (Pager, "builtin") && flowed_maybe_quoted (cont))
-      state_puts ("\033[0m",s);
-  }
-  else if ((*cont == ' ') || (*cont == '>') || (!level && !mutt_strncmp (cont, "From ", 5)))
-    state_putc (' ', s);
-}
-
-static char *flowed_skip_indent (char *prefix, char *cont)
-{
-  for (; *cont == ' ' || *cont == '\t'; cont++)
-    *prefix++ = *cont;
-  *prefix = '\0';
-  return cont;
-}
-
-static int flowed_visual_strlen (char *l, int i)
-{
-  int j;
-  for (j = 0; *l; l++)
-  {
-    if (*l == '\t')
-      j += 8 - ((i + j) % 8);
-    else
-      j++;
-  }
-  
-  return j;
-}
-
-static void text_plain_flowed_handler (BODY *a, STATE *s)
-{
-  char line[LONG_STRING];
-  char indent[LONG_STRING];
-
-  int  quoted = -1;
-  int  last_quoted;
-  int  full = 1;
-  int  last_full;
-  int  col = 0, tmpcol;
-
-  int  i_add = 0;
-  int  add = 0;
-  int  soft = 0;
-  int  l, rl;
-  
-  int  flowed_max;
-  int  bytes = a->length;
-  int  actually_wrap = 0;
-  
-  char *cont = NULL;
-  char *tail = NULL;
-  char *lc = NULL;
-  char *t;
-  
-  *indent = '\0';
-  
-  if (s->prefix)
-    add = 1;
-  
-  if ((flowed_max = FLOWED_MAX) > COLS - 3)
-    flowed_max = COLS - 3;
-  if (flowed_max > COLS - WrapMargin)
-    flowed_max = COLS - WrapMargin;
-  if (flowed_max <= 0)
-    flowed_max = COLS;
-    
-
-  while (bytes > 0 && fgets (line, sizeof (line), s->fpin))
-  {
-    bytes        -= strlen (line);
-    tail          = NULL;
-
-    last_full     = full;
-    
-    /* 
-     * If the last line wasn't fully read, this is the
-     * tail of some line. 
-     */
-    actually_wrap = !last_full; 
-    
-    if ((t = strrchr (line, '\r')) || (t = strrchr (line, '\n')))
-    {
-      *t   = '\0';
-      full = 1;
-    }
-    else if ((t = strrchr (line, ' ')) || (t = strrchr (line, '\t')))
-    {
-      /* 
-       * Bad: We have a line of more than LONG_STRING characters.
-       * (Which SHOULD NOT happen, since lines SHOULD be <= 79
-       * characters long.)
-       * 
-       * Try to simulate a soft line break at a word boundary.
-       * Handle the rest of the line next time.
-       * 
-       * Give up when we have a single word which is longer than
-       * LONG_STRING characters.  It will just be split into parts,
-       * with a hard line break in between. 
-       */
-
-      full = 0;
-      l    = strlen (t + 1);
-      t[0] = ' ';
-      t[1] = '\0';
-
-      if (l)
-      {
-	fseek (s->fpin, -l, SEEK_CUR);
-	bytes += l;
-      }
-    }
-    else
-      full = 0;
-
-    last_quoted = quoted;
-
-    if (last_full)
-    {
-      /* 
-       * We are in the beginning of a new line. Determine quote level
-       * and indentation prefix 
-       */
-      for (quoted = 0; line[quoted] == '>'; quoted++)
-	;
-      
-      cont = line + quoted;
-      
-      /* undo space stuffing */
-      if (*cont == ' ')
-	cont++;
-
-      /* If there is an indentation, record it. */
-      cont  = flowed_skip_indent (indent, cont);
-      i_add = flowed_visual_strlen (indent, quoted + add);
-    }
-    else
-    {
-      /* 
-       * This is just the tail of some over-long line. Keep
-       * indentation and quote levels.  Don't unstuff.
-       */
-      cont = line;
-    }
-
-    /* If we have a change in quoting depth, wrap. */
-
-    if (col && last_quoted != quoted && last_quoted >= 0)
-    {
-      state_putc ('\n', s);
-      col = 0;
-    }
-    
-    do 
-    {
-      if (tail)
-	cont = tail;
-
-      SKIPWS (cont);
-      
-      tail = NULL;
-      soft = 0;
-      
-      /* try to find a point for word wrapping */
-
-    retry_wrap:
-      l  = flowed_visual_strlen (cont, quoted + i_add + add + col);
-      rl = mutt_strlen (cont);
-      if (quoted + i_add + add + col + l > flowed_max)
-      {
-	actually_wrap = 1;
-
-	for (tmpcol = quoted + i_add + add + col, t = cont;
-	     *t && tmpcol < flowed_max; t++)
-	{
-	  if (*t == ' ' || *t == '\t')
-	    tail = t;
-	  if (*t == '\t')
-	    tmpcol = (tmpcol & ~7) + 8;
-	  else
-	    tmpcol++;
-	}
-	
-	if (tail)
-	{
-	  *tail++ = '\0';
-	  soft = 2;
-	}
-      }
-
-      /* We seem to be desperate.  Get me a new line, and retry. */
-      if (!tail && (quoted + add + col + i_add + l > flowed_max) && col)
-      {
-	state_putc ('\n', s);
-	col = 0;
-	goto retry_wrap;
-      }
-
-      /* Detect soft line breaks. */
-      if (!soft && ascii_strcmp (cont, "-- "))
-      {
-	lc = strrchr (cont, ' ');
-	if (lc && lc[1] == '\0')
-	  soft = 1;
-      }
-
-      /* 
-       * If we are in the beginning of an output line, do quoting
-       * and stuffing. 
-       * 
-       * We have to temporarily assemble the line since display
-       * stuffing (i.e., turning off quote coloring) may depend on
-       * the line's actual content.  You never know what people put
-       * into their regular expressions. 
-       */
-      if (!col)
-      {
-	char tmp[LONG_STRING];
-	snprintf (tmp, sizeof (tmp), "%s%s", indent, cont);
-
-	flowed_quote (s, quoted);
-	flowed_stuff (s, tmp, quoted + add);
-
-	state_puts (indent, s);
-      }
-
-      /* output the text */
-      state_puts (cont, s);
-      col += flowed_visual_strlen (cont, quoted + i_add + add + col);
-      
-      /* possibly indicate a soft line break */
-      if (soft == 2)
-      {
-	state_putc (' ', s);
-	col++;
-      }
-      
-      /* 
-       * Wrap if this display line corresponds to a 
-       * text line. Don't wrap if we changed the line.
-       */
-      if (!soft || (!actually_wrap && full))
-      {
-	state_putc ('\n', s);
-	col = 0;
-      }
-    }
-    while (tail);
-  }
-
-  if (col)
-    state_putc ('\n', s);
-  
-}
-
-
-
-
-
 
 #define TXTHTML     1
 #define TXTPLAIN    2
 #define TXTENRICHED 3
 
-static void alternative_handler (BODY *a, STATE *s)
+static int alternative_handler (BODY *a, STATE *s)
 {
   BODY *choice = NULL;
   BODY *b;
   LIST *t;
   char buf[STRING];
   int type = 0;
+  int mustfree = 0;
+  int rc = 0;
+
+  if (a->encoding == ENCBASE64 || a->encoding == ENCQUOTEDPRINTABLE ||
+      a->encoding == ENCUUENCODED)
+  {
+    struct stat st;
+    mustfree = 1;
+    fstat (fileno (s->fpin), &st);
+    b = mutt_new_body ();
+    b->length = (long) st.st_size;
+    b->parts = mutt_parse_multipart (s->fpin,
+		  mutt_get_parameter ("boundary", a->parameter),
+		  (long) st.st_size, ascii_strcasecmp ("digest", a->subtype) == 0);
+  }
+  else
+    b = a;
+
+  a = b;
 
   /* First, search list of prefered types */
   t = AlternativeOrderList;
@@ -1318,7 +1037,7 @@ static void alternative_handler (BODY *a, STATE *s)
   {
     if (s->flags & M_DISPLAY && !option (OPTWEED))
     {
-      fseek (s->fpin, choice->hdr_offset, 0);
+      fseeko (s->fpin, choice->hdr_offset, 0);
       mutt_copy_bytes(s->fpin, s->fpout, choice->offset-choice->hdr_offset);
     }
     mutt_body_handler (choice, s);
@@ -1328,23 +1047,30 @@ static void alternative_handler (BODY *a, STATE *s)
     /* didn't find anything that we could display! */
     state_mark_attach (s);
     state_puts(_("[-- Error:  Could not display any parts of Multipart/Alternative! --]\n"), s);
+    rc = -1;
   }
+
+  if (mustfree)
+    mutt_free_body(&a);
+
+  return rc;
 }
 
 /* handles message/rfc822 body parts */
-void message_handler (BODY *a, STATE *s)
+int message_handler (BODY *a, STATE *s)
 {
   struct stat st;
   BODY *b;
-  long off_start;
+  LOFF_T off_start;
+  int rc = 0;
 
-  off_start = ftell (s->fpin);
+  off_start = ftello (s->fpin);
   if (a->encoding == ENCBASE64 || a->encoding == ENCQUOTEDPRINTABLE || 
       a->encoding == ENCUUENCODED)
   {
     fstat (fileno (s->fpin), &st);
     b = mutt_new_body ();
-    b->length = (long) st.st_size;
+    b->length = (LOFF_T) st.st_size;
     b->parts = mutt_parse_messageRFC822 (s->fpin, b);
   }
   else
@@ -1360,12 +1086,14 @@ void message_handler (BODY *a, STATE *s)
       state_puts (s->prefix, s);
     state_putc ('\n', s);
 
-    mutt_body_handler (b->parts, s);
+    rc = mutt_body_handler (b->parts, s);
   }
 
   if (a->encoding == ENCBASE64 || a->encoding == ENCQUOTEDPRINTABLE ||
       a->encoding == ENCUUENCODED)
     mutt_free_body (&b);
+  
+  return rc;
 }
 
 /* returns 1 if decoding the attachment will produce output */
@@ -1382,50 +1110,40 @@ int mutt_can_decode (BODY *a)
     return (1);
   else if (a->type == TYPEMULTIPART)
   {
+    BODY *p;
 
-
-
-#ifdef HAVE_PGP
-    if (ascii_strcasecmp (a->subtype, "signed") == 0 ||
-	ascii_strcasecmp (a->subtype, "encrypted") == 0)
-      return (1);
-    else
-#endif
-
-
-
+    if (WithCrypto)
     {
-      BODY *p;
-
-      for (p = a->parts; p; p = p->next)
-      {
-	if (mutt_can_decode (p))
-	  return (1);
-      }
+      if (ascii_strcasecmp (a->subtype, "signed") == 0 ||
+	  ascii_strcasecmp (a->subtype, "encrypted") == 0)
+        return (1);
     }
+
+    for (p = a->parts; p; p = p->next)
+    {
+      if (mutt_can_decode (p))
+        return (1);
+    }
+    
   }
-
-
-
-#ifdef HAVE_PGP
-  else if (a->type == TYPEAPPLICATION)
+  else if (WithCrypto && a->type == TYPEAPPLICATION)
   {
-    if (mutt_is_application_pgp(a))
+    if ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp(a))
+      return (1);
+    if ((WithCrypto & APPLICATION_SMIME) && mutt_is_application_smime(a))
       return (1);
   }
-#endif
-
-
 
   return (0);
 }
 
-void multipart_handler (BODY *a, STATE *s)
+int multipart_handler (BODY *a, STATE *s)
 {
   BODY *b, *p;
   char length[5];
   struct stat st;
   int count;
+  int rc = 0;
 
   if (a->encoding == ENCBASE64 || a->encoding == ENCQUOTEDPRINTABLE ||
       a->encoding == ENCUUENCODED)
@@ -1461,7 +1179,7 @@ void multipart_handler (BODY *a, STATE *s)
 		    TYPE (p), p->subtype, ENCODING (p->encoding), length);
       if (!option (OPTWEED))
       {
-	fseek (s->fpin, p->hdr_offset, 0);
+	fseeko (s->fpin, p->hdr_offset, 0);
 	mutt_copy_bytes(s->fpin, s->fpout, p->offset-p->hdr_offset);
       }
       else
@@ -1476,16 +1194,21 @@ void multipart_handler (BODY *a, STATE *s)
 	state_printf(s, "%s: \n", p->form_name);
 
     }
-    mutt_body_handler (p, s);
+    rc = mutt_body_handler (p, s);
     state_putc ('\n', s);
+    if (rc || ((s->flags & M_REPLYING)
+               && (option (OPTINCLUDEONLYFIRST)) && (s->flags & M_FIRSTDONE)))
+      break;
   }
 
   if (a->encoding == ENCBASE64 || a->encoding == ENCQUOTEDPRINTABLE ||
       a->encoding == ENCUUENCODED)
     mutt_free_body (&b);
+  
+  return rc;
 }
 
-void autoview_handler (BODY *a, STATE *s)
+int autoview_handler (BODY *a, STATE *s)
 {
   rfc1524_entry *entry = rfc1524_new_entry ();
   char buffer[LONG_STRING];
@@ -1498,6 +1221,7 @@ void autoview_handler (BODY *a, STATE *s)
   FILE *fperr = NULL;
   int piped = FALSE;
   pid_t thepid;
+  int rc = 0;
 
   snprintf (type, sizeof (type), "%s/%s", TYPE (a), a->subtype);
   rfc1524_mailcap_lookup (a, type, entry, M_AUTOVIEW);
@@ -1525,7 +1249,7 @@ void autoview_handler (BODY *a, STATE *s)
     {
       mutt_perror ("fopen");
       rfc1524_free_entry (&entry);
-      return;
+      return -1;
     }
     
     mutt_copy_bytes (s->fpin, fpin, a->length);
@@ -1552,6 +1276,7 @@ void autoview_handler (BODY *a, STATE *s)
 	state_mark_attach (s);
 	state_printf (s, _("[-- Can't run %s. --]\n"), command);
       }
+      rc = -1;
       goto bail;
     }
     
@@ -1612,9 +1337,11 @@ void autoview_handler (BODY *a, STATE *s)
       mutt_clear_error ();
   }
   rfc1524_free_entry (&entry);
+
+  return rc;
 }
 
-static void external_body_handler (BODY *b, STATE *s)
+static int external_body_handler (BODY *b, STATE *s)
 {
   const char *access_type;
   const char *expiration;
@@ -1628,7 +1355,7 @@ static void external_body_handler (BODY *b, STATE *s)
       state_mark_attach (s);
       state_puts (_("[-- Error: message/external-body has no access-type parameter --]\n"), s);
     }
-    return;
+    return -1;
   }
 
   expiration = mutt_get_parameter ("expiration", b->parameter);
@@ -1667,7 +1394,7 @@ static void external_body_handler (BODY *b, STATE *s)
 	state_printf (s, _("[-- name: %s --]\n"), b->parts->filename);
       }
 
-      mutt_copy_hdr (s->fpin, s->fpout, ftell (s->fpin), b->parts->offset,
+      mutt_copy_hdr (s->fpin, s->fpout, ftello (s->fpin), b->parts->offset,
 		     (option (OPTWEED) ? (CH_WEED | CH_REORDER) : 0) |
 		     CH_DECODE , NULL);
     }
@@ -1682,7 +1409,7 @@ static void external_body_handler (BODY *b, STATE *s)
       state_attach_puts (_("[-- and the indicated external source has --]\n"
 			   "[-- expired. --]\n"), s);
 
-      mutt_copy_hdr(s->fpin, s->fpout, ftell (s->fpin), b->parts->offset,
+      mutt_copy_hdr(s->fpin, s->fpout, ftello (s->fpin), b->parts->offset,
 		    (option (OPTWEED) ? (CH_WEED | CH_REORDER) : 0) |
 		    CH_DECODE, NULL);
     }
@@ -1699,39 +1426,45 @@ static void external_body_handler (BODY *b, STATE *s)
       state_printf (s, 
 		    _("[-- and the indicated access-type %s is unsupported --]\n"),
 		    access_type);
-      mutt_copy_hdr (s->fpin, s->fpout, ftell (s->fpin), b->parts->offset,
+      mutt_copy_hdr (s->fpin, s->fpout, ftello (s->fpin), b->parts->offset,
 		     (option (OPTWEED) ? (CH_WEED | CH_REORDER) : 0) |
 		     CH_DECODE , NULL);
     }
   }
+  
+  return 0;
 }
 
 void mutt_decode_attachment (BODY *b, STATE *s)
 {
-  int istext = mutt_is_text_type (b->type, b->subtype);
+  int istext = mutt_is_text_part (b);
   iconv_t cd = (iconv_t)(-1);
 
   if (istext && s->flags & M_CHARCONV)
   {
     char *charset = mutt_get_parameter ("charset", b->parameter);
+    if (!charset && AssumedCharset && *AssumedCharset)
+      charset = mutt_get_default_charset ();
     if (charset && Charset)
       cd = mutt_iconv_open (Charset, charset, M_ICONV_HOOK_FROM);
   }
+  else if (istext && b->charset)
+    cd = mutt_iconv_open (Charset, b->charset, M_ICONV_HOOK_FROM);
 
-  fseek (s->fpin, b->offset, 0);
+  fseeko (s->fpin, b->offset, 0);
   switch (b->encoding)
   {
     case ENCQUOTEDPRINTABLE:
-      mutt_decode_quoted (s, b->length, istext, cd);
+      mutt_decode_quoted (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd);
       break;
     case ENCBASE64:
-      mutt_decode_base64 (s, b->length, istext, cd);
+      mutt_decode_base64 (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd);
       break;
     case ENCUUENCODED:
-      mutt_decode_uuencoded (s, b->length, istext, cd);
+      mutt_decode_uuencoded (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd);
       break;
     default:
-      mutt_decode_xbit (s, b->length, istext, cd);
+      mutt_decode_xbit (s, b->length, istext || ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b)), cd);
       break;
   }
 
@@ -1739,7 +1472,7 @@ void mutt_decode_attachment (BODY *b, STATE *s)
     iconv_close (cd);
 }
 
-void mutt_body_handler (BODY *b, STATE *s)
+int mutt_body_handler (BODY *b, STATE *s)
 {
   int decode = 0;
   int plaintext = 0;
@@ -1749,6 +1482,7 @@ void mutt_body_handler (BODY *b, STATE *s)
   long tmpoffset = 0;
   size_t tmplength = 0;
   char type[STRING];
+  int rc = 0;
 
   int oflags = s->flags;
   
@@ -1773,14 +1507,16 @@ void mutt_body_handler (BODY *b, STATE *s)
       /* avoid copying this part twice since removing the transfer-encoding is
        * the only operation needed.
        */
-      if (ascii_strcasecmp ("flowed", mutt_get_parameter ("format", b->parameter)) == 0)
-	handler = text_plain_flowed_handler;
+      if ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b))
+	handler = crypt_pgp_application_pgp_handler;
+      else if (ascii_strcasecmp ("flowed", mutt_get_parameter ("format", b->parameter)) == 0)
+	handler = rfc3676_handler;
       else
 	plaintext = 1;
     }
     else if (ascii_strcasecmp ("enriched", b->subtype) == 0)
       handler = text_enriched_handler;
-    else if (ascii_strcasecmp ("rfc822-headers", b->subtype) == 0)
+    else /* text body type without a handler */
       plaintext = 1;
   }
   else if (b->type == TYPEMESSAGE)
@@ -1794,71 +1530,50 @@ void mutt_body_handler (BODY *b, STATE *s)
   }
   else if (b->type == TYPEMULTIPART)
   {
-
-
-
-#ifdef HAVE_PGP
     char *p;
-#endif /* HAVE_PGP */
-
-
 
     if (ascii_strcasecmp ("alternative", b->subtype) == 0)
       handler = alternative_handler;
-
-
-
-#ifdef HAVE_PGP
-    else if (ascii_strcasecmp ("signed", b->subtype) == 0)
+    else if (WithCrypto && ascii_strcasecmp ("signed", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
         mutt_error _("Error: multipart/signed has no protocol.");
-      else if (ascii_strcasecmp ("application/pgp-signature", p) == 0 ||
-	       ascii_strcasecmp ("multipart/mixed", p) == 0)
-      {
-	if (s->flags & M_VERIFY)
-	  handler = pgp_signed_handler;
-      }
+      else if (s->flags & M_VERIFY)
+	handler = mutt_signed_handler;
     }
-    else if (ascii_strcasecmp ("encrypted", b->subtype) == 0)
+    else if ((WithCrypto & APPLICATION_PGP)
+             && ascii_strcasecmp ("encrypted", b->subtype) == 0)
     {
       p = mutt_get_parameter ("protocol", b->parameter);
 
       if (!p)
         mutt_error _("Error: multipart/encrypted has no protocol parameter!");
       else if (ascii_strcasecmp ("application/pgp-encrypted", p) == 0)
-        handler = pgp_encrypted_handler;
+        handler = crypt_pgp_encrypted_handler;
     }
-#endif /* HAVE_PGP */
-
-
 
     if (!handler)
       handler = multipart_handler;
   }
-
-
-
-#ifdef HAVE_PGP
-  else if (b->type == TYPEAPPLICATION)
+  else if (WithCrypto && b->type == TYPEAPPLICATION)
   {
-    if (mutt_is_application_pgp(b))
-      handler = pgp_application_pgp_handler;
+    if ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b))
+      handler = crypt_pgp_application_pgp_handler;
+    if ((WithCrypto & APPLICATION_SMIME) && mutt_is_application_smime(b))
+      handler = crypt_smime_application_smime_handler;
   }
-#endif /* HAVE_PGP */
-
 
 
   if (plaintext || handler)
   {
-    fseek (s->fpin, b->offset, 0);
+    fseeko (s->fpin, b->offset, 0);
 
     /* see if we need to decode this part before processing it */
     if (b->encoding == ENCBASE64 || b->encoding == ENCQUOTEDPRINTABLE ||
 	b->encoding == ENCUUENCODED || plaintext || 
-	mutt_is_text_type (b->type, b->subtype))	/* text subtypes may
+	mutt_is_text_part (b))				/* text subtypes may
 							 * require character
 							 * set conversion even
 							 * with 8bit encoding.
@@ -1898,7 +1613,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 
       if (decode)
       {
-	b->length = ftell (s->fpout);
+	b->length = ftello (s->fpout);
 	b->offset = 0;
 	fclose (s->fpout);
 
@@ -1918,7 +1633,7 @@ void mutt_body_handler (BODY *b, STATE *s)
     /* process the (decoded) body part */
     if (handler)
     {
-      handler (b, s);
+      rc = handler (b, s);
 
       if (decode)
       {
@@ -1930,6 +1645,7 @@ void mutt_body_handler (BODY *b, STATE *s)
 	s->fpin = fp;
       }
     }
+    s->flags |= M_FIRSTDONE;
   }
   else if (s->flags & M_DISPLAY)
   {
@@ -1945,7 +1661,9 @@ void mutt_body_handler (BODY *b, STATE *s)
     }
     fputs (" --]\n", s->fpout);
   }
-  
+
   bail:
-  s->flags = oflags;
+  s->flags = oflags | (s->flags & M_FIRSTDONE);
+
+  return rc;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,13 +13,18 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
 
 /* Close approximation of the mailx(1) builtin editor for sending mail. */
 
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include "mutt.h"
 #include "mutt_curses.h"
+#include "mutt_idna.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -33,7 +38,7 @@
  * SLcurses_waddnstr() can't take a "const char *", so this is only
  * declared "static" (sigh)
  */
-static char* EditorHelp = N_("\
+static char* EditorHelp1 = N_("\
 ~~		insert a line begining with a single ~\n\
 ~b users	add users to the Bcc: field\n\
 ~c users	add users to the Cc: field\n\
@@ -42,7 +47,9 @@ static char* EditorHelp = N_("\
 ~h		edit the message header\n\
 ~m messages	include and quote messages\n\
 ~M messages	same as ~m, except include headers\n\
-~p		print the message\n\
+~p		print the message\n");
+
+static char* EditorHelp2 = N_("\
 ~q		write file and quit editor\n\
 ~r file		read a file into the editor\n\
 ~t users	add users to the To: field\n\
@@ -54,7 +61,7 @@ static char* EditorHelp = N_("\
 .		on a line by itself ends input\n");
 
 static char **
-be_snarf_data (FILE *f, char **buf, int *bufmax, int *buflen, int offset,
+be_snarf_data (FILE *f, char **buf, int *bufmax, int *buflen, LOFF_T offset,
 	       int bytes, int prefix)
 {
   char tmp[HUGE_STRING];
@@ -70,17 +77,17 @@ be_snarf_data (FILE *f, char **buf, int *bufmax, int *buflen, int offset,
     tmplen = sizeof (tmp) - tmplen;
   }
 
-  fseek (f, offset, 0);
+  fseeko (f, offset, 0);
   while (bytes > 0)
   {
     if (fgets (p, tmplen - 1, f) == NULL) break;
     bytes -= mutt_strlen (p);
     if (*bufmax == *buflen)
-      safe_realloc ((void **)&buf, sizeof (char *) * (*bufmax += 25));
+      safe_realloc (&buf, sizeof (char *) * (*bufmax += 25));
     buf[(*buflen)++] = safe_strdup (tmp);
   }
   if (buf && *bufmax == *buflen) { /* Do not smash memory past buf */
-    safe_realloc ((void **)&buf, sizeof (char *) * (++*bufmax));
+    safe_realloc (&buf, sizeof (char *) * (++*bufmax));
   }
   if (buf) buf[*buflen] = NULL;
   return (buf);
@@ -159,7 +166,7 @@ be_include_messages (char *msg, char **buf, int *bufmax, int *buflen,
       }
 
       if (*bufmax == *buflen)
-	safe_realloc ((void **) &buf, sizeof (char *) * (*bufmax += 25));
+	safe_realloc ( &buf, sizeof (char *) * (*bufmax += 25));
       buf[(*buflen)++] = safe_strdup (tmp);
 
       bytes = Context->hdrs[n]->content->length;
@@ -174,7 +181,7 @@ be_include_messages (char *msg, char **buf, int *bufmax, int *buflen,
 			   pfx);
 
       if (*bufmax == *buflen)
-	safe_realloc ((void **)&buf, sizeof (char *) * (*bufmax += 25));
+	safe_realloc (&buf, sizeof (char *) * (*bufmax += 25));
       buf[(*buflen)++] = safe_strdup ("\n");
     }
     else
@@ -192,7 +199,7 @@ static void be_print_header (ENVELOPE *env)
   {
     addstr ("To: ");
     tmp[0] = 0;
-    rfc822_write_address (tmp, sizeof (tmp), env->to);
+    rfc822_write_address (tmp, sizeof (tmp), env->to, 1);
     addstr (tmp);
     addch ('\n');
   }
@@ -200,7 +207,7 @@ static void be_print_header (ENVELOPE *env)
   {
     addstr ("Cc: ");
     tmp[0] = 0;
-    rfc822_write_address (tmp, sizeof (tmp), env->cc);
+    rfc822_write_address (tmp, sizeof (tmp), env->cc, 1);
     addstr (tmp);
     addch ('\n');
   }
@@ -208,7 +215,7 @@ static void be_print_header (ENVELOPE *env)
   {
     addstr ("Bcc: ");
     tmp[0] = 0;
-    rfc822_write_address (tmp, sizeof (tmp), env->bcc);
+    rfc822_write_address (tmp, sizeof (tmp), env->bcc, 1);
     addstr (tmp);
     addch ('\n');
   }
@@ -232,7 +239,8 @@ static void be_edit_header (ENVELOPE *e, int force)
 
   addstr ("To: ");
   tmp[0] = 0;
-  rfc822_write_address (tmp, sizeof (tmp), e->to);
+  mutt_addrlist_to_local (e->to);
+  rfc822_write_address (tmp, sizeof (tmp), e->to, 0);
   if (!e->to || force)
   {
     if (mutt_enter_string (tmp, sizeof (tmp), LINES-1, 4, 0) == 0)
@@ -240,13 +248,15 @@ static void be_edit_header (ENVELOPE *e, int force)
       rfc822_free_address (&e->to);
       e->to = mutt_parse_adrlist (e->to, tmp);
       e->to = mutt_expand_aliases (e->to);
+      mutt_addrlist_to_idna (e->to, NULL);	/* XXX - IDNA error reporting? */
       tmp[0] = 0;
-      rfc822_write_address (tmp, sizeof (tmp), e->to);
+      rfc822_write_address (tmp, sizeof (tmp), e->to, 1);
       mvaddstr (LINES - 1, 4, tmp);
     }
   }
   else
   {
+    mutt_addrlist_to_idna (e->to, NULL);	/* XXX - IDNA error reporting? */
     addstr (tmp);
   }
   addch ('\n');
@@ -264,16 +274,20 @@ static void be_edit_header (ENVELOPE *e, int force)
   {
     addstr ("Cc: ");
     tmp[0] = 0;
-    rfc822_write_address (tmp, sizeof (tmp), e->cc);
+    mutt_addrlist_to_local (e->cc);
+    rfc822_write_address (tmp, sizeof (tmp), e->cc, 0);
     if (mutt_enter_string (tmp, sizeof (tmp), LINES-1, 4, 0) == 0)
     {
       rfc822_free_address (&e->cc);
       e->cc = mutt_parse_adrlist (e->cc, tmp);
       e->cc = mutt_expand_aliases (e->cc);
       tmp[0] = 0;
-      rfc822_write_address (tmp, sizeof (tmp), e->cc);
+      mutt_addrlist_to_idna (e->cc, NULL);
+      rfc822_write_address (tmp, sizeof (tmp), e->cc, 1);
       mvaddstr (LINES - 1, 4, tmp);
     }
+    else
+      mutt_addrlist_to_idna (e->cc, NULL);
     addch ('\n');
   }
 
@@ -281,16 +295,20 @@ static void be_edit_header (ENVELOPE *e, int force)
   {
     addstr ("Bcc: ");
     tmp[0] = 0;
-    rfc822_write_address (tmp, sizeof (tmp), e->bcc);
+    mutt_addrlist_to_local (e->bcc);
+    rfc822_write_address (tmp, sizeof (tmp), e->bcc, 0);
     if (mutt_enter_string (tmp, sizeof (tmp), LINES-1, 5, 0) == 0)
     {
       rfc822_free_address (&e->bcc);
       e->bcc = mutt_parse_adrlist (e->bcc, tmp);
       e->bcc = mutt_expand_aliases (e->bcc);
+      mutt_addrlist_to_idna (e->bcc, NULL);
       tmp[0] = 0;
-      rfc822_write_address (tmp, sizeof (tmp), e->bcc);
+      rfc822_write_address (tmp, sizeof (tmp), e->bcc, 1);
       mvaddstr (LINES - 1, 5, tmp);
     }
+    else
+      mutt_addrlist_to_idna (e->bcc, NULL);
     addch ('\n');
   }
 }
@@ -336,7 +354,8 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
       switch (tmp[1])
       {
 	case '?':
-	  addstr (_(EditorHelp));
+	  addstr (_(EditorHelp1));
+          addstr (_(EditorHelp2));
 	  break;
 	case 'b':
 	  msg->env->bcc = mutt_parse_adrlist (msg->env->bcc, p);
@@ -415,12 +434,18 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
 	case 'v':
 	  if (be_barf_file (path, buf, buflen) == 0)
 	  {
+	    char *tag, *err;
 	    be_free_memory (buf, buflen);
 	    buf = NULL;
 	    bufmax = buflen = 0;
 
 	    if (option (OPTEDITHDRS))
+	    {
+	      mutt_env_to_local (msg->env);
 	      mutt_edit_headers (NONULL(Visual), path, msg, NULL, 0);
+	      if (mutt_env_to_idna (msg->env, &tag, &err))
+		printw (_("Bad IDN in %s: '%s'\n"), tag, err);
+	    }
 	    else
 	      mutt_edit_file (NONULL(Visual), path);
 
@@ -445,9 +470,9 @@ int mutt_builtin_editor (const char *path, HEADER *msg, HEADER *cur)
       done = 1;
     else
     {
-      strncat (tmp, "\n", sizeof(tmp)); tmp[sizeof(tmp) - 1] = '\0';
+      safe_strcat (tmp, sizeof (tmp), "\n");
       if (buflen == bufmax)
-	safe_realloc ((void **)&buf, sizeof (char *) * (bufmax += 25));
+	safe_realloc (&buf, sizeof (char *) * (bufmax += 25));
       buf[buflen++] = safe_strdup (tmp[1] == '~' ? tmp + 1 : tmp);
     }
     

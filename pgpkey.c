@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996,1997 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (c) 1998,1999 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996,1997 Michael R. Elkins <me@mutt.org>
+ * Copyright (c) 1998,1999 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -16,9 +16,13 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 59 Temple Place - Suite 330,
- *     Boston, MA  02111, USA.
+ *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *     Boston, MA  02110-1301, USA.
  */
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -37,7 +41,7 @@
 
 #include <locale.h>
 
-#ifdef HAVE_PGP
+#ifdef CRYPT_BACKEND_CLASSIC_PGP
 
 struct pgp_cache
 {
@@ -87,7 +91,7 @@ static char pgp_flags (int flags)
     return ' ';
 }
 
-static pgp_key_t *pgp_principal_key (pgp_key_t *key)
+static pgp_key_t pgp_principal_key (pgp_key_t key)
 {
   if (key->flags & KEYFLAG_SUBKEY && key->parent)
     return key->parent;
@@ -117,6 +121,7 @@ typedef struct pgp_entry
 
 static const char *pgp_entry_fmt (char *dest,
 				  size_t destlen,
+				  size_t col,
 				  char op,
 				  const char *src,
 				  const char *prefix,
@@ -128,7 +133,7 @@ static const char *pgp_entry_fmt (char *dest,
   char fmt[16];
   pgp_entry_t *entry;
   pgp_uid_t *uid;
-  pgp_key_t *key, *pkey;
+  pgp_key_t key, pkey;
   int kflags = 0;
   int optional = (flags & M_FORMAT_OPTIONAL);
 
@@ -273,9 +278,9 @@ static const char *pgp_entry_fmt (char *dest,
   }
 
   if (optional)
-    mutt_FormatString (dest, destlen, ifstring, mutt_attach_fmt, data, 0);
+    mutt_FormatString (dest, destlen, col, ifstring, mutt_attach_fmt, data, 0);
   else if (flags & M_FORMAT_OPTIONAL)
-    mutt_FormatString (dest, destlen, elsestring, mutt_attach_fmt, data, 0);
+    mutt_FormatString (dest, destlen, col, elsestring, mutt_attach_fmt, data, 0);
   return (src);
 }
       
@@ -287,7 +292,7 @@ static void pgp_entry (char *s, size_t l, MUTTMENU * menu, int num)
   entry.uid = KeyTable[num];
   entry.num = num + 1;
 
-  mutt_FormatString (s, l, NONULL (PgpEntryFormat), pgp_entry_fmt, 
+  mutt_FormatString (s, l, 0, NONULL (PgpEntryFormat), pgp_entry_fmt, 
 		     (unsigned long) &entry, M_FORMAT_ARROWCURSOR);
 }
 
@@ -378,9 +383,9 @@ static int pgp_compare_trust (const void *a, const void *b)
 				       : _pgp_compare_trust (a, b));
 }
 
-static int pgp_key_is_valid (pgp_key_t *k)
+static int pgp_key_is_valid (pgp_key_t k)
 {
-  pgp_key_t *pk = pgp_principal_key (k);
+  pgp_key_t pk = pgp_principal_key (k);
   if (k->flags & KEYFLAG_CANTUSE)
     return 0;
   if (pk->flags & KEYFLAG_CANTUSE)
@@ -435,18 +440,18 @@ static int pgp_id_matches_addr (ADDRESS *addr, ADDRESS *u_addr, pgp_uid_t *uid)
   return rv;
 }
 
-static pgp_key_t *pgp_select_key (pgp_key_t *keys,
-				  ADDRESS * p, const char *s)
+static pgp_key_t pgp_select_key (pgp_key_t keys,
+                                 ADDRESS * p, const char *s)
 {
   int keymax;
   pgp_uid_t **KeyTable;
   MUTTMENU *menu;
   int i, done = 0;
-  char helpstr[SHORT_STRING], buf[LONG_STRING], tmpbuf[STRING];
+  char helpstr[LONG_STRING], buf[LONG_STRING], tmpbuf[STRING];
   char cmd[LONG_STRING], tempfile[_POSIX_PATH_MAX];
   FILE *fp, *devnull;
   pid_t thepid;
-  pgp_key_t *kp;
+  pgp_key_t kp;
   pgp_uid_t *a;
   int (*f) (const void *, const void *);
 
@@ -474,7 +479,7 @@ static pgp_key_t *pgp_select_key (pgp_key_t *keys,
       if (i == keymax)
       {
 	keymax += 5;
-	safe_realloc ((void **) &KeyTable, sizeof (pgp_key_t *) * keymax);
+	safe_realloc (&KeyTable, sizeof (pgp_uid_t *) * keymax);
       }
       
       KeyTable[i++] = a;
@@ -483,7 +488,7 @@ static pgp_key_t *pgp_select_key (pgp_key_t *keys,
 
   if (!i && unusable)
   {
-    mutt_error _("All matching keys are marked expired/revoked.");
+    mutt_error _("All matching keys are expired, revoked, or disabled.");
     mutt_sleep (1);
     return NULL;
   }
@@ -504,7 +509,7 @@ static pgp_key_t *pgp_select_key (pgp_key_t *keys,
       f = pgp_compare_trust;
       break;
   }
-  qsort (KeyTable, i, sizeof (pgp_key_t *), f);
+  qsort (KeyTable, i, sizeof (pgp_uid_t *), f);
 
   helpstr[0] = 0;
   mutt_make_help (buf, sizeof (buf), _("Exit  "), MENU_PGP, OP_EXIT);
@@ -622,7 +627,7 @@ static pgp_key_t *pgp_select_key (pgp_key_t *keys,
 	snprintf (buff, sizeof (buff), _("%s Do you really want to use the key?"),
 		  _(s));
 
-	if (mutt_yesorno (buff, 0) != 1)
+	if (mutt_yesorno (buff, M_NO) != M_YES)
 	{
 	  mutt_clear_error ();
 	  break;
@@ -646,17 +651,17 @@ static pgp_key_t *pgp_select_key (pgp_key_t *keys,
   }
 
   mutt_menuDestroy (&menu);
-  safe_free ((void **) &KeyTable);
+  FREE (&KeyTable);
 
   set_option (OPTNEEDREDRAW);
   
   return (kp);
 }
 
-pgp_key_t *pgp_ask_for_key (char *tag, char *whatfor,
-			    short abilities, pgp_ring_t keyring)
+pgp_key_t pgp_ask_for_key (char *tag, char *whatfor,
+                           short abilities, pgp_ring_t keyring)
 {
-  pgp_key_t *key;
+  pgp_key_t key;
   char resp[SHORT_STRING];
   struct pgp_cache *l = NULL;
 
@@ -714,7 +719,7 @@ BODY *pgp_make_key_attachment (char *tempf)
   FILE *devnull;
   struct stat sb;
   pid_t thepid;
-  pgp_key_t *key;
+  pgp_key_t key;
   unset_option (OPTPGPCHECKTRUST);
 
   key = pgp_ask_for_key (_("Please enter the key ID: "), NULL, 0, PGP_PUBRING);
@@ -745,7 +750,7 @@ BODY *pgp_make_key_attachment (char *tempf)
     return NULL;
   }
 
-  mutt_message _("Invoking pgp...");
+  mutt_message _("Invoking PGP...");
 
   
   if ((thepid = 
@@ -795,11 +800,11 @@ static LIST *pgp_add_string_to_hints (LIST *hints, const char *str)
       hints = mutt_add_list (hints, t);
   }
 
-  safe_free ((void **) &scratch);
+  FREE (&scratch);
   return hints;
 }
 
-static pgp_key_t **pgp_get_lastp (pgp_key_t *p)
+static pgp_key_t *pgp_get_lastp (pgp_key_t p)
 {
   for (; p; p = p->next)
     if (!p->next)
@@ -808,7 +813,7 @@ static pgp_key_t **pgp_get_lastp (pgp_key_t *p)
   return NULL;
 }
 
-pgp_key_t *pgp_getkeybyaddr (ADDRESS * a, short abilities, pgp_ring_t keyring)
+pgp_key_t pgp_getkeybyaddr (ADDRESS * a, short abilities, pgp_ring_t keyring)
 {
   ADDRESS *r, *p;
   LIST *hints = NULL;
@@ -821,10 +826,10 @@ pgp_key_t *pgp_getkeybyaddr (ADDRESS * a, short abilities, pgp_ring_t keyring)
   int this_key_has_invalid;
   int match;
 
-  pgp_key_t *keys, *k, *kn;
-  pgp_key_t *the_valid_key = NULL;
-  pgp_key_t *matches = NULL;
-  pgp_key_t **last = &matches;
+  pgp_key_t keys, k, kn;
+  pgp_key_t the_valid_key = NULL;
+  pgp_key_t matches = NULL;
+  pgp_key_t *last = &matches;
   pgp_uid_t *q;
   
   if (a && a->mailbox)
@@ -910,13 +915,11 @@ pgp_key_t *pgp_getkeybyaddr (ADDRESS * a, short abilities, pgp_ring_t keyring)
   
   if (matches)
   {
-    if (the_valid_key && !multi && !weak 
-	&& !(invalid && option (OPTPGPSHOWUNUSABLE)))
-    {	
-      /* 
-       * There was precisely one strong match on a valid ID, there
-       * were no valid keys with weak matches, and we aren't
-       * interested in seeing invalid keys.
+    if (the_valid_key && !multi /* && !weak 
+	&& !(invalid && option (OPTPGPSHOWUNUSABLE)) */)
+    {
+      /*
+       * There was precisely one strong match on a valid ID.
        * 
        * Proceed without asking the user.
        */
@@ -940,13 +943,13 @@ pgp_key_t *pgp_getkeybyaddr (ADDRESS * a, short abilities, pgp_ring_t keyring)
   return NULL;
 }
 
-pgp_key_t *pgp_getkeybystr (char *p, short abilities, pgp_ring_t keyring)
+pgp_key_t pgp_getkeybystr (char *p, short abilities, pgp_ring_t keyring)
 {
   LIST *hints = NULL;
-  pgp_key_t *keys;
-  pgp_key_t *matches = NULL;
-  pgp_key_t **last = &matches;
-  pgp_key_t *k, *kn;
+  pgp_key_t keys;
+  pgp_key_t matches = NULL;
+  pgp_key_t *last = &matches;
+  pgp_key_t k, kn;
   pgp_uid_t *a;
   short match;
 
@@ -1008,4 +1011,4 @@ pgp_key_t *pgp_getkeybystr (char *p, short abilities, pgp_ring_t keyring)
 
 
 
-#endif /* HAVE_PGP */
+#endif /* CRYPT_BACKEND_CLASSIC_PGP */

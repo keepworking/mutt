@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,8 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
@@ -36,6 +40,8 @@ static char *get_sort_str (char *buf, size_t buflen, int method)
   return buf;
 }
 
+static void _menu_status_line (char *buf, size_t buflen, size_t col, MUTTMENU *menu, const char *p);
+
 /* %b = number of incoming folders with unread messages [option]
  * %d = number of deleted messages [option]
  * %f = full mailbox path
@@ -54,7 +60,7 @@ static char *get_sort_str (char *buf, size_t buflen, int method)
  * %v = Mutt version 
  * %V = currently active limit pattern [option] */
 static const char *
-status_format_str (char *buf, size_t buflen, char op, const char *src,
+status_format_str (char *buf, size_t buflen, size_t col, char op, const char *src,
 		   const char *prefix, const char *ifstring,
 		   const char *elsestring,
 		   unsigned long data, format_flag flags)
@@ -266,7 +272,7 @@ status_format_str (char *buf, size_t buflen, char op, const char *src,
       if (!optional)
       {
 	snprintf (fmt, sizeof(fmt), "%%%ss", prefix);
-	snprintf (buf, buflen, fmt, Context ? Context->pattern : 0);
+	snprintf (buf, buflen, fmt, (Context && Context->pattern) ? Context->pattern : "");
       }
       else if (!Context || !Context->pattern)
 	optional = 0;
@@ -282,14 +288,19 @@ status_format_str (char *buf, size_t buflen, char op, const char *src,
   }
 
   if (optional)
-    menu_status_line (buf, buflen, menu, ifstring);
+    _menu_status_line (buf, buflen, col, menu, ifstring);
   else if (flags & M_FORMAT_OPTIONAL)
-    menu_status_line (buf, buflen, menu, elsestring);
+    _menu_status_line (buf, buflen, col, menu, elsestring);
 
   return (src);
 }
 
+static void _menu_status_line (char *buf, size_t buflen, size_t col, MUTTMENU *menu, const char *p)
+{
+  mutt_FormatString (buf, buflen, col, p, status_format_str, (unsigned long) menu, 0);
+}
+
 void menu_status_line (char *buf, size_t buflen, MUTTMENU *menu, const char *p)
 {
-  mutt_FormatString (buf, buflen, p, status_format_str, (unsigned long) menu, 0);
+  mutt_FormatString (buf, buflen, 0, p, status_format_str, (unsigned long) menu, 0);
 }

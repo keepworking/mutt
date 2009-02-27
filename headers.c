@@ -1,5 +1,5 @@
 /* 
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,14 +13,16 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#include "mutt.h"
-
-#ifdef HAVE_PGP
-#include "pgp.h"
+#if HAVE_CONFIG_H
+# include "config.h"
 #endif
+
+#include "mutt.h"
+#include "mutt_crypt.h"
+#include "mutt_idna.h"
 
 #include <sys/stat.h>
 #include <string.h>
@@ -48,7 +50,8 @@ void mutt_edit_headers (const char *editor,
     mutt_perror (path);
     return;
   }
-
+  
+  mutt_env_to_local (msg->env);
   mutt_write_rfc822_header (ofp, msg->env, NULL, 1, 0);
   fputc ('\n', ofp);	/* tie off the header. */
 
@@ -178,15 +181,14 @@ void mutt_edit_headers (const char *editor,
     }
 
 
-
-#ifdef HAVE_PGP
-    else if (ascii_strncasecmp ("pgp:", cur->data, 4) == 0)
+    else if ((WithCrypto & APPLICATION_PGP)
+             &&ascii_strncasecmp ("pgp:", cur->data, 4) == 0)
     {
-      msg->pgp = mutt_parse_pgp_hdr (cur->data + 4, 0);
+      msg->security = mutt_parse_crypt_hdr (cur->data + 4, 0, APPLICATION_PGP);
+      if (msg->security)
+	msg->security |= APPLICATION_PGP;
       keep = 0;
     }
-#endif
-
 
     if (keep)
     {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,8 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -24,6 +28,10 @@
 #include "mailbox.h"
 #include "copy.h"
 #include "mx.h"
+#include "mutt_crypt.h"
+#include "mutt_idna.h"
+#include "url.h"
+#include "rfc3676.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -36,10 +44,6 @@
 #include <time.h>
 #include <sys/types.h>
 #include <utime.h>
-
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
 
 #ifdef MIXMASTER
 #include "remailer.h"
@@ -84,7 +88,7 @@ static int mutt_addrsrc (ADDRESS *a, ADDRESS *lst)
 }
 
 /* removes addresses from "b" which are contained in "a" */
-static ADDRESS *mutt_remove_xrefs (ADDRESS *a, ADDRESS *b)
+ADDRESS *mutt_remove_xrefs (ADDRESS *a, ADDRESS *b)
 {
   ADDRESS *top, *p, *prev = NULL;
 
@@ -186,13 +190,27 @@ static ADDRESS *find_mailing_lists (ADDRESS *t, ADDRESS *c)
 static int edit_address (ADDRESS **a, /* const */ char *field)
 {
   char buf[HUGE_STRING];
-
-  buf[0] = 0;
-  rfc822_write_address (buf, sizeof (buf), *a);
-  if (mutt_get_field (field, buf, sizeof (buf), M_ALIAS) != 0)
-    return (-1);
-  rfc822_free_address (a);
-  *a = mutt_expand_aliases (mutt_parse_adrlist (NULL, buf));
+  char *err = NULL;
+  int idna_ok = 0;
+  
+  do
+  {
+    buf[0] = 0;
+    mutt_addrlist_to_local (*a);
+    rfc822_write_address (buf, sizeof (buf), *a, 0);
+    if (mutt_get_field (field, buf, sizeof (buf), M_ALIAS) != 0)
+      return (-1);
+    rfc822_free_address (a);
+    *a = mutt_expand_aliases (mutt_parse_adrlist (NULL, buf));
+    if ((idna_ok = mutt_addrlist_to_idna (*a, &err)) != 0)
+    {
+      mutt_error (_("Error: '%s' is a bad IDN."), err);
+      mutt_refresh ();
+      mutt_sleep (2);
+      FREE (&err);
+    }
+  } 
+  while (idna_ok != 0);
   return 0;
 }
 
@@ -232,7 +250,7 @@ static int edit_envelope (ENVELOPE *en)
   }
   
   if (mutt_get_field ("Subject: ", buf, sizeof (buf), 0) != 0 ||
-      (!buf[0] && query_quadoption (OPT_SUBJECT, _("No subject, abort?")) != 0))
+      (!buf[0] && query_quadoption (OPT_SUBJECT, _("No subject, abort?")) != M_NO))
   {
     mutt_message _("No subject, aborting.");
     return (-1);
@@ -324,7 +342,7 @@ void mutt_forward_intro (FILE *fp, HEADER *cur)
   
   fputs ("----- Forwarded message from ", fp);
   buffer[0] = 0;
-  rfc822_write_address (buffer, sizeof (buffer), cur->env->from);
+  rfc822_write_address (buffer, sizeof (buffer), cur->env->from, 1);
   fputs (buffer, fp);
   fputs (" -----\n\n", fp);
 }
@@ -342,13 +360,11 @@ static int include_forward (CONTEXT *ctx, HEADER *cur, FILE *out)
   mutt_parse_mime_message (ctx, cur);
   mutt_message_hook (ctx, cur, M_MESSAGEHOOK);
 
-#ifdef HAVE_PGP
-  if ((cur->pgp & PGPENCRYPT) && option (OPTFORWDECODE))
+  if (WithCrypto && (cur->security & ENCRYPT) && option (OPTFORWDECODE))
   {
     /* make sure we have the user's passphrase before proceeding... */
-    pgp_valid_passphrase ();
+    crypt_valid_passphrase (cur->security);
   }
-#endif /* HAVE_PGP */
 
   mutt_forward_intro (out, cur);
 
@@ -393,19 +409,14 @@ void mutt_make_post_indent (CONTEXT *ctx, HEADER *cur, FILE *out)
 
 static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
 {
-  int cmflags = M_CM_PREFIX | M_CM_DECODE | M_CM_CHARCONV;
+  int cmflags = M_CM_PREFIX | M_CM_DECODE | M_CM_CHARCONV | M_CM_REPLYING;
   int chflags = CH_DECODE;
 
-#ifdef HAVE_PGP
-  if (cur->pgp)
+  if (WithCrypto && (cur->security & ENCRYPT))
   {
-    if (cur->pgp & PGPENCRYPT)
-    {
-      /* make sure we have the user's passphrase before proceeding... */
-      pgp_valid_passphrase ();
-    }
+    /* make sure we have the user's passphrase before proceeding... */
+    crypt_valid_passphrase (cur->security);
   }
-#endif /* HAVE_PGP */
 
   mutt_parse_mime_message (ctx, cur);
   mutt_message_hook (ctx, cur, M_MESSAGEHOOK);
@@ -416,7 +427,7 @@ static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
     cmflags |= M_CM_NOHEADER;
   if (option (OPTWEED))
   {
-    chflags |= CH_WEED;
+    chflags |= CH_WEED | CH_REORDER;
     cmflags |= M_CM_WEED;
   }
 
@@ -427,25 +438,14 @@ static int include_reply (CONTEXT *ctx, HEADER *cur, FILE *out)
   return 0;
 }
 
-static int default_to (ADDRESS **to, ENVELOPE *env, int flags)
+static int default_to (ADDRESS **to, ENVELOPE *env, int flags, int hmfupto)
 {
   char prompt[STRING];
 
-  if (flags && env->mail_followup_to)
+  if (flags && env->mail_followup_to && hmfupto == M_YES) 
   {
-    snprintf (prompt, sizeof (prompt), _("Follow-up to %s%s?"),
-	      env->mail_followup_to->mailbox,
-	      env->mail_followup_to->next ? ",..." : "");
-
-    switch (query_quadoption (OPT_MFUPTO, prompt))
-    {
-    case M_YES:
-      rfc822_append (to, env->mail_followup_to);
-      return 0;
-
-    case -1:
-      return -1; /* abort */
-    }
+    rfc822_append (to, env->mail_followup_to);
+    return 0;
   }
 
   /* Exit now if we're setting up the default Cc list for list-reply
@@ -514,23 +514,36 @@ static int default_to (ADDRESS **to, ENVELOPE *env, int flags)
 
 int mutt_fetch_recips (ENVELOPE *out, ENVELOPE *in, int flags)
 {
+  char prompt[STRING];
   ADDRESS *tmp;
+  int hmfupto = -1;
+
+  if ((flags & (SENDLISTREPLY|SENDGROUPREPLY)) && in->mail_followup_to)
+  {
+    snprintf (prompt, sizeof (prompt), _("Follow-up to %s%s?"),
+	      in->mail_followup_to->mailbox,
+	      in->mail_followup_to->next ? ",..." : "");
+
+    if ((hmfupto = query_quadoption (OPT_MFUPTO, prompt)) == -1)
+      return -1;
+  }
+
   if (flags & SENDLISTREPLY)
   {
     tmp = find_mailing_lists (in->to, in->cc);
     rfc822_append (&out->to, tmp);
     rfc822_free_address (&tmp);
 
-    if (in->mail_followup_to &&
-        default_to (&out->cc, in, flags & SENDLISTREPLY) == -1)
+    if (in->mail_followup_to && hmfupto == M_YES &&
+        default_to (&out->cc, in, flags & SENDLISTREPLY, hmfupto) == -1)
       return (-1); /* abort */
   }
   else
   {
-    if (default_to (&out->to, in, flags & SENDGROUPREPLY) == -1)
+    if (default_to (&out->to, in, flags & SENDGROUPREPLY, hmfupto) == -1)
       return (-1); /* abort */
 
-    if ((flags & SENDGROUPREPLY) && !in->mail_followup_to)
+    if ((flags & SENDGROUPREPLY) && (!in->mail_followup_to || hmfupto != M_YES))
     {
       /* if(!mutt_addr_is_user(in->to)) */
       rfc822_append (&out->cc, in->to);
@@ -575,6 +588,12 @@ void mutt_fix_reply_recipients (ENVELOPE *env)
   env->to = mutt_remove_duplicates (env->to);
   env->cc = mutt_remove_duplicates (env->cc);
   env->cc = mutt_remove_xrefs (env->to, env->cc);
+  
+  if (env->cc && !env->to)
+  {
+    env->to = env->cc;
+    env->cc = NULL;
+  }
 }
 
 void mutt_make_forward_subject (ENVELOPE *env, CONTEXT *ctx, HEADER *cur)
@@ -583,20 +602,23 @@ void mutt_make_forward_subject (ENVELOPE *env, CONTEXT *ctx, HEADER *cur)
 
   /* set the default subject for the message. */
   mutt_make_string (buffer, sizeof (buffer), NONULL(ForwFmt), ctx, cur);
-  env->subject = safe_strdup (buffer);
+  mutt_str_replace (&env->subject, buffer);
 }
 
 void mutt_make_misc_reply_headers (ENVELOPE *env, CONTEXT *ctx,
 				    HEADER *cur, ENVELOPE *curenv)
 {
+  /* This takes precedence over a subject that might have
+   * been taken from a List-Post header.  Is that correct?
+   */
   if (curenv->real_subj)
   {
+    FREE (&env->subject);
     env->subject = safe_malloc (mutt_strlen (curenv->real_subj) + 5);
     sprintf (env->subject, "Re: %s", curenv->real_subj);	/* __SPRINTF_CHECKED__ */
   }
-  else
+  else if (!env->subject)
     env->subject = safe_strdup ("Re: your mail");
-  
 }
 
 void mutt_add_to_reference_headers (ENVELOPE *env, ENVELOPE *curenv, LIST ***pp, LIST ***qq)
@@ -699,7 +721,6 @@ envelope_defaults (ENVELOPE *env, CONTEXT *ctx, HEADER *cur, int flags)
       return (-1);
     }
 
-    mutt_fix_reply_recipients (env);
     mutt_make_misc_reply_headers (env, ctx, cur, curenv);
     mutt_make_reference_headers (tag ? NULL : curenv, env, ctx);
   }
@@ -798,20 +819,18 @@ generate_body (FILE *tempfp,	/* stream for outgoing message */
     else if (i == -1)
       return -1;
   }
-
-
-
-#ifdef HAVE_PGP
-  else if (flags & SENDKEY) 
+  /* if (WithCrypto && (flags & SENDKEY)) */
+  else if ((WithCrypto & APPLICATION_PGP) && (flags & SENDKEY)) 
   {
     BODY *tmp;
-    if ((tmp = pgp_make_key_attachment (NULL)) == NULL)
+
+    if ((WithCrypto & APPLICATION_PGP)
+        && (tmp = crypt_pgp_make_key_attachment (NULL)) == NULL)
       return -1;
 
     tmp->next = msg->content;
     msg->content = tmp;
   }
-#endif
 
   mutt_clear_error ();
 
@@ -853,7 +872,9 @@ void mutt_set_followup_to (ENVELOPE *e)
 
     if (e->mail_followup_to && !mutt_is_list_recipient (0, e->to, e->cc))
     {
-      if (e->from)
+      if (e->reply_to)
+	from = rfc822_cpy_adr (e->reply_to);
+      else if (e->from)
 	from = rfc822_cpy_adr (e->from);
       else
 	from = mutt_default_from ();
@@ -940,17 +961,29 @@ static int send_message (HEADER *msg)
   char tempfile[_POSIX_PATH_MAX];
   FILE *tempfp;
   int i;
+#ifdef USE_SMTP
+  short old_write_bcc;
+#endif
   
   /* Write out the message in MIME form. */
   mutt_mktemp (tempfile);
   if ((tempfp = safe_fopen (tempfile, "w")) == NULL)
     return (-1);
 
+#ifdef USE_SMTP
+  old_write_bcc = option (OPTWRITEBCC);
+  if (SmtpUrl)
+    unset_option (OPTWRITEBCC);
+#endif
 #ifdef MIXMASTER
   mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, msg->chain ? 1 : 0);
 #endif
 #ifndef MIXMASTER
   mutt_write_rfc822_header (tempfp, msg->env, msg->content, 0, 0);
+#endif
+#ifdef USE_SMTP
+  if (old_write_bcc)
+    set_option (OPTWRITEBCC);
 #endif
   
   fputc ('\n', tempfp); /* tie off the header. */
@@ -974,8 +1007,16 @@ static int send_message (HEADER *msg)
     return mix_send_message (msg->chain, tempfile);
 #endif
 
+#if USE_SMTP
+  if (SmtpUrl)
+      return mutt_smtp_send (msg->env->from, msg->env->to, msg->env->cc,
+                             msg->env->bcc, tempfile,
+                             (msg->content->encoding == ENC8BIT));
+#endif /* USE_SMTP */
+
   i = mutt_invoke_sendmail (msg->env->from, msg->env->to, msg->env->cc, 
-			    msg->env->bcc, tempfile, (msg->content->encoding == ENC8BIT));
+			    msg->env->bcc, tempfile,
+                            (msg->content->encoding == ENC8BIT));
   return (i);
 }
 
@@ -1011,6 +1052,19 @@ static void decode_descriptions (BODY *b)
   }
 }
 
+static void fix_end_of_file (const char *data)
+{
+  FILE *fp;
+  int c;
+  
+  if ((fp = safe_fopen (data, "a+")) == NULL)
+    return;
+  fseek (fp,-1,SEEK_END);
+  if ((c = fgetc(fp)) != '\n')
+    fputc ('\n', fp);
+  safe_fclose (&fp);
+}
+
 int mutt_resend_message (FILE *fp, CONTEXT *ctx, HEADER *cur)
 {
   HEADER *msg = mutt_new_header ();
@@ -1020,46 +1074,6 @@ int mutt_resend_message (FILE *fp, CONTEXT *ctx, HEADER *cur)
   
   return ci_send_message (SENDRESEND, msg, NULL, ctx, cur);
 }
-
-#ifdef HAVE_PGP
-
-static int _set_pgp_flags (HEADER *cur)
-{
-  int flags = 0;
-  
-  if (option (OPTPGPREPLYENCRYPT) && cur && cur->pgp & PGPENCRYPT)
-    flags |= PGPENCRYPT;
-  if (option (OPTPGPREPLYSIGN) && cur && cur->pgp & PGPSIGN)
-    flags |= PGPSIGN;
-  if (option (OPTPGPREPLYSIGNENCRYPTED) && cur && cur->pgp & PGPENCRYPT)
-    flags |= PGPSIGN;
-
-  return flags;
-
-}
-
-static int set_pgp_flags (HEADER *cur, CONTEXT *ctx)
-{
-  int i;
-  int flags = 0;
-  
-  if (cur) 
-    return _set_pgp_flags (cur);
-  
-  if (!ctx)
-    return 0;
-    
-  for (i = 0; i < ctx->vcount; i++)
-  {
-    cur = ctx->hdrs[ctx->v2r[i]];
-    if (cur->tagged)
-      flags |= _set_pgp_flags (cur);
-  }
-
-  return flags;
-}
-
-#endif /* HAVE_PGP */
 
 int
 ci_send_message (int flags,		/* send mode */
@@ -1073,14 +1087,16 @@ ci_send_message (int flags,		/* send mode */
   FILE *tempfp = NULL;
   BODY *pbody;
   int i, killfrom = 0;
+  int fcc_error = 0;
+  int free_clear_content = 0;
 
-#ifdef HAVE_PGP
   BODY *save_content = NULL;
   BODY *clear_content = NULL;
   char *pgpkeylist = NULL;
   /* save current value of "pgp_sign_as" */
   char *signas = NULL;
-#endif
+  char *tag = NULL, *err = NULL;
+  char *ctype;
 
   int rv = -1;
   
@@ -1098,16 +1114,15 @@ ci_send_message (int flags,		/* send mode */
   }
   
   
-#ifdef HAVE_PGP
-  if (flags & SENDPOSTPONED)
+  if ((WithCrypto & APPLICATION_PGP) && (flags & SENDPOSTPONED))
     signas = safe_strdup(PgpSignAs);
-#endif /* HAVE_PGP */
 
-  if (msg)
-  {
-    mutt_expand_aliases_env (msg->env);
-  }
-  else
+  /* Delay expansion of aliases until absolutely necessary--shouldn't
+   * be necessary unless we are prompting the user or about to execute a
+   * send-hook.
+   */
+
+  if (!msg)
   {
     msg = mutt_new_header ();
 
@@ -1130,18 +1145,30 @@ ci_send_message (int flags,		/* send mode */
       msg->env = mutt_new_envelope ();
   }
 
+  /* Parse and use an eventual list-post header */
+  if ((flags & SENDLISTREPLY) 
+      && cur && cur->env && cur->env->list_post) 
+  {
+    /* Use any list-post header as a template */
+    url_parse_mailto (msg->env, NULL, cur->env->list_post);
+    /* We don't let them set the sender's address. */
+    rfc822_free_address (&msg->env->from);
+  }
+  
   if (! (flags & (SENDKEY | SENDPOSTPONED | SENDRESEND)))
   {
     pbody = mutt_new_body ();
     pbody->next = msg->content; /* don't kill command-line attachments */
     msg->content = pbody;
-    
-    msg->content->type = TYPETEXT;
-    msg->content->subtype = safe_strdup ("plain");
+
+    if (!(ctype = safe_strdup (ContentType)))
+      ctype = safe_strdup ("text/plain");
+    mutt_parse_content_type (ctype, msg->content);
+    FREE (&ctype);
     msg->content->unlink = 1;
     msg->content->use_disp = 0;
     msg->content->disposition = DISPINLINE;
-    if (option (OPTTEXTFLOWED))
+    if (option (OPTTEXTFLOWED) && msg->content->type == TYPETEXT && !ascii_strcasecmp (msg->content->subtype, "plain"))
       mutt_set_parameter ("format", "flowed", &msg->content->parameter);
     
     if (!tempfile)
@@ -1170,7 +1197,15 @@ ci_send_message (int flags,		/* send mode */
     /* we shouldn't have to worry about freeing `msg->env->from' before
      * setting it here since this code will only execute when doing some
      * sort of reply.  the pointer will only be set when using the -H command
-     * line option */
+     * line option.
+     *
+     * We shouldn't have to worry about alias expansion here since we are
+     * either replying to a real or postponed message, therefore no aliases
+     * should exist since the user has not had the opportunity to add
+     * addresses to the list.  We just have to ensure the postponed messages
+     * have their aliases expanded.
+     */
+
     msg->env->from = set_reverse_name (cur->env);
   }
 
@@ -1185,6 +1220,7 @@ ci_send_message (int flags,		/* send mode */
       process_user_recips (msg->env);
       process_user_header (msg->env);
     }
+    mutt_expand_aliases_env (msg->env);
   }
   else if (! (flags & (SENDPOSTPONED|SENDRESEND)))
   {
@@ -1194,6 +1230,12 @@ ci_send_message (int flags,		/* send mode */
 
     if (option (OPTHDRS))
       process_user_recips (msg->env);
+
+    /* Expand aliases and remove duplicates/crossrefs */
+    mutt_expand_aliases_env (msg->env);
+    
+    if (flags & SENDREPLY)
+      mutt_fix_reply_recipients (msg->env);
 
     if (! (flags & SENDMAILX) &&
 	! (option (OPTAUTOEDIT) && option (OPTEDITHDRS)) &&
@@ -1214,9 +1256,30 @@ ci_send_message (int flags,		/* send mode */
       killfrom = 1;
     }
 
+    if ((flags & SENDREPLY) && cur)
+    {
+      /* change setting based upon message we are replying to */
+      mutt_message_hook (ctx, cur, M_REPLYHOOK);
+
+      /*
+       * set the replied flag for the message we are generating so that the
+       * user can use ~Q in a send-hook to know when reply-hook's are also
+       * being used.
+       */
+      msg->replied = 1;
+    }
+
     /* change settings based upon recipients */
     
     mutt_message_hook (NULL, msg, M_SENDHOOK);
+
+    /*
+     * Unset the replied flag from the message we are composing since it is
+     * no longer required.  This is done here because the FCC'd copy of
+     * this message was erroneously get the 'R'eplied flag when stored in
+     * a maildir-style mailbox.
+     */
+    msg->replied = 0;
 
     if (killfrom)
     {
@@ -1244,36 +1307,84 @@ ci_send_message (int flags,		/* send mode */
      * can take effect.
      */
 
-#ifdef HAVE_PGP
-    if (! (flags & SENDMAILX))
+    if (WithCrypto && !(flags & SENDMAILX))
     {
-      if (option (OPTPGPAUTOSIGN))
-	msg->pgp |= PGPSIGN;
-      if (option (OPTPGPAUTOENCRYPT))
-	msg->pgp |= PGPENCRYPT;
-      
-      msg->pgp |= set_pgp_flags (cur, ctx);
+      if (option (OPTCRYPTAUTOSIGN))
+	msg->security |= SIGN;
+      if (option (OPTCRYPTAUTOENCRYPT))
+	msg->security |= ENCRYPT;
+      if (option (OPTCRYPTREPLYENCRYPT) && cur && (cur->security & ENCRYPT))
+	msg->security |= ENCRYPT;
+      if (option (OPTCRYPTREPLYSIGN) && cur && (cur->security & SIGN))
+	msg->security |= SIGN;
+      if (option (OPTCRYPTREPLYSIGNENCRYPTED) && cur && (cur->security & ENCRYPT))
+	msg->security |= SIGN;
+      if (WithCrypto & APPLICATION_PGP && (msg->security & (ENCRYPT | SIGN)))
+      {
+	if (option (OPTPGPAUTOINLINE))
+	  msg->security |= INLINE;
+	if (option (OPTPGPREPLYINLINE) && cur && (cur->security & INLINE))
+	  msg->security |= INLINE;
+      }
     }
 
-#endif /* HAVE_PGP */
+    if (WithCrypto && msg->security)
+    {
+      /* 
+       * When reypling / forwarding, use the original message's
+       * crypto system.  According to the documentation,
+       * smime_is_default should be disregarded here.
+       * 
+       * Problem: At least with forwarding, this doesn't really
+       * make much sense. Should we have an option to completely
+       * disable individual mechanisms at run-time?
+       */
+      if (cur)
+      {
+	if ((WithCrypto & APPLICATION_PGP) && option (OPTCRYPTAUTOPGP) 
+	    && (cur->security & APPLICATION_PGP))
+	  msg->security |= APPLICATION_PGP;
+	else if ((WithCrypto & APPLICATION_SMIME) && option (OPTCRYPTAUTOSMIME)
+		 && (cur->security & APPLICATION_SMIME))
+	  msg->security |= APPLICATION_SMIME;
+      }
       
-
-
-
+      /*
+       * No crypto mechanism selected? Use availability + smime_is_default
+       * for the decision. 
+       */
+      if (!(msg->security & (APPLICATION_SMIME | APPLICATION_PGP)))
+      {
+	if ((WithCrypto & APPLICATION_SMIME) && option (OPTCRYPTAUTOSMIME) 
+	    && option (OPTSMIMEISDEFAULT))
+	  msg->security |= APPLICATION_SMIME;
+	else if ((WithCrypto & APPLICATION_PGP) && option (OPTCRYPTAUTOPGP))
+	  msg->security |= APPLICATION_PGP;
+	else if ((WithCrypto & APPLICATION_SMIME) && option (OPTCRYPTAUTOSMIME))
+	  msg->security |= APPLICATION_SMIME;
+      }
+    }
+    
+    /* No permissible mechanisms found.  Don't sign or encrypt. */
+    if (!(msg->security & (APPLICATION_SMIME|APPLICATION_PGP)))
+      msg->security = 0;
   }
+  
+  /* 
+   * This hook is even called for postponed messages, and can, e.g., be
+   * used for setting the editor, the sendmail path, or the
+   * envelope sender.
+   */
+  mutt_message_hook (NULL, msg, M_SEND2HOOK);
+  
   /* wait until now to set the real name portion of our return address so
      that $realname can be set in a send-hook */
-  if (msg->env->from && !msg->env->from->personal && !(flags & (SENDRESEND|SENDPOSTPONED)))
+  if (msg->env->from && !msg->env->from->personal
+      && !(flags & (SENDRESEND|SENDPOSTPONED)))
     msg->env->from->personal = safe_strdup (Realname);
 
-
-
-#ifdef HAVE_PGP
-  if (! (flags & SENDKEY))
-#endif
+  if (!((WithCrypto & APPLICATION_PGP) && (flags & SENDKEY)))
     safe_fclose (&tempfp);
-
-
 
   if (flags & SENDMAILX)
   {
@@ -1284,20 +1395,54 @@ ci_send_message (int flags,		/* send mode */
   {
     struct stat st;
     time_t mtime = mutt_decrease_mtime (msg->content->filename, NULL);
-    
+
     mutt_update_encoding (msg->content);
 
-    /* If the this isn't a text message, look for a mailcap edit command */
-    if(! (flags & SENDKEY))
+    /*
+     * Select whether or not the user's editor should be called now.  We
+     * don't want to do this when:
+     * 1) we are sending a key/cert
+     * 2) we are forwarding a message and the user doesn't want to edit it.
+     *    This is controled by the quadoption $forward_edit.  However, if
+     *    both $edit_headers and $autoedit are set, we want to ignore the
+     *    setting of $forward_edit because the user probably needs to add the
+     *    recipients.
+     */
+    if (! (flags & SENDKEY) &&
+	((flags & SENDFORWARD) == 0 ||
+	 (option (OPTEDITHDRS) && option (OPTAUTOEDIT)) ||
+	 query_quadoption (OPT_FORWEDIT, _("Edit forwarded message?")) == M_YES))
     {
+      /* If the this isn't a text message, look for a mailcap edit command */
       if (mutt_needs_mailcap (msg->content))
-	mutt_edit_attachment (msg->content);
+      {
+	if (!mutt_edit_attachment (msg->content))
+          goto cleanup;
+      }
       else if (!Editor || mutt_strcmp ("builtin", Editor) == 0)
 	mutt_builtin_editor (msg->content->filename, msg, cur);
       else if (option (OPTEDITHDRS))
+      {
+	mutt_env_to_local (msg->env);
 	mutt_edit_headers (Editor, msg->content->filename, msg, fcc, sizeof (fcc));
+	mutt_env_to_idna (msg->env, NULL, NULL);
+      }
       else
+      {
 	mutt_edit_file (Editor, msg->content->filename);
+	if (stat (msg->content->filename, &st) == 0)
+	{
+	  if (mtime != st.st_mtime)
+	    fix_end_of_file (msg->content->filename);
+	}
+	else
+	  mutt_perror (msg->content->filename);
+      }
+      
+      if (option (OPTTEXTFLOWED))
+	rfc3676_space_stuff (msg);
+
+      mutt_message_hook (NULL, msg, M_SEND2HOOK);
     }
 
     if (! (flags & (SENDPOSTPONED | SENDFORWARD | SENDKEY | SENDRESEND)))
@@ -1305,7 +1450,7 @@ ci_send_message (int flags,		/* send mode */
       if (stat (msg->content->filename, &st) == 0)
       {
 	/* if the file was not modified, bail out now */
-	if (mtime == st.st_mtime &&
+	if (mtime == st.st_mtime && !msg->content->next &&
 	    query_quadoption (OPT_ABORT, _("Abort unmodified message?")) == M_YES)
 	{
 	  mutt_message _("Aborted unmodified message.");
@@ -1344,6 +1489,7 @@ ci_send_message (int flags,		/* send mode */
   {
 main_loop:
 
+    fcc_error = 0; /* reset value since we may have failed before */
     mutt_pretty_mailbox (fcc);
     i = mutt_compose_menu (msg, fcc, sizeof (fcc), cur);
     if (i == -1)
@@ -1366,6 +1512,7 @@ main_loop:
 
       encode_descriptions (msg->content, 1);
       mutt_prepare_envelope (msg->env, 0);
+      mutt_env_to_idna (msg->env, NULL, NULL);	/* Handle bad IDNAs the next time. */
 
       if (!Postponed || mutt_write_fcc (NONULL (Postponed), msg, (cur && (flags & SENDREPLY)) ? cur->env->message_id : NULL, 1, fcc) < 0)
       {
@@ -1394,6 +1541,16 @@ main_loop:
     }
   }
 
+  if (mutt_env_to_idna (msg->env, &tag, &err))
+  {
+    mutt_error (_("Bad IDN in \"%s\": '%s'"), tag, err);
+    FREE (&err);
+    if (!(flags & SENDBATCH))
+      goto main_loop;
+    else 
+      goto cleanup;
+  }
+  
   if (!msg->env->subject && ! (flags & SENDBATCH) &&
       (i = query_quadoption (OPT_SUBJECT, _("No subject, abort sending?"))) != M_NO)
   {
@@ -1414,36 +1571,51 @@ main_loop:
 
   encode_descriptions (msg->content, 1);
   
-#ifdef HAVE_PGP
-  if (msg->pgp)
-  {
-    /* save the decrypted attachments */
-    clear_content = msg->content;
-
-    if ((pgp_get_keys (msg, &pgpkeylist) == -1) ||
-	(pgp_protect (msg, pgpkeylist) == -1))
-    {
-      msg->content = mutt_remove_multipart (msg->content);
-      
-      if (pgpkeylist)
-	FREE (&pgpkeylist);
-      
-      decode_descriptions (msg->content);
-      goto main_loop;
-    }
-    encode_descriptions (msg->content, 0);
-  }
-
-  /* 
-   * at this point, msg->content is one of the following three things:
-   * - multipart/signed.  In this case, clear_content is a child.
-   * - multipart/encrypted.  In this case, clear_content exists
-   *   independently
-   * - application/pgp.  In this case, clear_content exists independently.
-   * - something else.  In this case, it's the same as clear_content.
+  /*
+   * Make sure that clear_content and free_clear_content are
+   * properly initialized -- we may visit this particular place in
+   * the code multiple times, including after a failed call to
+   * mutt_protect().
    */
-
-#endif /* HAVE_PGP */
+  
+  clear_content = NULL;
+  free_clear_content = 0;
+  
+  if (WithCrypto)
+  {
+    if (msg->security)  
+    {
+      /* save the decrypted attachments */
+      clear_content = msg->content;
+  
+      if ((crypt_get_keys (msg, &pgpkeylist) == -1) ||
+          mutt_protect (msg, pgpkeylist) == -1)
+      {
+        msg->content = mutt_remove_multipart (msg->content);
+        
+	FREE (&pgpkeylist);
+        
+        decode_descriptions (msg->content);
+        goto main_loop;
+      }
+      encode_descriptions (msg->content, 0);
+    }
+  
+    /* 
+     * at this point, msg->content is one of the following three things:
+     * - multipart/signed.  In this case, clear_content is a child.
+     * - multipart/encrypted.  In this case, clear_content exists
+     *   independently
+     * - application/pgp.  In this case, clear_content exists independently.
+     * - something else.  In this case, it's the same as clear_content.
+     */
+  
+    /* This is ugly -- lack of "reporting back" from mutt_protect(). */
+    
+    if (clear_content && (msg->content != clear_content)
+        && (msg->content->parts != clear_content))
+      free_clear_content = 1;
+  }
 
   if (!option (OPTNOCURSES) && !(flags & SENDMAILX))
     mutt_message _("Sending message...");
@@ -1472,26 +1644,22 @@ main_loop:
   if (*fcc && mutt_strcmp ("/dev/null", fcc) != 0)
   {
     BODY *tmpbody = msg->content;
-#ifdef HAVE_PGP
     BODY *save_sig = NULL;
     BODY *save_parts = NULL;
-#endif /* HAVE_PGP */
 
-#ifdef HAVE_PGP
-    if (msg->pgp && option (OPTFCCCLEAR))
+    if (WithCrypto && msg->security && option (OPTFCCCLEAR))
       msg->content = clear_content;
-#endif
 
     /* check to see if the user wants copies of all attachments */
     if (!option (OPTFCCATTACH) && msg->content->type == TYPEMULTIPART)
     {
-#ifdef HAVE_PGP
-      if (mutt_strcmp (msg->content->subtype, "encrypted") == 0 ||
-	  mutt_strcmp (msg->content->subtype, "signed") == 0)
+      if (WithCrypto
+          && (mutt_strcmp (msg->content->subtype, "encrypted") == 0 ||
+              mutt_strcmp (msg->content->subtype, "signed") == 0))
       {
 	if (clear_content->type == TYPEMULTIPART)
 	{
-	  if (!(msg->pgp & PGPENCRYPT) && (msg->pgp & PGPSIGN))
+	  if(!(msg->security & ENCRYPT) && (msg->security & SIGN))
 	  {
 	    /* save initial signature and attachments */
 	    save_sig = msg->content->parts->next;
@@ -1501,7 +1669,7 @@ main_loop:
 	  /* this means writing only the main part */
 	  msg->content = clear_content->parts;
 
-	  if (pgp_protect (msg, pgpkeylist) == -1)
+	  if (mutt_protect (msg, pgpkeylist) == -1)
 	  {
 	    /* we can't do much about it at this point, so
 	     * fallback to saving the whole thing to fcc
@@ -1515,13 +1683,10 @@ main_loop:
 	}
       }
       else
-#endif /* HAVE_PGP */
 	msg->content = msg->content->parts;
     }
 
-#ifdef HAVE_PGP
 full_fcc:
-#endif /* HAVE_PGP */
     if (msg->content)
     {
       /* update received time so that when storing to a mbox-style folder
@@ -1529,13 +1694,18 @@ full_fcc:
        * message was first postponed.
        */
       msg->received = time (NULL);
-      mutt_write_fcc (fcc, msg, NULL, 0, NULL);
+      if (mutt_write_fcc (fcc, msg, NULL, 0, NULL) == -1)
+      {
+	/*
+	 * Error writing FCC, we should abort sending.
+	 */
+	fcc_error = 1;
+      }
     }
 
     msg->content = tmpbody;
 
-#ifdef HAVE_PGP
-    if (save_sig)
+    if (WithCrypto && save_sig)
     {
       /* cleanup the second signature structures */
       if (save_content->parts)
@@ -1549,33 +1719,39 @@ full_fcc:
       msg->content->parts->next = save_sig;
       msg->content->parts->parts->next = save_parts;
     }
-    else if (save_content)
+    else if (WithCrypto && save_content)
     {
       /* destroy the new encrypted body. */
       mutt_free_body (&save_content);
     }
-      
-#endif /* HAVE_PGP */
+
   }
 
 
-  if ((i = send_message (msg)) == -1)
+  /*
+   * Don't attempt to send the message if the FCC failed.  Just pretend
+   * the send failed as well so we give the user a chance to fix the
+   * error.
+   */
+  if (fcc_error || (i = send_message (msg)) == -1)
   {
     if (!(flags & SENDBATCH))
     {
-#ifdef HAVE_PGP
-      if ((msg->pgp & PGPENCRYPT) || 
-	  ((msg->pgp & PGPSIGN) && msg->content->type == TYPEAPPLICATION))
+      if (!WithCrypto)
+        ;
+      else if ((msg->security & ENCRYPT) || 
+               ((msg->security & SIGN)
+                && msg->content->type == TYPEAPPLICATION))
       {
 	mutt_free_body (&msg->content); /* destroy PGP data */
 	msg->content = clear_content;	/* restore clear text. */
       }
-      else if ((msg->pgp & PGPSIGN) && msg->content->type == TYPEMULTIPART)
+      else if ((msg->security & SIGN) && msg->content->type == TYPEMULTIPART)
       {
-	mutt_free_body (&msg->content->parts->next);		/* destroy sig */
-	msg->content = mutt_remove_multipart (msg->content);	/* remove multipart */
+	mutt_free_body (&msg->content->parts->next);	     /* destroy sig */
+	msg->content = mutt_remove_multipart (msg->content); 
       }
-#endif
+
       msg->content = mutt_remove_multipart (msg->content);
       decode_descriptions (msg->content);
       mutt_unprepare_envelope (msg->env);
@@ -1590,14 +1766,11 @@ full_fcc:
   else if (!option (OPTNOCURSES) && ! (flags & SENDMAILX))
     mutt_message (i == 0 ? _("Mail sent.") : _("Sending in background."));
 
-#ifdef HAVE_PGP
-  if (msg->pgp & PGPENCRYPT)
-  {
-    /* cleanup structures from the first encryption */
-    mutt_free_body (&clear_content);
+  if (WithCrypto && (msg->security & ENCRYPT))
     FREE (&pgpkeylist);
-  }
-#endif /* HAVE_PGP */
+  
+  if (WithCrypto && free_clear_content)
+    mutt_free_body (&clear_content);
 
   if (flags & SENDREPLY)
   {
@@ -1616,23 +1789,19 @@ full_fcc:
   
 cleanup:
 
-
-
-#ifdef HAVE_PGP
-  if (flags & SENDPOSTPONED)
+  if ((WithCrypto & APPLICATION_PGP) && (flags & SENDPOSTPONED))
   {
-    
     if(signas)
     {
-      safe_free((void **) &PgpSignAs);
+      FREE (&PgpSignAs);
       PgpSignAs = signas;
     }
   }
-#endif /* HAVE_PGP */
    
   safe_fclose (&tempfp);
   mutt_free_header (&msg);
   
   return rv;
-
 }
+
+/* vim: set sw=2: */

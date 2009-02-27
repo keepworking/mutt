@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
 
 WHERE void (*mutt_error) (const char *, ...);
@@ -28,15 +28,20 @@ WHERE char AttachmentMarker[STRING];
 WHERE char *MuttDotlock;
 #endif
 
+WHERE ADDRESS *EnvFrom;
 WHERE ADDRESS *From;
 
 WHERE char *AliasFile;
 WHERE char *AliasFmt;
+WHERE char *AssumedCharset;
 WHERE char *AttachSep;
 WHERE char *Attribution;
+WHERE char *AttachCharset;
 WHERE char *AttachFormat;
 WHERE char *Charset;
 WHERE char *ComposeFormat;
+WHERE char *ConfigCharset;
+WHERE char *ContentType;
 WHERE char *DefaultHook;
 WHERE char *DateFmt;
 WHERE char *DisplayFilter;
@@ -48,12 +53,14 @@ WHERE char *FolderFormat;
 WHERE char *ForwFmt;
 WHERE char *Fqdn;
 WHERE char *HdrFmt;
+WHERE char *HistFile;
 WHERE char *Homedir;
 WHERE char *Hostname;
 #ifdef USE_IMAP
 WHERE char *ImapAuthenticators INITVAL (NULL);
 WHERE char *ImapDelimChars INITVAL (NULL);
-WHERE char *ImapHomeNamespace INITVAL (NULL);
+WHERE char *ImapHeaders;
+WHERE char *ImapLogin INITVAL (NULL);
 WHERE char *ImapPass INITVAL (NULL);
 WHERE char *ImapUser INITVAL (NULL);
 #endif
@@ -62,6 +69,15 @@ WHERE char *Ispell;
 WHERE char *Locale;
 WHERE char *MailcapPath;
 WHERE char *Maildir;
+#if defined(USE_IMAP) || defined(USE_POP)
+WHERE char *MessageCachedir;
+#endif
+#if USE_HCACHE
+WHERE char *HeaderCache;
+#if HAVE_GDBM || HAVE_DB4
+WHERE char *HeaderCachePageSize;
+#endif /* HAVE_GDBM || HAVE_DB4 */
+#endif /* USE_HCACHE */
 WHERE char *MhFlagged;
 WHERE char *MhReplied;
 WHERE char *MhUnseen;
@@ -70,6 +86,7 @@ WHERE char *MsgFmt;
 #ifdef USE_SOCKET
 WHERE char *Preconnect INITVAL (NULL);
 WHERE char *Tunnel INITVAL (NULL);
+WHERE short NetInc;
 #endif /* USE_SOCKET */
 
 #ifdef MIXMASTER
@@ -100,10 +117,26 @@ WHERE char *Sendmail;
 WHERE char *Shell;
 WHERE char *Signature;
 WHERE char *SimpleSearch;
+#if USE_SMTP
+WHERE char *SmtpAuthenticators INITVAL (NULL);
+WHERE char *SmtpPass INITVAL (NULL);
+WHERE char *SmtpUrl INITVAL (NULL);
+#endif /* USE_SMTP */
 WHERE char *Spoolfile;
-#if defined(USE_SSL) || defined(USE_NSS)
+WHERE char *SpamSep;
+#if defined(USE_SSL)
 WHERE char *SslCertFile INITVAL (NULL);
+#endif
+#ifdef USE_SSL_OPENSSL
+WHERE char *SslClientCert INITVAL (NULL);
+WHERE LIST *SslSessionCerts INITVAL (NULL);
+#endif
+#if defined(USE_SSL)
 WHERE char *SslEntropyFile INITVAL (NULL);
+#endif
+#ifdef USE_SSL_GNUTLS
+WHERE short SslDHPrimeBits;
+WHERE char *SslCACertFile INITVAL (NULL);
 #endif
 WHERE char *StChars;
 WHERE char *Status;
@@ -112,19 +145,34 @@ WHERE char *Tochars;
 WHERE char *Username;
 WHERE char *Visual;
 
+WHERE char *CurrentFolder;
 WHERE char *LastFolder;
+
+
+WHERE const char *ReleaseDate;
+
+WHERE HASH *Groups;
 
 WHERE LIST *AutoViewList INITVAL(0);
 WHERE LIST *AlternativeOrderList INITVAL(0);
+WHERE LIST *AttachAllow INITVAL(0);
+WHERE LIST *AttachExclude INITVAL(0);
+WHERE LIST *InlineAllow INITVAL(0);
+WHERE LIST *InlineExclude INITVAL(0);
 WHERE LIST *HeaderOrderList INITVAL(0);
 WHERE LIST *Ignore INITVAL(0);
+WHERE LIST *MimeLookupList INITVAL(0);
 WHERE LIST *UnIgnore INITVAL(0);
-WHERE LIST *MailLists INITVAL(0);
-WHERE LIST *SubscribedLists INITVAL(0);
 
-#ifdef USE_IMAP
-WHERE time_t ImapLastCheck INITVAL(0);
-#endif
+WHERE RX_LIST *Alternates INITVAL(0);
+WHERE RX_LIST *UnAlternates INITVAL(0);
+WHERE RX_LIST *MailLists INITVAL(0);
+WHERE RX_LIST *UnMailLists INITVAL(0);
+WHERE RX_LIST *SubscribedLists INITVAL(0);
+WHERE RX_LIST *UnSubscribedLists INITVAL(0);
+WHERE SPAM_LIST *SpamList INITVAL(0);
+WHERE RX_LIST *NoSpamList INITVAL(0);
+
 
 /* bit vector for boolean variables */
 #ifdef MAIN_C
@@ -144,13 +192,15 @@ WHERE unsigned short Counter INITVAL (0);
 
 WHERE short ConnectTimeout;
 WHERE short HistSize;
+WHERE short MenuContext;
 WHERE short PagerContext;
 WHERE short PagerIndexLines;
 WHERE short ReadInc;
+WHERE short SaveHist;
 WHERE short SendmailWait;
 WHERE short SleepTime INITVAL (1);
 WHERE short Timeout;
-WHERE short WrapMargin;
+WHERE short Wrap;
 WHERE short WriteInc;
 
 WHERE short ScoreThresholdDelete;
@@ -171,10 +221,47 @@ WHERE int CurrentMenu;
 WHERE ALIAS *Aliases INITVAL (0);
 WHERE LIST *UserHeader INITVAL (0);
 
-#ifdef DEBUG
-WHERE FILE *debugfile INITVAL (0);
-WHERE int debuglevel INITVAL (0);
-#endif
+/*-- formerly in pgp.h --*/
+WHERE REGEXP PgpGoodSign;
+WHERE char *PgpSignAs;
+WHERE short PgpTimeout;
+WHERE char *PgpEntryFormat;
+WHERE char *PgpClearSignCommand;
+WHERE char *PgpDecodeCommand;
+WHERE char *PgpVerifyCommand;
+WHERE char *PgpDecryptCommand;
+WHERE char *PgpSignCommand;
+WHERE char *PgpEncryptSignCommand;
+WHERE char *PgpEncryptOnlyCommand;
+WHERE char *PgpImportCommand;
+WHERE char *PgpExportCommand;
+WHERE char *PgpVerifyKeyCommand;
+WHERE char *PgpListSecringCommand;
+WHERE char *PgpListPubringCommand;
+WHERE char *PgpGetkeysCommand;
+
+/*-- formerly in smime.h --*/
+WHERE char *SmimeDefaultKey;
+WHERE char *SmimeCryptAlg;
+WHERE short SmimeTimeout;
+WHERE char *SmimeCertificates;
+WHERE char *SmimeKeys;
+WHERE char *SmimeCryptAlg;
+WHERE char *SmimeCALocation;
+WHERE char *SmimeVerifyCommand;
+WHERE char *SmimeVerifyOpaqueCommand;
+WHERE char *SmimeDecryptCommand;
+WHERE char *SmimeSignCommand;
+WHERE char *SmimeSignOpaqueCommand;
+WHERE char *SmimeEncryptCommand;
+WHERE char *SmimeGetSignerCertCommand;
+WHERE char *SmimePk7outCommand;
+WHERE char *SmimeGetCertCommand;
+WHERE char *SmimeImportCertCommand;
+WHERE char *SmimeGetCertEmailCommand;
+
+
+
 
 #ifdef MAIN_C
 const char *Weekdays[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
@@ -193,7 +280,6 @@ extern const char *Months[];
 #include "mutt_regex.h"
 #include "buffy.h"
 #include "sort.h"
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
+#include "mutt_crypt.h"
+#include "reldate.h"
 #endif /* MAIN_C */

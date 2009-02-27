@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,8 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -30,21 +34,10 @@
 #include "mx.h"
 
 #ifdef USE_IMAP
-#include "imap.h"
+#include "imap_private.h"
 #endif
 
-
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
-
-
-
-
-
-
-
-
+#include "mutt_crypt.h"
 
 #include <sys/stat.h>
 #include <ctype.h>
@@ -64,6 +57,10 @@
 static const char *Not_available_in_this_menu = N_("Not available in this menu.");
 static const char *Mailbox_is_read_only = N_("Mailbox is read-only.");
 static const char *Function_not_permitted_in_attach_message_mode = N_("Function not permitted in attach-message mode.");
+
+/* hack to return to position when returning from index to same message */
+static int TopLine = 0;
+static HEADER *OldHdr = NULL;
 
 #define CHECK_MODE(x)	if (!(x)) \
 			{ \
@@ -86,6 +83,13 @@ static const char *Function_not_permitted_in_attach_message_mode = N_("Function 
 			break; \
 		     }
 
+#define CHECK_ACL(aclbit,action) \
+		if (!mutt_bit_isset(Context->rights,aclbit)) { \
+			mutt_flushinp(); \
+			mutt_error (_("Cannot %s: Operation not permitted by ACL"), action); \
+			break; \
+		}
+
 struct q_class_t
 {
   int length;
@@ -105,7 +109,7 @@ struct syntax_t
 
 struct line_t
 {
-  long offset;
+  LOFF_T offset;
   short type;
   short continuation;
   short chunks;
@@ -380,8 +384,8 @@ cleanup_quote (struct q_class_t **QuoteList)
       cleanup_quote (&((*QuoteList)->down));
     ptr = (*QuoteList)->next;
     if ((*QuoteList)->prefix)
-      safe_free ((void **) &(*QuoteList)->prefix);
-    safe_free ((void **) QuoteList);
+      FREE (&(*QuoteList)->prefix);
+    FREE (QuoteList);		/* __FREE_CHECKED__ */
     *QuoteList = ptr;
   }
 
@@ -699,6 +703,9 @@ classify_quote (struct q_class_t **QuoteList, const char *qptr,
   return class;
 }
 
+static int brailleLine = -1;
+static int brailleCol = -1;
+
 static int check_attachment_marker (char *);
 
 static void
@@ -712,9 +719,10 @@ resolve_types (char *buf, char *raw, struct line_t *lineInfo, int n, int last,
 
   if (n == 0 || ISHEADER (lineInfo[n-1].type))
   {
-    if (buf[0] == '\n')
+    if (buf[0] == '\n') {
       lineInfo[n].type = MT_COLOR_NORMAL;
-    else if (n > 0 && (buf[0] == ' ' || buf[0] == '\t'))
+      getyx(stdscr, brailleLine, brailleCol);
+    } else if (n > 0 && (buf[0] == ' ' || buf[0] == '\t'))
     {
       lineInfo[n].type = lineInfo[n-1].type; /* wrapped line */
       (lineInfo[n].syntax)[0].color = (lineInfo[n-1].syntax)[0].color;
@@ -758,7 +766,7 @@ resolve_types (char *buf, char *raw, struct line_t *lineInfo, int n, int last,
 	if (lineInfo[i].chunks)
 	{
 	  lineInfo[i].chunks = 0;
-	  safe_realloc ((void **) &(lineInfo[n].syntax), 
+	  safe_realloc (&(lineInfo[n].syntax), 
 			sizeof (struct syntax_t));
 	}
 	lineInfo[i++].type = MT_COLOR_SIGNATURE;
@@ -833,7 +841,7 @@ resolve_types (char *buf, char *raw, struct line_t *lineInfo, int n, int last,
 	    if (!found)
 	    {
 	      if (++(lineInfo[n].chunks) > 1)
-		safe_realloc ((void **)&(lineInfo[n].syntax), 
+		safe_realloc (&(lineInfo[n].syntax), 
 			      (lineInfo[n].chunks) * sizeof (struct syntax_t));
 	    }
 	    i = lineInfo[n].chunks - 1;
@@ -965,27 +973,53 @@ static int grok_ansi(unsigned char *buf, int pos, ansi_attr *a)
   return pos;
 }
 
+/* trim tail of buf so that it contains complete multibyte characters */
 static int
-fill_buffer (FILE *f, long *last_pos, long offset, unsigned char *buf, 
+trim_incomplete_mbyte(unsigned char *buf, size_t len)
+{
+  mbstate_t mbstate;
+  size_t k;
+
+  memset (&mbstate, 0, sizeof (mbstate));
+  for (; len > 0; buf += k, len -= k)
+  {
+    k = mbrtowc (NULL, (char *) buf, len, &mbstate);
+    if (k == -2) 
+      break; 
+    else if (k == -1 || k == 0) 
+      k = 1;
+  }
+  *buf = '\0';
+
+  return len;
+}
+
+static int
+fill_buffer (FILE *f, LOFF_T *last_pos, LOFF_T offset, unsigned char *buf, 
 	     unsigned char *fmt, size_t blen, int *buf_ready)
 {
   unsigned char *p;
   static int b_read;
-
+  
   if (*buf_ready == 0)
   {
     buf[blen - 1] = 0;
     if (offset != *last_pos)
-      fseek (f, offset, 0);
+      fseeko (f, offset, 0);
     if (fgets ((char *) buf, blen - 1, f) == NULL)
     {
       fmt[0] = 0;
       return (-1);
     }
-    *last_pos = ftell (f);
+    *last_pos = ftello (f);
     b_read = (int) (*last_pos - offset);
     *buf_ready = 1;
 
+    /* incomplete mbyte characters trigger a segfault in regex processing for
+     * certain versions of glibc. Trim them if necessary. */
+    if (b_read == blen - 2)
+      b_read -= trim_incomplete_mbyte(buf, b_read);
+    
     /* copy "buf" to "fmt", but without bold and underline controls */
     p = buf;
     while (*p)
@@ -1032,10 +1066,7 @@ static int format_line (struct line_t **lineInfo, int n, unsigned char *buf,
   wchar_t wc;
   mbstate_t mbstate;
 
-  int wrap_cols = COLS - WrapMargin;
-  
-  if (wrap_cols <= 0)
-    wrap_cols = COLS;
+  int wrap_cols = mutt_term_width (Wrap);
   
   /* FIXME: this should come from lineInfo */
   memset(&mbstate, 0, sizeof(mbstate));
@@ -1085,10 +1116,10 @@ static int format_line (struct line_t **lineInfo, int n, unsigned char *buf,
 
       while ((wc1 = 0, mbstate1 = mbstate,
 	      k1 = k + mbrtowc (&wc1, (char *)buf+ch+k, cnt-ch-k, &mbstate1),
-	      wc1 == '\b') &&
+	      k1 - k > 0 && wc1 == '\b') &&
 	     (wc1 = 0,
 	      k2 = mbrtowc (&wc1, (char *)buf+ch+k1, cnt-ch-k1, &mbstate1),
-	      IsWPrint (wc1)))
+	      k2 > 0 && IsWPrint (wc1)))
       {
 	if (wc == wc1)
 	{
@@ -1194,7 +1225,7 @@ static int format_line (struct line_t **lineInfo, int n, unsigned char *buf,
  */
 
 static int
-display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n, 
+display_line (FILE *f, LOFF_T *last_pos, struct line_t **lineInfo, int n, 
 	      int *last, int *max, int flags, struct q_class_t **QuoteList,
 	      int *q_level, int *force_redraw, regex_t *SearchRE)
 {
@@ -1217,7 +1248,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
 
   if (*last == *max)
   {
-    safe_realloc ((void **)lineInfo, sizeof (struct line_t) * (*max += LINES));
+    safe_realloc (lineInfo, sizeof (struct line_t) * (*max += LINES));
     for (ch = *last; ch < *max ; ch++)
     {
       memset (&((*lineInfo)[ch]), 0, sizeof (struct line_t));
@@ -1290,7 +1321,7 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     while (regexec (SearchRE, (char *) fmt + offset, 1, pmatch, (offset ? REG_NOTBOL : 0)) == 0)
     {
       if (++((*lineInfo)[n].search_cnt) > 1)
-	safe_realloc ((void **) &((*lineInfo)[n].search),
+	safe_realloc (&((*lineInfo)[n].search),
 		      ((*lineInfo)[n].search_cnt) * sizeof (struct syntax_t));
       else
 	(*lineInfo)[n].search = safe_malloc (sizeof (struct syntax_t));
@@ -1342,7 +1373,11 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
 	/* skip trailing blanks */
 	while (ch && (buf[ch] == ' ' || buf[ch] == '\t' || buf[ch] == '\r'))
 	  ch--;
-	cnt = ch + 1;
+        /* a very long word with leading spaces causes infinite wrapping */
+        if ((!ch) && (flags & M_PAGER_NSKIP))
+          buf_ptr = buf + cnt;
+        else
+          cnt = ch + 1;
       }
       else
 	buf_ptr = buf + cnt; /* a very long word... */
@@ -1366,26 +1401,6 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
   if (!(flags & M_SHOW))
     return 0;
 
-  if (flags & M_SHOWCOLOR)
-  {
-    m = ((*lineInfo)[n].continuation) ? ((*lineInfo)[n].syntax)[0].first : n;
-    if ((*lineInfo)[m].type == MT_COLOR_HEADER)
-      def_color = ((*lineInfo)[m].syntax)[0].color;
-    else
-      def_color = (*lineInfo)[m].type;
-
-    attrset (def_color);
-#ifdef HAVE_BKGDSET
-    bkgdset (def_color | ' ');
-#endif
-    clrtoeol ();
-    SETCOLOR (MT_COLOR_NORMAL);
-    BKGDSET (MT_COLOR_NORMAL);
-    
-  }
-  else
-    clrtoeol ();
-
   /* display the line */
   format_line (lineInfo, n, buf, flags, &a, cnt, &ch, &vch, &col, &special);
 
@@ -1402,6 +1417,25 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
   if (special || (col != COLS && (flags & (M_SHOWCOLOR | M_SEARCH))))
     resolve_color (*lineInfo, n, vch, flags, 0, &a);
           
+  /*
+   * Fill the blank space at the end of the line with the prevailing color.
+   * ncurses does an implicit clrtoeol() when you do addch('\n') so we have
+   * to make sure to reset the color *after* that
+   */
+  if (flags & M_SHOWCOLOR)
+  {
+    m = ((*lineInfo)[n].continuation) ? ((*lineInfo)[n].syntax)[0].first : n;
+    if ((*lineInfo)[m].type == MT_COLOR_HEADER)
+      def_color = ((*lineInfo)[m].syntax)[0].color;
+    else
+      def_color = ColorDefs[ (*lineInfo)[m].type ];
+
+    attrset (def_color);
+#ifdef HAVE_BKGDSET
+    bkgdset (def_color | ' ');
+#endif
+  }
+
   /* ncurses always wraps lines when you get to the right side of the
    * screen, but S-Lang seems to only wrap if the next character is *not*
    * a newline (grr!).
@@ -1410,6 +1444,17 @@ display_line (FILE *f, long *last_pos, struct line_t **lineInfo, int n,
     if (col < COLS)
 #endif
       addch ('\n');
+
+  /*
+   * reset the color back to normal.  This *must* come after the
+   * addch('\n'), otherwise the color for this line will not be
+   * filled to the right margin.
+   */
+  if (flags & M_SHOWCOLOR)
+  {
+    SETCOLOR(MT_COLOR_NORMAL);
+    BKGDSET(MT_COLOR_NORMAL);
+  }
 
   /* build a return code */
   if (!(flags & M_SHOW))
@@ -1467,7 +1512,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
   int r = -1;
   int redraw = REDRAW_FULL;
   FILE *fp = NULL;
-  long last_pos = 0, last_offset = 0;
+  LOFF_T last_pos = 0, last_offset = 0;
   int old_smart_wrap, old_markers;
   struct stat sb;
   regex_t SearchRE;
@@ -1599,7 +1644,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	lines = Resize->line;
 	redraw |= REDRAW_SIGWINCH;
 
-	safe_free ((void **) &Resize);
+	FREE (&Resize);
       }
 #endif
 
@@ -1690,29 +1735,36 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 
     if (redraw & REDRAW_STATUS)
     {
+      struct hdr_format_info hfi;
+      char pager_progress_str[4];
+
+      hfi.ctx = Context;
+      hfi.pager_progress = pager_progress_str;
+
+      if (last_pos < sb.st_size - 1)
+	snprintf(pager_progress_str, sizeof(pager_progress_str), "%lld%%", (100 * last_offset / sb.st_size));
+      else
+	strfcpy(pager_progress_str, (topline == 0) ? "all" : "end", sizeof(pager_progress_str));
+
       /* print out the pager status bar */
       SETCOLOR (MT_COLOR_STATUS);
       BKGDSET (MT_COLOR_STATUS);
       CLEARLINE (statusoffset);
       if (IsHeader (extra))
       {
-	_mutt_make_string (buffer,
-			   COLS-9 < sizeof (buffer) ? COLS-9 : sizeof (buffer),
-			   NONULL (PagerFmt), Context, extra->hdr, M_FORMAT_MAKEPRINT);
+	size_t l1 = COLS * MB_LEN_MAX;
+	size_t l2 = sizeof (buffer);
+	hfi.hdr = extra->hdr;
+	mutt_make_string_info (buffer, l1 < l2 ? l1 : l2, NONULL (PagerFmt), &hfi, M_FORMAT_MAKEPRINT);
       }
       else if (IsMsgAttach (extra))
       {
-	_mutt_make_string (buffer,
-			   COLS - 9 < sizeof (buffer) ? COLS - 9: sizeof (buffer),
-			   NONULL (PagerFmt), Context, extra->bdy->hdr, M_FORMAT_MAKEPRINT);
+	size_t l1 = COLS * MB_LEN_MAX;
+	size_t l2 = sizeof (buffer);
+	hfi.hdr = extra->bdy->hdr;
+	mutt_make_string_info (buffer, l1 < l2 ? l1 : l2, NONULL (PagerFmt), &hfi, M_FORMAT_MAKEPRINT);
       }
-      mutt_paddstr (COLS-10, IsHeader (extra) || IsMsgAttach (extra) ?
-		    buffer : banner);
-      addstr (" -- (");
-      if (last_pos < sb.st_size - 1)
-	printw ("%d%%)", (int) (100 * last_offset / sb.st_size));
-      else
-	addstr (topline == 0 ? "all)" : "end)");
+      mutt_paddstr (COLS, IsHeader (extra) || IsMsgAttach (extra) ?  buffer : banner);
       BKGDSET (MT_COLOR_NORMAL);
       SETCOLOR (MT_COLOR_NORMAL);
     }
@@ -1728,14 +1780,34 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
  
       move (indexoffset + (option (OPTSTATUSONTOP) ? 0 : (indexlen - 1)), 0);
       SETCOLOR (MT_COLOR_STATUS);
+      BKGDSET (MT_COLOR_STATUS);
       mutt_paddstr (COLS, buffer);
       SETCOLOR (MT_COLOR_NORMAL);
+      BKGDSET (MT_COLOR_NORMAL);
     }
 
     redraw = 0;
 
-    move (statusoffset, COLS-1);
+    if (option(OPTBRAILLEFRIENDLY)) {
+      if (brailleLine!=-1) {
+        move(brailleLine+1, 0);
+        brailleLine = -1;
+      }
+    } else move (statusoffset, COLS-1);
     mutt_refresh ();
+
+    if (IsHeader (extra) && OldHdr == extra->hdr && TopLine != topline
+        && lineInfo[curline].offset < sb.st_size-1)
+    {
+      if (TopLine - topline > lines)
+        topline += lines;
+      else
+        topline = TopLine;
+      continue;
+    }
+    else
+      OldHdr = NULL;
+      
     ch = km_dokey (MENU_PAGER);
     if (ch != -1)
       mutt_clear_error ();
@@ -1779,10 +1851,10 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  lineInfo[i].search_cnt = -1;
 	  lineInfo[i].quote = NULL;
 
-	  safe_realloc ((void **)&(lineInfo[i].syntax),
+	  safe_realloc (&(lineInfo[i].syntax),
 			sizeof (struct syntax_t));
 	  if (SearchCompiled && lineInfo[i].search)
-	      safe_free ((void **) &(lineInfo[i].search));
+	      FREE (&(lineInfo[i].search));
 	}
 
 	lastLine = 0;
@@ -1793,6 +1865,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       }
 
       SigWinch = 0;
+      clearok(stdscr,TRUE);/*force complete redraw*/
       continue;
     }
 #endif
@@ -1896,6 +1969,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_SEARCH_OPPOSITE:
 	if (SearchCompiled)
 	{
+search_next:
 	  if ((!SearchBack && ch==OP_SEARCH_NEXT) ||
 	      (SearchBack &&ch==OP_SEARCH_OPPOSITE))
 	  {
@@ -1938,16 +2012,36 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 
       case OP_SEARCH:
       case OP_SEARCH_REVERSE:
+        strfcpy (buffer, searchbuf, sizeof (buffer));
+	if (mutt_get_field ((SearchBack ? _("Reverse search: ") :
+			  _("Search: ")), buffer, sizeof (buffer),
+			  M_CLEAR) != 0)
+	  break;
+
+	if (!strcmp (buffer, searchbuf))
+	{
+	  if (SearchCompiled)
+	  {
+	    /* do an implicit search-next */
+	    if (ch == OP_SEARCH)
+	      ch = OP_SEARCH_NEXT;
+	    else
+	      ch = OP_SEARCH_OPPOSITE;
+
+	    goto search_next;
+	  }
+	}
+      
+        if (!buffer[0])
+	  break;
+      
+	strfcpy (searchbuf, buffer, sizeof (searchbuf));
+
 	/* leave SearchBack alone if ch == OP_SEARCH_NEXT */
 	if (ch == OP_SEARCH)
 	  SearchBack = 0;
 	else if (ch == OP_SEARCH_REVERSE)
 	  SearchBack = 1;
-
-	if (mutt_get_field ((SearchBack ? _("Reverse search: ") :
-			  _("Search: ")), searchbuf, sizeof (searchbuf),
-			  M_CLEAR) != 0 || !searchbuf[0])
-	  break;
 
 	if (SearchCompiled)
 	{
@@ -1955,7 +2049,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  for (i = 0; i < lastLine; i++)
 	  {
 	    if (lineInfo[i].search)
-	      safe_free ((void **) &(lineInfo[i].search));
+	      FREE (&(lineInfo[i].search));
 	    lineInfo[i].search_cnt = -1;
 	  }
 	}
@@ -1969,7 +2063,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  {
 	    /* cleanup */
 	    if (lineInfo[i].search)
-	      safe_free ((void **) &(lineInfo[i].search));
+	      FREE (&(lineInfo[i].search));
 	    lineInfo[i].search_cnt = -1;
 	  }
 	  SearchFlag = 0;
@@ -2141,6 +2235,17 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	  mutt_resend_message (NULL, extra->ctx, extra->hdr);
         redraw = REDRAW_FULL;
         break;
+
+      case OP_CHECK_TRADITIONAL:
+        CHECK_MODE (IsHeader (extra));
+        if (!(WithCrypto & APPLICATION_PGP))
+	  break;
+        if (!(extra->hdr->security & PGP_TRADITIONAL_CHECKED)) 
+        {
+	  ch = -1;
+	  rc = OP_CHECK_TRADITIONAL;
+	}
+        break;
       
       case OP_CREATE_ALIAS:
 	CHECK_MODE(IsHeader (extra) || IsMsgAttach (extra));
@@ -2154,6 +2259,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_DELETE:
 	CHECK_MODE(IsHeader (extra));
 	CHECK_READONLY;
+	CHECK_ACL(M_ACL_DELETE, _("delete message"));
+
 	mutt_set_flag (Context, extra->hdr, M_DELETE, 1);
         if (option (OPTDELETEUNTAG))
 	  mutt_set_flag (Context, extra->hdr, M_TAG, 0);
@@ -2169,6 +2276,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_DELETE_SUBTHREAD:
 	CHECK_MODE(IsHeader (extra));
 	CHECK_READONLY;
+	CHECK_ACL(M_ACL_DELETE, _("delete message(s)"));
 
 	r = mutt_thread_set_flag (extra->hdr, M_DELETE, 1,
 				  ch == OP_DELETE_THREAD ? 0 : 1);
@@ -2249,9 +2357,9 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	    lineInfo[i].search_cnt = -1;
 	    lineInfo[i].quote = NULL;
 
-	    safe_realloc ((void **)&(lineInfo[i].syntax), sizeof (struct syntax_t));
+	    safe_realloc (&(lineInfo[i].syntax), sizeof (struct syntax_t));
 	    if (SearchCompiled && lineInfo[i].search)
-		safe_free ((void **) &(lineInfo[i].search));
+		FREE (&(lineInfo[i].search));
 	  }
 
 	  if (SearchCompiled)
@@ -2288,15 +2396,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_FLAG_MESSAGE:
 	CHECK_MODE(IsHeader (extra));
 	CHECK_READONLY;
-
-#ifdef USE_POP
-	if (Context->magic == M_POP)
-	{
-	  mutt_flushinp ();
-	  mutt_error _("Can't change 'important' flag on POP server.");
-	  break;
-	}
-#endif
+	CHECK_ACL(M_ACL_WRITE, "flag message");
 
 	mutt_set_flag (Context, extra->hdr, M_FLAG, !extra->hdr->flagged);
 	redraw = REDRAW_STATUS | REDRAW_INDEX;
@@ -2327,7 +2427,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_MAIL:
 	CHECK_MODE(IsHeader (extra) && !IsAttach (extra));
         CHECK_ATTACH;      
-	ci_send_message (0, NULL, NULL, NULL, NULL);
+	ci_send_message (0, NULL, NULL, extra->ctx, NULL);
 	redraw = REDRAW_FULL;
 	break;
 
@@ -2344,7 +2444,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	break;
 
       case OP_RECALL_MESSAGE:
-	CHECK_MODE(IsHeader (extra));
+	CHECK_MODE(IsHeader (extra) && !IsAttach(extra));
         CHECK_ATTACH;
 	ci_send_message (SENDPOSTPONED, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
@@ -2383,37 +2483,38 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	redraw = REDRAW_FULL;
 	break;
 
-#ifdef HAVE_PGP      
       case OP_DECRYPT_SAVE:
-#endif
+        if (!WithCrypto)
+        {
+          ch = -1;
+          break;
+        }
+	/* fall through */
       case OP_SAVE:
 	if (IsAttach (extra))
 	{
-	  mutt_save_attachment_list (extra->fp, 0, extra->bdy, extra->hdr);
+	  mutt_save_attachment_list (extra->fp, 0, extra->bdy, extra->hdr, NULL);
 	  break;
 	}
 	/* fall through */
       case OP_COPY_MESSAGE:
       case OP_DECODE_SAVE:
       case OP_DECODE_COPY:
-#ifdef HAVE_PGP
       case OP_DECRYPT_COPY:
-#endif
+        if (!WithCrypto && ch == OP_DECRYPT_COPY)
+        {
+          ch = -1;
+          break;
+        }
 	CHECK_MODE(IsHeader (extra));
 	if (mutt_save_message (extra->hdr,
-#ifdef HAVE_PGP
 			       (ch == OP_DECRYPT_SAVE) ||
-#endif			       
 			       (ch == OP_SAVE) || (ch == OP_DECODE_SAVE),
 			       (ch == OP_DECODE_SAVE) || (ch == OP_DECODE_COPY),
-#ifdef HAVE_PGP
 			       (ch == OP_DECRYPT_SAVE) || (ch == OP_DECRYPT_COPY) ||
-#endif
 			       0,
 			       &redraw) == 0 && (ch == OP_SAVE || ch == OP_DECODE_SAVE
-#ifdef HAVE_PGP
 						 || ch == OP_DECRYPT_SAVE
-#endif
 						 ))
 	{
 	  if (option (OPTRESOLVE))
@@ -2435,6 +2536,11 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_TAG:
 	CHECK_MODE(IsHeader (extra));
 	mutt_set_flag (Context, extra->hdr, M_TAG, !extra->hdr->tagged);
+
+	Context->last_tag = extra->hdr->tagged ? extra->hdr :
+	  ((Context->last_tag == extra->hdr && !extra->hdr->tagged)
+	   ? NULL : Context->last_tag);
+
 	redraw = REDRAW_STATUS | REDRAW_INDEX;
 	if (option (OPTRESOLVE))
 	{
@@ -2446,6 +2552,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_TOGGLE_NEW:
 	CHECK_MODE(IsHeader (extra));
 	CHECK_READONLY;
+	CHECK_ACL(M_ACL_SEEN, _("toggle new"));
+
 	if (extra->hdr->read || extra->hdr->old)
 	  mutt_set_flag (Context, extra->hdr, M_NEW, 1);
 	else if (!first)
@@ -2463,6 +2571,8 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_UNDELETE:
 	CHECK_MODE(IsHeader (extra));
 	CHECK_READONLY;
+	CHECK_ACL(M_ACL_DELETE, _("undelete message"));
+
 	mutt_set_flag (Context, extra->hdr, M_DELETE, 0);
 	redraw = REDRAW_STATUS | REDRAW_INDEX;
 	if (option (OPTRESOLVE))
@@ -2476,6 +2586,7 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
       case OP_UNDELETE_SUBTHREAD:
 	CHECK_MODE(IsHeader (extra));
 	CHECK_READONLY;
+	CHECK_ACL(M_ACL_DELETE, _("undelete message(s)"));
 
 	r = mutt_thread_set_flag (extra->hdr, M_DELETE, 0,
 				  ch == OP_UNDELETE_THREAD ? 0 : 1);
@@ -2500,6 +2611,10 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	mutt_version ();
 	break;
 
+      case OP_BUFFY_LIST:
+	mutt_buffy_list ();
+	break;
+
       case OP_VIEW_ATTACHMENTS:
         if (flags & M_PAGER_ATTACHMENT)
         {
@@ -2515,27 +2630,33 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 	break;
 
 
-
-#ifdef HAVE_PGP
-      case OP_FORGET_PASSPHRASE:
-	mutt_forget_passphrase ();
-	break;
-
       case OP_MAIL_KEY:
+        if (!(WithCrypto & APPLICATION_PGP))
+        {
+          ch = -1;
+          break;
+        }
 	CHECK_MODE(IsHeader(extra));
         CHECK_ATTACH;
 	ci_send_message (SENDKEY, NULL, NULL, extra->ctx, extra->hdr);
 	redraw = REDRAW_FULL;
 	break;
-      
+
+
+      case OP_FORGET_PASSPHRASE:
+	crypt_forget_passphrase ();
+	break;
+
       case OP_EXTRACT_KEYS:
+        if (!WithCrypto)
+        {
+          ch = -1;
+          break;
+        }
         CHECK_MODE(IsHeader(extra));
-        pgp_extract_keys_from_messages(extra->hdr);
+	crypt_extract_keys_from_messages(extra->hdr);
         redraw = REDRAW_FULL;
         break;
-#endif /* HAVE_PGP */
-
-
 
       default:
 	ch = -1;
@@ -2545,22 +2666,31 @@ mutt_pager (const char *banner, const char *fname, int flags, pager_t *extra)
 
   fclose (fp);
   if (IsHeader (extra))
+  {
     Context->msgnotreadyet = -1;
+    if (rc == -1)
+      OldHdr = NULL;
+    else
+    {
+      TopLine = topline;
+      OldHdr = extra->hdr;
+    }
+  }
     
   cleanup_quote (&QuoteList);
   
   for (i = 0; i < maxLine ; i++)
   {
-    safe_free ((void **) &(lineInfo[i].syntax));
+    FREE (&(lineInfo[i].syntax));
     if (SearchCompiled && lineInfo[i].search)
-      safe_free ((void **) &(lineInfo[i].search));
+      FREE (&(lineInfo[i].search));
   }
   if (SearchCompiled)
   {
     regfree (&SearchRE);
     SearchCompiled = 0;
   }
-  safe_free ((void **) &lineInfo);
+  FREE (&lineInfo);
   if (index)
     mutt_menuDestroy(&index);
   return (rc != -1 ? rc : 0);

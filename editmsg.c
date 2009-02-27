@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,11 +15,15 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 59 Temple Place - Suite 330,
- *     Boston, MA  02111, USA.
+ *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *     Boston, MA  02110-1301, USA.
  */ 
 
 /* simple, editor-based message editing */
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "copy.h"
@@ -75,7 +79,9 @@ static int edit_one_message (CONTEXT *ctx, HEADER *cur)
     return -1;
   }
 
-  rc = mutt_append_message (&tmpctx, ctx, cur, 0, CH_NOLEN | CH_NOSTATUS); oerrno = errno;
+  rc = mutt_append_message (&tmpctx, ctx, cur, 0, CH_NOLEN |
+	((ctx->magic == M_MBOX || ctx->magic == M_MMDF) ? 0 : CH_NOSTATUS));
+  oerrno = errno;
 
   mx_close_mailbox (&tmpctx, NULL);
 
@@ -87,6 +93,21 @@ static int edit_one_message (CONTEXT *ctx, HEADER *cur)
 
   if (stat (tmp, &sb) == 0)
     mtime = sb.st_mtime;
+
+  /*
+   * 2002-09-05 me@sigpipe.org
+   * The file the user is going to edit is not a real mbox, so we need to
+   * truncate the last newline in the temp file, which is logically part of
+   * the message separator, and not the body of the message.  If we fail to
+   * remove it, the message will grow by one line each time the user edits
+   * the message.
+   */
+  if (sb.st_size != 0 && truncate (tmp, sb.st_size - 1) == -1)
+  {
+    mutt_error (_("could not truncate temporary mail folder: %s"),
+		strerror (errno));
+    goto bail;
+  }
 
   mutt_edit_file (NONULL(Editor), tmp);
 
@@ -124,12 +145,12 @@ static int edit_one_message (CONTEXT *ctx, HEADER *cur)
     goto bail;
   }
 
-  of = cf = 0;
+  of = 0;
+  cf = ((tmpctx.magic == M_MBOX || tmpctx.magic == M_MMDF) ? 0 : CH_NOSTATUS);
   
   if (fgets (buff, sizeof (buff), fp) && is_from (buff, NULL, 0, NULL))
   {
-    if (tmpctx.magic == M_MBOX || tmpctx.magic == M_MMDF ||
-	tmpctx.magic == M_KENDRA)
+    if (tmpctx.magic == M_MBOX || tmpctx.magic == M_MMDF)
       cf = CH_FROM | CH_FORCE_FROM;
   }
   else
@@ -153,7 +174,7 @@ static int edit_one_message (CONTEXT *ctx, HEADER *cur)
     goto bail;
   }
 
-  if ((rc = mutt_copy_hdr (fp, msg->fp, 0, sb.st_size, CH_NOSTATUS | CH_NOLEN | cf, NULL)) == 0)
+  if ((rc = mutt_copy_hdr (fp, msg->fp, 0, sb.st_size, CH_NOLEN | cf, NULL)) == 0)
   {
     fputc ('\n', msg->fp);
     rc = mutt_copy_stream (fp, msg->fp);

@@ -1,8 +1,8 @@
 ## Process this file with automake to produce Makefile.in
 ## Use aclocal -I m4; automake --foreign
 
-AUTOMAKE_OPTIONS = foreign
-EXTRA_PROGRAMS = mutt_dotlock pgpring makedoc
+AUTOMAKE_OPTIONS = 1.6 foreign
+EXTRA_PROGRAMS = mutt_dotlock pgpring pgpewrap makedoc
 
 if BUILD_IMAP
 IMAP_SUBDIR = imap
@@ -11,26 +11,28 @@ endif
 
 SUBDIRS = m4 po intl doc contrib $(IMAP_SUBDIR)
 
-bin_SCRIPTS = muttbug flea
+bin_SCRIPTS = muttbug flea @SMIMEAUX_TARGET@
 
-BUILT_SOURCES = keymap_defs.h patchlist.c
+BUILT_SOURCES = keymap_defs.h patchlist.c reldate.h hcversion.h
 
 bin_PROGRAMS = mutt @DOTLOCK_TARGET@ @PGPAUX_TARGET@
 mutt_SOURCES = $(BUILT_SOURCES) \
 	addrbook.c alias.c attach.c base64.c browser.c buffy.c color.c \
+	crypt.c cryptglue.c \
 	commands.c complete.c compose.c copy.c curs_lib.c curs_main.c date.c \
-	edit.c enter.c flags.c init.c filter.c from.c getdomain.c \
+	edit.c enter.c flags.c init.c filter.c from.c \
+	getdomain.c group.c \
 	handler.c hash.c hdrline.c headers.c help.c hook.c keymap.c \
 	main.c mbox.c menu.c mh.c mx.c pager.c parse.c pattern.c \
 	postpone.c query.c recvattach.c recvcmd.c \
-	rfc822.c rfc1524.c rfc2047.c rfc2231.c \
+	rfc822.c rfc1524.c rfc2047.c rfc2231.c rfc3676.c \
 	score.c send.c sendlib.c signal.c sort.c \
 	status.c system.c thread.c charset.c history.c lib.c \
-	muttlib.c editmsg.c utf8.c mbyte.c wcwidth.c \
-	url.c ascii.c
+	muttlib.c editmsg.c mbyte.c \
+	url.c ascii.c mutt_idna.c crypt-mod.c crypt-mod.h
 
 mutt_LDADD = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAP) $(MUTTLIBS) \
-	$(INTLLIBS) $(LIBICONV)
+	$(INTLLIBS) $(LIBICONV)  $(GPGME_LIBS)
 
 mutt_DEPENDENCIES = @MUTT_LIB_OBJECTS@ @LIBOBJS@ $(LIBIMAPDEPS) \
 	$(INTLDEPS)
@@ -40,53 +42,51 @@ makedoc_LDADD =
 makedoc_DEPENDENCIES = 
 
 # $(makedoc_OBJECTS): $(makedoc_SOURCES)
-# 	$(HOST_CC) $(DEFS) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) -c $<
+# 	$(HOST_CC) $(DEFS) $(AM_CPPFLAGS) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) -c $<
 
 # makedoc: $(makedoc_OBJECTS) $(makedoc_DEPENDENCIES)
 # 	@rm -rf makedoc
 # 	$(HOST_CC) $(AM_CFLAGS) $(LDFLAGS) $(makedoc_LDFLAGS) $(makedoc_OBJECTS) $(makedoc_LDADD) -o makedoc
 
-CPP=@CPP@
-
 DEFS=-DPKGDATADIR=\"$(pkgdatadir)\" -DSYSCONFDIR=\"$(sysconfdir)\" \
 	-DBINDIR=\"$(bindir)\" -DMUTTLOCALEDIR=\"$(datadir)/locale\" \
 	-DHAVE_CONFIG_H=1
 
-INCLUDES=-I. -I$(top_srcdir) $(IMAP_INCLUDES) -Iintl
+AM_CPPFLAGS=-I. -I$(top_srcdir) $(IMAP_INCLUDES) $(GPGME_CFLAGS) -Iintl
 
-CPPFLAGS=@CPPFLAGS@ -I$(includedir)
-
-non_us_sources = pgp.c pgpinvoke.c pgpkey.c pgplib.c sha1.c \
-	pgpmicalg.c gnupgparse.c sha1.h \
-	doc/language.txt doc/language50.txt OPS.PGP doc/PGP-Notes.txt \
-	OPS.MIX remailer.c remailer.h pgpewrap.c	\
-	contrib/pgp2.rc contrib/pgp5.rc contrib/gpg.rc \
-	mutt_ssl.c mutt_ssl.h README.SSL mutt_ssl_nss.c \
-	pgppacket.c pgppacket.h
+CPPFLAGS=@CPPFLAGS@
 
 EXTRA_mutt_SOURCES = account.c md5c.c mutt_sasl.c mutt_socket.c mutt_ssl.c \
-	mutt_tunnel.c pop.c pop_auth.c pop_lib.c pgp.c pgpinvoke.c pgpkey.c \
+	mutt_tunnel.c pop.c pop_auth.c pop_lib.c smime.c pgp.c pgpinvoke.c pgpkey.c \
 	pgplib.c sha1.c pgpmicalg.c gnupgparse.c resize.c dotlock.c remailer.c \
-	browser.h mbyte.h remailer.h url.h mutt_ssl_nss.c pgppacket.c 
+	smtp.c browser.h mbyte.h remailer.h url.h \
+	crypt-mod-pgp-classic.c crypt-mod-smime-classic.c \
+	pgppacket.c mutt_idna.h hcache.h hcache.c bcache.c bcache.h mutt_ssl_gnutls.c \
+	crypt-gpgme.c crypt-mod-pgp-gpgme.c crypt-mod-smime-gpgme.c \
+	utf8.c wcwidth.c 
 
-EXTRA_DIST = COPYRIGHT GPL OPS OPS.PGP TODO configure acconfig.h account.h \
-	attach.h buffy.h charset.h copy.h dotlock.h functions.h gen_defs \
-	globals.h hash.h history.h init.h keymap.h \
+EXTRA_DIST = COPYRIGHT GPL OPS OPS.PGP OPS.CRYPT OPS.SMIME TODO UPDATING \
+	configure account.h \
+	attach.h buffy.h charset.h copy.h crypthash.h dotlock.h functions.h gen_defs \
+	globals.h hash.h history.h init.h keymap.h mutt_crypt.h \
 	mailbox.h mapping.h md5.h mime.h mutt.h mutt_curses.h mutt_menu.h \
 	mutt_regex.h mutt_sasl.h mutt_socket.h mutt_ssl.h mutt_tunnel.h \
-	mx.h pager.h pgp.h pop.h protos.h reldate.h rfc1524.h rfc2047.h \
-	rfc2231.h rfc822.h sha1.h sort.h mime.types VERSION prepare \
+	mx.h pager.h pgp.h pop.h protos.h rfc1524.h rfc2047.h \
+	rfc2231.h rfc822.h rfc3676.h sha1.h sort.h mime.types VERSION prepare \
 	_regex.h OPS.MIX README.SECURITY remailer.c remailer.h browser.h \
-	mbyte.h	lib.h extlib.c pgpewrap.c pgplib.h Muttrc.head Muttrc \
-	makedoc.c stamp-doc-rc README.SSL \
+	mbyte.h lib.h extlib.c pgpewrap.c smime_keys.pl pgplib.h Muttrc.head Muttrc \
+	makedoc.c makedoc-defs.h stamp-doc-rc README.SSL smime.h \
 	muttbug pgppacket.h depcomp ascii.h BEWARE PATCHES patchlist.sh \
-	snprintf.c regex.c
+	ChangeLog ChangeLog.old mkchangelog.sh cvslog2changelog.pl mutt_idna.h \
+	snprintf.c regex.c crypt-gpgme.h hcachever.sh.in
+
+EXTRA_SCRIPTS = smime_keys
 
 mutt_dotlock_SOURCES = mutt_dotlock.c
 mutt_dotlock_LDADD = @LIBOBJS@
 mutt_dotlock_DEPENDENCIES = @LIBOBJS@
 
-pgpring_SOURCES = pgppubring.c pgplib.c lib.c extlib.c sha1.c pgppacket.c ascii.c
+pgpring_SOURCES = pgppubring.c pgplib.c lib.c extlib.c sha1.c md5c.c pgppacket.c ascii.c
 pgpring_LDADD = @LIBOBJS@ $(INTLLIBS) 
 pgpring_DEPENDENCIES = @LIBOBJS@ $(INTLDEPS)
 
@@ -94,33 +94,46 @@ mutt_dotlock.c: dotlock.c
 	cp $(srcdir)/dotlock.c mutt_dotlock.c
 
 CLEANFILES = mutt_dotlock.c stamp-doc-rc makedoc \
-	keymap_alldefs.h keymap_defs.h patchlist.c
+	keymap_alldefs.h keymap_defs.h patchlist.c \
+	reldate.h
+
+DISTCLEANFILES= flea Muttrc smime_keys
 
 ACLOCAL_AMFLAGS = -I m4
 
 LDADD = @LIBOBJS@ @INTLLIBS@
 
-OPS=@OPS@
-
 flea:	muttbug.sh
 	cp muttbug.sh flea
 	chmod +x flea
 
-Makefile: $(BUILT_SOURCES)
+smime_keys: $(srcdir)/smime_keys.pl
+	cp $(srcdir)/smime_keys.pl smime_keys
+	chmod +x smime_keys
 
 keymap_defs.h: $(OPS) $(srcdir)/gen_defs
 	$(srcdir)/gen_defs $(OPS) > keymap_defs.h
 
-keymap_alldefs.h: $(srcdir)/OPS $(srcdir)/OPS.PGP $(srcdir)/OPS.MIX $(srcdir)/gen_defs
-	$(srcdir)/gen_defs $(srcdir)/OPS $(srcdir)/OPS.PGP $(srcdir)/OPS.MIX > keymap_alldefs.h
+$(srcdir)/keymap_alldefs.h: $(srcdir)/OPS $(srcdir)/OPS.PGP $(srcdir)/OPS.MIX $(srcdir)/OPS.CRYPT $(srcdir)/OPS.SMIME $(srcdir)/gen_defs
+	chmod u+w $(srcdir)
+	rm -f $@
+	$(srcdir)/gen_defs $(srcdir)/OPS $(srcdir)/OPS.PGP \
+		$(srcdir)/OPS.MIX $(srcdir)/OPS.CRYPT $(srcdir)/OPS.SMIME \
+			> $(srcdir)/keymap_alldefs.h
 
-reldate:
-	echo 'const char *ReleaseDate = "'`date +%Y-%m-%d`'";' > $(srcdir)/reldate.h
+reldate.h: $(srcdir)/ChangeLog
+	echo 'const char *ReleaseDate = "'`head -n 1 $(srcdir)/ChangeLog | LC_ALL=C cut -d ' ' -f 1`'";' > reldate.h.tmp; \
+	cmp -s reldate.h.tmp reldate.h || cp reldate.h.tmp reldate.h; \
+	rm reldate.h.tmp
+
+hcversion.h: $(srcdir)/mutt.h $(srcdir)/rfc822.h
+	( echo '#include "config.h"'; echo '#include "mutt.h"'; ) \
+	| $(CPP) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) - | sh ./hcachever.sh hcversion.h
 
 patchlist.c: $(srcdir)/PATCHES $(srcdir)/patchlist.sh
 	$(srcdir)/patchlist.sh < $(srcdir)/PATCHES > patchlist.c
 
-install-exec-local:
+install-exec-hook:
 	if test -f $(DESTDIR)$(bindir)/mutt.dotlock && test -f $(DESTDIR)$(bindir)/mutt_dotlock ; then	\
 		rm -f $(DESTDIR)$(bindir)/mutt.dotlock ;		\
 		ln -sf $(DESTDIR)$(bindir)/mutt_dotlock $(DESTDIR)$(bindir)/mutt.dotlock ; \
@@ -133,50 +146,53 @@ install-exec-local:
 
 install-data-local: Muttrc
 	$(srcdir)/mkinstalldirs $(DESTDIR)$(sysconfdir)
+	$(INSTALL) -m 644 Muttrc $(DESTDIR)$(sysconfdir)/Muttrc.dist
+	$(INSTALL) -m 644 $(srcdir)/mime.types $(DESTDIR)$(sysconfdir)/mime.types.dist
 	-if [ -f $(DESTDIR)$(pkgdatadir)/Muttrc ] ; then \
 		mv $(DESTDIR)$(pkgdatadir)/Muttrc* $(DESTDIR)$(sysconfdir) ; \
 	elif [ -f $(DESTDIR)$(pkgdatadir)/../Muttrc ] ; then \
 	 	mv $(DESTDIR)$(pkgdatadir)/../Muttrc* $(DESTDIR)$(sysconfdir) ; \
 	elif [ ! -f $(DESTDIR)$(sysconfdir)/Muttrc ] ; then \
-		$(INSTALL) -m 644 $(srcdir)/Muttrc $(DESTDIR)$(sysconfdir) ; \
+		$(INSTALL) -m 644 Muttrc $(DESTDIR)$(sysconfdir) ; \
 	fi
 	-if [ ! -f $(DESTDIR)$(sysconfdir)/mime.types ]; then \
 		$(INSTALL) -m 644 $(srcdir)/mime.types $(DESTDIR)$(sysconfdir); \
 	fi
 
+uninstall-local:
+	for i in Muttrc mime.types ; do \
+		if cmp -s $(DESTDIR)$(sysconfdir)/$$i.dist $(DESTDIR)$(sysconfdir)/$$i ; then \
+			rm $(DESTDIR)$(sysconfdir)/$$i ; \
+		fi ; \
+		rm $(DESTDIR)$(sysconfdir)/$${i}.dist ; \
+	done
 
 # Don't make this one ChangeLog - it's intended to be
 # used manually.
 
-changelog:
-	rcs2log | cat - ChangeLog > ChangeLog.$$$$ && mv ChangeLog.$$$$ ChangeLog
-	$(VISUAL) ChangeLog
+pclean:
+	cat /dev/null > $(top_srcdir)/PATCHES
+
+check-security:
+	(cd $(top_srcdir) && ./check_sec.sh)
+
+commit-real:
+	(cd $(top_srcdir) && cvs commit)
+
+commit-changelog:
+	(cd $(top_srcdir) && cvs commit -m "# changelog commit" ChangeLog)
+
+commit: pclean check-security commit-real update-changelog commit-changelog
+
+update-changelog:
+	(cd $(top_srcdir); \
+	sh ./mkchangelog.sh | cat  - ChangeLog > ChangeLog.$$$$ && mv ChangeLog.$$$$ ChangeLog; \
+	$${VISUAL:-vi} ChangeLog)
 
 # kluge around automake problems.
 
 dist-hook:
 	-for file in $(BUILT_SOURCES) ; do rm -f $(distdir)/$$file ; done
-
-us-distdir: distdir dist-hook
-	mv $(distdir) $(distdir)-us
-	find $(distdir)-us -type f -print | while read f ; do 		\
-		cp $$f `dirname $$f`/_`basename $$f`.$$$$ &&   		\
-		rm $$f && mv `dirname $$f`/_`basename $$f`.$$$$ $$f ;	\
-	done
-
-
-us-dist: us-distdir
-	for file in $(distdir)-us/*.c $(distdir)-us/*.h ; do \
-		$(srcdir)/reap.pl HAVE_PGP < $$file | $(srcdir)/reap.pl MIXMASTER | $(srcdir)/reap.pl USE_SSL > $$file.n && rm $$file && mv $$file.n $$file ; \
-	done
-	for file in $(non_us_sources) ; do \
-		echo "/* This file is only available in the international mutt version */" \
-			> $(distdir)-us/$$file ; \
-	done
-	echo "This version of mutt may be exported from the US.">  $(distdir)-us/EXPORTABLE
-	-chmod -R a+r $(distdir)-us
-	GZIP=$(GZIP) $(TAR) chozf $(distdir)-us.tar.gz $(distdir)-us
-	-rm -rf $(distdir)-us
 
 mutt-dist:
 	(cd $(srcdir) && ./build-release )
@@ -186,14 +202,13 @@ update-doc: stamp-doc-rc
 
 Muttrc: stamp-doc-rc
 
-stamp-doc-rc: $(srcdir)/init.h makedoc Muttrc.head
+stamp-doc-rc: $(srcdir)/init.h $(srcdir)/makedoc-defs.h makedoc Muttrc.head
 	-rm -f Muttrc stamp-doc-rc
-	$(CPP) $(INCLUDES) $(DEFS) $(CPPFLAGS) -D_MAKEDOC -C \
-		$(srcdir)/init.h | ./makedoc -c | cat Muttrc.head - > Muttrc
+	sed -e 's,[@]docdir[@],$(docdir),' $(srcdir)/Muttrc.head > Muttrc
+	$(CPP) $(AM_CPPFLAGS) $(DEFS) $(CPPFLAGS) -D_MAKEDOC -C \
+		$(srcdir)/init.h | ./makedoc -c >> Muttrc
 	touch stamp-doc-rc
 
 
-jtags:	TAGS mkjtags
-	( ./mkjtags TAGS > tags.$$$$ && mv tags.$$$$ tags )
-
-.PHONY: jtags
+.PHONY: commit pclean check-security commit-real commit-changelog
+# .PHONY: changelog ChangeLog

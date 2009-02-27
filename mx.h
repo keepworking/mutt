@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1999-2002 Thomas Roessler <roessler@does-not-exist.org>
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
 
 /*
@@ -32,7 +32,6 @@ enum
 {
   M_MBOX = 1,
   M_MMDF,
-  M_KENDRA,
   M_MH,
   M_MAILDIR
 #ifdef USE_IMAP
@@ -46,7 +45,6 @@ enum
 WHERE short DefaultMagic INITVAL (M_MBOX);
 
 #define MMDF_SEP "\001\001\001\001\n"
-#define KENDRA_SEP "\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\001\n"
 #define MAXLOCKATTEMPT 5
 
 int mbox_sync_mailbox (CONTEXT *, int *);
@@ -57,13 +55,17 @@ int mbox_lock_mailbox (CONTEXT *, int, int);
 int mbox_parse_mailbox (CONTEXT *);
 int mmdf_parse_mailbox (CONTEXT *);
 void mbox_unlock_mailbox (CONTEXT *);
+int mbox_check_empty (const char *);
 
 int mh_read_dir (CONTEXT *, const char *);
 int mh_sync_mailbox (CONTEXT *, int *);
 int mh_check_mailbox (CONTEXT *, int *);
 int mh_buffy (const char *);
+int mh_check_empty (const char *);
 
 int maildir_read_dir (CONTEXT *);
+int maildir_check_mailbox (CONTEXT *, int *);
+int maildir_check_empty (const char *);
 
 int maildir_commit_message (CONTEXT *, MESSAGE *, HEADER *);
 int mh_commit_message (CONTEXT *, MESSAGE *, HEADER *);

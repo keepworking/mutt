@@ -1,6 +1,7 @@
 /*
- * Copyright (C) 1996,1997 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996,1997 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
+ * Copyright (C) 2004 g10 Code GmbH
  *
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,73 +15,48 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifdef HAVE_PGP
+#ifdef CRYPT_BACKEND_CLASSIC_PGP
 
+#include "mutt_crypt.h"
 #include "pgplib.h"
 
-WHERE REGEXP PgpGoodSign;
-
-WHERE char *PgpSignAs;
-WHERE short PgpTimeout;
-WHERE char *PgpEntryFormat;
-
-
-/* The command formats */
-
-WHERE char *PgpClearSignCommand;
-WHERE char *PgpDecodeCommand;
-WHERE char *PgpVerifyCommand;
-WHERE char *PgpDecryptCommand;
-WHERE char *PgpSignCommand;
-WHERE char *PgpEncryptSignCommand;
-WHERE char *PgpEncryptOnlyCommand;
-WHERE char *PgpImportCommand;
-WHERE char *PgpExportCommand;
-WHERE char *PgpVerifyKeyCommand;
-WHERE char *PgpListSecringCommand;
-WHERE char *PgpListPubringCommand;
-WHERE char *PgpGetkeysCommand;
 
 /* prototypes */
+
+int pgp_use_gpg_agent(void);
 
 int pgp_check_traditional (FILE *, BODY *, int);
 BODY *pgp_decrypt_part (BODY *, STATE *, FILE *, BODY *);
 BODY *pgp_make_key_attachment (char *);
 const char *pgp_micalg (const char *fname);
 
-char *_pgp_keyid (pgp_key_t *);
-char *pgp_keyid (pgp_key_t *);
+char *_pgp_keyid (pgp_key_t);
+char *pgp_keyid (pgp_key_t);
 
 
 int mutt_check_pgp (HEADER * h);
-int mutt_is_application_pgp (BODY *);
-int mutt_is_multipart_encrypted (BODY *);
-int mutt_is_multipart_signed (BODY *);
-int mutt_parse_pgp_hdr (char *, int);
+
 int pgp_decrypt_mime (FILE *, FILE **, BODY *, BODY **);
-int pgp_get_keys (HEADER *, char **);
-int pgp_protect (HEADER *, char *);
-int pgp_query (BODY *);
+
 /* int pgp_string_matches_hint (const char *s, LIST * hints); */
-int pgp_valid_passphrase (void);
 
-/* pgp_key_t *gpg_get_candidates (struct pgp_vinfo *, pgp_ring_t, LIST *); */
-pgp_key_t *pgp_ask_for_key (char *, char *, short, pgp_ring_t);
-pgp_key_t *pgp_get_candidates (pgp_ring_t, LIST *);
-pgp_key_t *pgp_getkeybyaddr (ADDRESS *, short, pgp_ring_t);
-pgp_key_t *pgp_getkeybystr (char *, short, pgp_ring_t);
+/* pgp_key_t gpg_get_candidates (struct pgp_vinfo *, pgp_ring_t, LIST *); */
+pgp_key_t pgp_ask_for_key (char *, char *, short, pgp_ring_t);
+pgp_key_t pgp_get_candidates (pgp_ring_t, LIST *);
+pgp_key_t pgp_getkeybyaddr (ADDRESS *, short, pgp_ring_t);
+pgp_key_t pgp_getkeybystr (char *, short, pgp_ring_t);
 
-void mutt_forget_passphrase (void);
-void pgp_application_pgp_handler (BODY *, STATE *);
-void pgp_encrypted_handler (BODY *, STATE *);
+char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc);
+
+void pgp_forget_passphrase (void);
+int pgp_application_pgp_handler (BODY *, STATE *);
+int pgp_encrypted_handler (BODY *, STATE *);
 void pgp_extract_keys_from_attachment_list (FILE * fp, int tag, BODY * top);
-void pgp_extract_keys_from_messages (HEADER * hdr);
-void pgp_signed_handler (BODY *, STATE *);
 void pgp_void_passphrase (void);
-
+int pgp_valid_passphrase (void);
 
 
 /* The PGP invocation interface - not really beautiful. */
@@ -117,4 +93,13 @@ pid_t pgp_invoke_traditional (FILE **pgpin, FILE **pgpout, FILE **pgperr,
 void pgp_invoke_import (const char *fname);
 void pgp_invoke_getkeys (ADDRESS *);
 
-#endif /* HAVE_PGP */
+
+/* private ? */
+int pgp_verify_one (BODY *, STATE *, const char *);
+BODY *pgp_traditional_encryptsign (BODY *, int, char *);
+BODY *pgp_encrypt_message (BODY *, char *, int);
+BODY *pgp_sign_message (BODY *);
+
+int pgp_send_menu (HEADER *msg, int *redraw);
+
+#endif /* CRYPT_BACKEND_CLASSIC_PGP */

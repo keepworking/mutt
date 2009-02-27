@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
  *
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,8 +15,8 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 59 Temple Place - Suite 330,
- *     Boston, MA  02111, USA.
+ *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *     Boston, MA  02110-1301, USA.
  */
 
 /*
@@ -28,6 +28,10 @@
  * interesting manner.
  *
  */
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mime.h"
@@ -113,6 +117,8 @@ void rfc2231_decode_parameters (PARAMETER **headp)
 
       if (option (OPTRFC2047PARAMS) && p->value && strstr (p->value, "=?"))
 	rfc2047_decode (&p->value);
+      else if (AssumedCharset && *AssumedCharset)
+        convert_nonmime_string (&p->value);
 
       *last = p;
       last = &p->next;
@@ -125,6 +131,7 @@ void rfc2231_decode_parameters (PARAMETER **headp)
       s = rfc2231_get_charset (p->value, charset, sizeof (charset));
       rfc2231_decode_one (p->value, s);
       mutt_convert_string (&p->value, charset, Charset, M_ICONV_HOOK_FROM);
+      mutt_filter_unprintable (&p->value);
 
       *last = p;
       last = &p->next;
@@ -135,7 +142,7 @@ void rfc2231_decode_parameters (PARAMETER **headp)
     else
     {
       *s = '\0'; s++; /* let s point to the first character of index. */
-      for (t = s; *t && isdigit (*t); t++)
+      for (t = s; *t && isdigit ((unsigned char) *t); t++)
 	;
       encoded = (*t == '*');
       *t = '\0';
@@ -150,7 +157,7 @@ void rfc2231_decode_parameters (PARAMETER **headp)
       
       p->attribute = NULL;
       p->value = NULL;
-      safe_free ((void **) &p);
+      FREE (&p);
 
       rfc2231_list_insert (&conthead, conttmp);
     }
@@ -177,9 +184,9 @@ static void rfc2231_free_parameter (struct rfc2231_parameter **p)
 {
   if (*p)
   {
-    safe_free ((void **) &(*p)->attribute);
-    safe_free ((void **) &(*p)->value);
-    safe_free ((void **) p);
+    FREE (&(*p)->attribute);
+    FREE (&(*p)->value);
+    FREE (p);		/* __FREE_CHECKED__ */
   }
 }
 
@@ -208,7 +215,9 @@ static void rfc2231_decode_one (char *dest, char *src)
 
   for (d = dest; *src; src++)
   {
-    if (*src == '%' && isxdigit (*(src + 1)) && isxdigit (*(src + 2)))
+    if (*src == '%' &&
+        isxdigit ((unsigned char) *(src + 1)) &&
+        isxdigit ((unsigned char) *(src + 2)))
     {
       *d++ = (hexval (*(src + 1)) << 4) | (hexval (*(src + 2)));
       src += 2;
@@ -280,7 +289,7 @@ static void rfc2231_join_continuations (PARAMETER **head,
       
       vl = strlen (par->value);
       
-      safe_realloc ((void **) &value, l + vl + 1);
+      safe_realloc (&value, l + vl + 1);
       strcpy (value + l, par->value);	/* __STRCPY_CHECKED__ */
       l += vl;
 
@@ -357,17 +366,17 @@ int rfc2231_encode_string (char **pd)
     *t = '\0';
 
     if (d != *pd)
-      safe_free ((void **) &d);
-    safe_free ((void **) pd);
+      FREE (&d);
+    FREE (pd);		/* __FREE_CHECKED__ */
     *pd = e;
   }
   else if (d != *pd)
   {
-    safe_free ((void **) pd);
+    FREE (pd);		/* __FREE_CHECKED__ */
     *pd = d;
   }
   
-  safe_free ((void **) &charset);
+  FREE (&charset);
   
   return encode;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1997-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1997-2000 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it
  *     and/or modify it under the terms of the GNU General Public
@@ -15,13 +15,17 @@
  * 
  *     You should have received a copy of the GNU General Public
  *     License along with this program; if not, write to the Free
- *     Software Foundation, Inc., 59 Temple Place - Suite 330,
- *     Boston, MA  02111, USA.
+ *     Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ *     Boston, MA  02110-1301, USA.
  */ 
 
 /* This file contains the new pgp invocation code.  Note that this
  * is almost entirely format based.
  */
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,6 +39,7 @@
 
 #include "mutt.h"
 #include "mutt_curses.h"
+#include "mutt_idna.h"
 #include "pgp.h"
 #include "rfc822.h"
 
@@ -53,6 +58,7 @@ struct pgp_command_context {
 
 const char *_mutt_fmt_pgp_command (char *dest,
 				   size_t destlen,
+				   size_t col,
 				   char op,
 				   const char *src,
 				   const char *prefix,
@@ -122,7 +128,7 @@ const char *_mutt_fmt_pgp_command (char *dest,
 	snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
 	snprintf (dest, destlen, fmt, cctx->need_passphrase ? "PGPPASSFD=0" : "");
       }
-      else if (!cctx->need_passphrase)
+      else if (!cctx->need_passphrase || pgp_use_gpg_agent())
 	optional = 0;
       break;
     }
@@ -134,16 +140,16 @@ const char *_mutt_fmt_pgp_command (char *dest,
   }
 
   if (optional)
-    mutt_FormatString (dest, destlen, ifstring, _mutt_fmt_pgp_command, data, 0);
+    mutt_FormatString (dest, destlen, col, ifstring, _mutt_fmt_pgp_command, data, 0);
   else if (flags & M_FORMAT_OPTIONAL)
-    mutt_FormatString (dest, destlen, elsestring, _mutt_fmt_pgp_command, data, 0);
+    mutt_FormatString (dest, destlen, col, elsestring, _mutt_fmt_pgp_command, data, 0);
 
   return (src);
 }
 
 void mutt_pgp_command (char *d, size_t dlen, struct pgp_command_context *cctx, const char *fmt)
 {
-  mutt_FormatString (d, dlen, NONULL (fmt), _mutt_fmt_pgp_command, (unsigned long) cctx, 0);
+  mutt_FormatString (d, dlen, 0, NONULL (fmt), _mutt_fmt_pgp_command, (unsigned long) cctx, 0);
   dprint (2, (debugfile, "mutt_pgp_command: %s\n", d));
 }
 
@@ -242,10 +248,10 @@ pid_t pgp_invoke_traditional (FILE **pgpin, FILE **pgpout, FILE **pgperr,
 			      int pgpinfd, int pgpoutfd, int pgperrfd,
 			      const char *fname, const char *uids, int flags)
 {
-  if (flags & PGPENCRYPT)
+  if (flags & ENCRYPT)
     return pgp_invoke (pgpin, pgpout, pgperr, pgpinfd, pgpoutfd, pgperrfd,
-		       flags & PGPSIGN ? 1 : 0, fname, NULL, PgpSignAs, uids, 
-		       flags & PGPSIGN ? PgpEncryptSignCommand : PgpEncryptOnlyCommand);
+		       flags & SIGN ? 1 : 0, fname, NULL, PgpSignAs, uids, 
+		       flags & SIGN ? PgpEncryptSignCommand : PgpEncryptOnlyCommand);
   else
     return pgp_invoke (pgpin, pgpout, pgperr, pgpinfd, pgpoutfd, pgperrfd,
 		       1, fname, NULL, PgpSignAs, NULL,
@@ -287,7 +293,8 @@ void pgp_invoke_getkeys (ADDRESS *addr)
   addr->personal = NULL;
   
   *tmp = '\0';
-  rfc822_write_address_single (tmp, sizeof (tmp), addr);
+  mutt_addrlist_to_local (addr);
+  rfc822_write_address_single (tmp, sizeof (tmp), addr, 0);
   mutt_quote_filename (buff, sizeof (buff), tmp);
 
   addr->personal = personal;

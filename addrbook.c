@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,13 +13,19 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
 #include "mapping.h"
 #include "sort.h"
+
+#include "mutt_idna.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -37,7 +43,7 @@ static struct mapping_t AliasHelp[] = {
 };
 
 static const char *
-alias_format_str (char *dest, size_t destlen, char op, const char *src,
+alias_format_str (char *dest, size_t destlen, size_t col, char op, const char *src,
 		  const char *fmt, const char *ifstring, const char *elsestring,
 		  unsigned long data, format_flag flags)
 {
@@ -51,12 +57,11 @@ alias_format_str (char *dest, size_t destlen, char op, const char *src,
       snprintf (dest, destlen, tmp, alias->del ? "D" : " ");
       break;
     case 'a':
-      snprintf (tmp, sizeof (tmp), "%%%ss", fmt);
-      snprintf (dest, destlen, tmp, alias->name);
+      mutt_format_s (dest, destlen, fmt, alias->name);
       break;
     case 'r':
       adr[0] = 0;
-      rfc822_write_address (adr, sizeof (adr), alias->addr);
+      rfc822_write_address (adr, sizeof (adr), alias->addr, 1);
       snprintf (tmp, sizeof (tmp), "%%%ss", fmt);
       snprintf (dest, destlen, tmp, adr);
       break;
@@ -73,12 +78,12 @@ alias_format_str (char *dest, size_t destlen, char op, const char *src,
   return (src);
 }
 
-void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
+static void alias_entry (char *s, size_t slen, MUTTMENU *m, int num)
 {
-  mutt_FormatString (s, slen, NONULL (AliasFmt), alias_format_str, (unsigned long) ((ALIAS **) m->data)[num], M_FORMAT_ARROWCURSOR);
+  mutt_FormatString (s, slen, 0, NONULL (AliasFmt), alias_format_str, (unsigned long) ((ALIAS **) m->data)[num], M_FORMAT_ARROWCURSOR);
 }
 
-int alias_tag (MUTTMENU *menu, int n, int m)
+static int alias_tag (MUTTMENU *menu, int n, int m)
 {
   ALIAS *cur = ((ALIAS **) menu->data)[n];
   int ot = cur->tagged;
@@ -131,7 +136,7 @@ void mutt_alias_menu (char *buf, size_t buflen, ALIAS *aliases)
   int t = -1;
   int i, done = 0;
   int op;
-  char helpstr[SHORT_STRING];
+  char helpstr[LONG_STRING];
 
   int omax;
   
@@ -163,7 +168,7 @@ new_aliases:
     menu->max++;
   }
 
-  safe_realloc ((void **) &AliasTable, menu->max * sizeof (ALIAS *));
+  safe_realloc (&AliasTable, menu->max * sizeof (ALIAS *));
   menu->data = AliasTable;
 
   for (i = omax, aliasp = aliases; aliasp; aliasp = aliasp->next, i++)
@@ -223,15 +228,19 @@ new_aliases:
   {
     if (AliasTable[i]->tagged)
     {
-      rfc822_write_address (buf, buflen, AliasTable[i]->addr);
+      mutt_addrlist_to_local (AliasTable[i]->addr);
+      rfc822_write_address (buf, buflen, AliasTable[i]->addr, 0);
       t = -1;
     }
   }
 
   if(t != -1)
-    rfc822_write_address (buf, buflen, AliasTable[t]->addr);
+  {
+      mutt_addrlist_to_local (AliasTable[t]->addr);
+    rfc822_write_address (buf, buflen, AliasTable[t]->addr, 0);
+  }
 
   mutt_menuDestroy (&menu);
-  safe_free ((void **) &AliasTable);
+  FREE (&AliasTable);
   
 }

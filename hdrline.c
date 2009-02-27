@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000,2002 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,45 +13,42 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
 #include "sort.h"
 #include "charset.h"
-
-
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
-
-
+#include "mutt_crypt.h"
+#include "mutt_idna.h"
 
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <locale.h>
 
-static int _mutt_is_mail_list (ADDRESS *addr, LIST *p)
-{
-  if (addr->mailbox)
-  {
-    for (;p; p = p->next)
-      if (mutt_strncasecmp (addr->mailbox, p->data, mutt_strlen (p->data)) == 0)
-	return 1;
-  }
-  return 0;
-}
+#ifdef HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
 
 int mutt_is_mail_list (ADDRESS *addr)
 {
-  return _mutt_is_mail_list (addr, MailLists);
+  if (!mutt_match_rx_list (addr->mailbox, UnMailLists))
+    return mutt_match_rx_list (addr->mailbox, MailLists);
+  return 0;
 }
 
 int mutt_is_subscribed_list (ADDRESS *addr)
 {
-  return _mutt_is_mail_list (addr, SubscribedLists);
+  if (!mutt_match_rx_list (addr->mailbox, UnMailLists)
+      && !mutt_match_rx_list (addr->mailbox, UnSubscribedLists))
+    return mutt_match_rx_list (addr->mailbox, SubscribedLists);
+  return 0;
 }
 
 /* Search for a mailing list in the list of addresses pointed to by adr.
@@ -201,6 +198,7 @@ int mutt_user_is_recipient (HEADER *h)
 }
 
 /* %a = address of author
+ * %A = reply-to address (if present; otherwise: address of author
  * %b = filename of the originating folder
  * %B = the list to which the letter was sent
  * %c = size of message in bytes
@@ -218,25 +216,22 @@ int mutt_user_is_recipient (HEADER *h)
  * %n = name of author
  * %N = score
  * %O = like %L, except using address instead of name
+ * %P = progress indicator for builtin pager
  * %s = subject
  * %S = short message status (e.g., N/O/D/!/r/-)
  * %t = `to:' field (recipients)
  * %T = $to_chars
  * %u = user (login) name of author
  * %v = first name of author, unless from self
+ * %X = number of MIME attachments
  * %y = `x-label:' field (if present)
  * %Y = `x-label:' field (if present, tree unfolded, and != parent's x-label)
  * %Z = status flags	*/
 
-struct hdr_format_info
-{
-  CONTEXT *ctx;
-  HEADER *hdr;
-};
-
 static const char *
 hdr_format_str (char *dest,
 		size_t destlen,
+		size_t col,
 		char op,
 		const char *src,
 		const char *prefix,
@@ -263,10 +258,18 @@ hdr_format_str (char *dest,
   dest[0] = 0;
   switch (op)
   {
+    case 'A':
+      if(hdr->env->reply_to && hdr->env->reply_to->mailbox)
+      {
+	mutt_format_s (dest, destlen, prefix, mutt_addr_for_display (hdr->env->reply_to));
+	break;
+      }
+      /* fall through if 'A' returns nothing */
+
     case 'a':
       if(hdr->env->from && hdr->env->from->mailbox)
       {
-	mutt_format_s (dest, destlen, prefix, hdr->env->from->mailbox);
+	mutt_format_s (dest, destlen, prefix, mutt_addr_for_display (hdr->env->from));
       }
       else
         dest[0] = '\0';
@@ -342,7 +345,7 @@ hdr_format_str (char *dest,
 	  if (*cp == '%')
 	  {
 	    cp++;
-	    if (*cp == 'Z' && (op == 'd' || op == '{'))
+	    if ((*cp == 'Z' || *cp == 'z') && (op == 'd' || op == '{'))
 	    {
 	      if (len >= 5)
 	      {
@@ -426,7 +429,7 @@ hdr_format_str (char *dest,
 
     case 'f':
       buf2[0] = 0;
-      rfc822_write_address (buf2, sizeof (buf2), hdr->env->from);
+      rfc822_write_address (buf2, sizeof (buf2), hdr->env->from, 1);
       mutt_format_s (dest, destlen, prefix, buf2);
       break;
 
@@ -440,6 +443,18 @@ hdr_format_str (char *dest,
         optional = 0;
       break;
 
+    case 'H':
+      /* (Hormel) spam score */
+      if (optional)
+	optional = hdr->env->spam ? 1 : 0;
+
+       if (hdr->env->spam)
+         mutt_format_s (dest, destlen, prefix, NONULL (hdr->env->spam->data));
+       else
+         mutt_format_s (dest, destlen, prefix, "");
+
+      break;
+
     case 'i':
       mutt_format_s (dest, destlen, prefix, hdr->env->message_id ? hdr->env->message_id : "<no.id>");
       break;
@@ -450,11 +465,8 @@ hdr_format_str (char *dest,
 	snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
 	snprintf (dest, destlen, fmt, (int) hdr->lines);
       }
-      else
-      {
-	if (hdr->lines > 0)
-	  optional = 0;
-      }
+      else if (hdr->lines <= 0)
+        optional = 0;
       break;
 
     case 'L':
@@ -492,7 +504,7 @@ hdr_format_str (char *dest,
       }
       else
       {
-	if (hdr->score > 0)
+	if (hdr->score == 0)
 	  optional = 0;
       }
       break;
@@ -528,6 +540,10 @@ hdr_format_str (char *dest,
 	if (!(threads && is_index && hdr->collapsed && hdr->num_hidden > 1))
 	  optional = 0;
       }
+      break;
+
+    case 'P':
+      strfcpy(dest, NONULL(hfi->pager_progress), destlen);
       break;
 
     case 's':
@@ -593,7 +609,7 @@ hdr_format_str (char *dest,
     case 'u':
       if (hdr->env->from && hdr->env->from->mailbox)
       {
-	strfcpy (buf2, hdr->env->from->mailbox, sizeof (buf2));
+	strfcpy (buf2, mutt_addr_for_display (hdr->env->from), sizeof (buf2));
 	if ((p = strpbrk (buf2, "%@")))
 	  *p = 0;
       }
@@ -623,16 +639,14 @@ hdr_format_str (char *dest,
     
       ch = ' ';
 
-#ifdef HAVE_PGP
-      if (hdr->pgp & PGPGOODSIGN)
+      if (WithCrypto && hdr->security & GOODSIGN)
         ch = 'S';
-      else if (hdr->pgp & PGPENCRYPT)
+      else if (WithCrypto && hdr->security & ENCRYPT)
       	ch = 'P';
-      else if (hdr->pgp & PGPSIGN)
+      else if (WithCrypto && hdr->security & SIGN)
         ch = 's';
-      else if (hdr->pgp & PGPKEY)
+      else if ((WithCrypto & APPLICATION_PGP) && hdr->security & PGPKEY)
         ch = 'K';
-#endif
 
       snprintf (buf2, sizeof (buf2),
 		"%c%c%c", (THREAD_NEW ? 'n' : (THREAD_OLD ? 'o' : 
@@ -643,6 +657,19 @@ hdr_format_str (char *dest,
 		(hdr->flagged ? '!' :
 		 (Tochars && ((i = mutt_user_is_recipient (hdr)) < mutt_strlen (Tochars)) ? Tochars[i] : ' ')));
       mutt_format_s (dest, destlen, prefix, buf2);
+      break;
+
+    case 'X':
+      {
+	int count = mutt_count_body_parts (ctx, hdr);
+
+	/* The recursion allows messages without depth to return 0. */
+	if (optional)
+          optional = count != 0;
+
+        snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+        snprintf (dest, destlen, fmt, count);
+      }
       break;
 
      case 'y':
@@ -688,9 +715,9 @@ hdr_format_str (char *dest,
   }
 
   if (optional)
-    mutt_FormatString (dest, destlen, ifstring, hdr_format_str, (unsigned long) hfi, flags);
+    mutt_FormatString (dest, destlen, col, ifstring, hdr_format_str, (unsigned long) hfi, flags);
   else if (flags & M_FORMAT_OPTIONAL)
-    mutt_FormatString (dest, destlen, elsestring, hdr_format_str, (unsigned long) hfi, flags);
+    mutt_FormatString (dest, destlen, col, elsestring, hdr_format_str, (unsigned long) hfi, flags);
 
   return (src);
 #undef THREAD_NEW
@@ -704,6 +731,13 @@ _mutt_make_string (char *dest, size_t destlen, const char *s, CONTEXT *ctx, HEAD
 
   hfi.hdr = hdr;
   hfi.ctx = ctx;
+  hfi.pager_progress = 0;
 
-  mutt_FormatString (dest, destlen, s, hdr_format_str, (unsigned long) &hfi, flags);
+  mutt_FormatString (dest, destlen, 0, s, hdr_format_str, (unsigned long) &hfi, flags);
+}
+
+void
+mutt_make_string_info (char *dst, size_t dstlen, const char *s, struct hdr_format_info *hfi, format_flag flags)
+{
+  mutt_FormatString (dst, dstlen, 0, s, hdr_format_str, (unsigned long) hfi, flags);
 }

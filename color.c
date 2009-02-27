@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,8 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -124,8 +128,8 @@ static void mutt_free_color_line(COLOR_LINE **l,
   
   regfree(&tmp->rx);
   mutt_pattern_free(&tmp->color_pattern);
-  safe_free((void **)&tmp->pattern);
-  safe_free((void **)l);
+  FREE (&tmp->pattern);
+  FREE (l);		/* __FREE_CHECKED__ */
 }
 
 void ci_start_color (void)
@@ -155,7 +159,7 @@ void ci_start_color (void)
 #ifdef USE_SLANG_CURSES
 static char *get_color_name (char *dest, size_t destlen, int val)
 {
-  static char * missing[3] = {"brown", "lightgray", ""};
+  static char * missing[3] = {"brown", "lightgray", "default"};
   int i;
 
   switch (val)
@@ -275,7 +279,7 @@ void mutt_free_color (int fg, int bg)
       if (p == ColorList)
       {
 	ColorList = ColorList->next;
-	safe_free ((void **) &p);
+	FREE (&p);
 	return;
       }
       q = ColorList;
@@ -284,7 +288,7 @@ void mutt_free_color (int fg, int bg)
 	if (q->next == p)
 	{
 	  q->next = p->next;
-	  safe_free ((void **) &p);
+	  FREE (&p);
 	  return;
 	}
 	q = q->next;
@@ -305,14 +309,14 @@ parse_color_name (const char *s, int *col, int *attr, int brite, BUFFER *err)
 {
   char *eptr;
 
-  if (mutt_strncasecmp (s, "bright", 6) == 0)
+  if (ascii_strncasecmp (s, "bright", 6) == 0)
   {
     *attr |= brite;
     s += 6;
   }
 
   /* allow aliases for xterm color resources */
-  if (mutt_strncasecmp (s, "color", 5) == 0)
+  if (ascii_strncasecmp (s, "color", 5) == 0)
   {
     s += 5;
     *col = strtol (s, &eptr, 10);
@@ -392,13 +396,19 @@ _mutt_parse_uncolor (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err,
 
   if(
 #ifdef HAVE_COLOR
-     (parse_uncolor && !option(OPTNOCURSES) && !has_colors())
+     /* we're running without curses */
+     option (OPTNOCURSES) 
+     || /* we're parsing an uncolor command, and have no colors */
+     (parse_uncolor && !has_colors())
+     /* we're parsing an unmono command, and have colors */
      || (!parse_uncolor && has_colors())
 #else
+     /* We don't even have colors compiled in */
      parse_uncolor
 #endif
      )
   {
+    /* just eat the command, but don't do anything real about it */
     do
       mutt_extract_token (buf, s, 0);
     while (MoreArgs (s));
@@ -505,10 +515,25 @@ add_pattern (COLOR_LINE **top, const char *s, int sensitive,
   else
   {
     int r;
-    char buf[STRING];
+    char buf[LONG_STRING];
 
     tmp = mutt_new_color_line ();
-    if ((r = REGCOMP (&tmp->rx, s, (sensitive ? mutt_which_case (s) : REG_ICASE))) != 0)
+    if (is_index) 
+    {
+      int i;
+
+      strfcpy(buf, NONULL(s), sizeof(buf));
+      mutt_check_simple (buf, sizeof (buf), NONULL(SimpleSearch));
+      if((tmp->color_pattern = mutt_pattern_comp (buf, M_FULL_MSG, err)) == NULL)
+      {
+	mutt_free_color_line(&tmp, 1);
+	return -1;
+      }
+      /* force re-caching of index colors */
+      for (i = 0; Context && i < Context->msgcount; i++)
+	Context->hdrs[i]->pair = 0;
+    }
+    else if ((r = REGCOMP (&tmp->rx, s, (sensitive ? mutt_which_case (s) : REG_ICASE))) != 0)
     {
       regerror (r, &tmp->rx, err->data, err->dsize);
       mutt_free_color_line(&tmp, 1);
@@ -524,21 +549,6 @@ add_pattern (COLOR_LINE **top, const char *s, int sensitive,
       attr |= mutt_alloc_color (fg, bg);
     }
 #endif
-    if (is_index) 
-    {
-      int i;
-
-      strfcpy(buf, NONULL(tmp->pattern), sizeof(buf));
-      mutt_check_simple (buf, sizeof (buf), NONULL(SimpleSearch));
-      if((tmp->color_pattern = mutt_pattern_comp (buf, M_FULL_MSG, err)) == NULL)
-      {
-	mutt_free_color_line(&tmp, 1);
-	return -1;
-      }
-      /* force re-caching of index colors */
-      for (i = 0; Context && i < Context->msgcount; i++)
-	Context->hdrs[i]->pair = 0;
-    }
     tmp->pair = attr;
     *top = tmp;
   }
@@ -707,7 +717,7 @@ _mutt_parse_color (BUFFER *buf, BUFFER *s, BUFFER *err,
   
 #ifdef HAVE_COLOR
 # ifdef HAVE_USE_DEFAULT_COLORS
-  if (has_colors()
+  if (!option (OPTNOCURSES) && has_colors()
     /* delay use_default_colors() until needed, since it initializes things */
     && (fg == COLOR_DEFAULT || bg == COLOR_DEFAULT)
     && use_default_colors () != OK)
@@ -731,7 +741,7 @@ _mutt_parse_color (BUFFER *buf, BUFFER *s, BUFFER *err,
   {
     if (q_level >= ColorQuoteSize)
     {
-      safe_realloc ((void **) &ColorQuote, (ColorQuoteSize += 2) * sizeof (int));
+      safe_realloc (&ColorQuote, (ColorQuoteSize += 2) * sizeof (int));
       ColorQuote[ColorQuoteSize-2] = ColorDefs[MT_COLOR_QUOTED];
       ColorQuote[ColorQuoteSize-1] = ColorDefs[MT_COLOR_QUOTED];
     }
@@ -756,7 +766,7 @@ _mutt_parse_color (BUFFER *buf, BUFFER *s, BUFFER *err,
 
 #ifdef HAVE_COLOR
 # ifdef HAVE_BKGDSET
-  if (object == MT_COLOR_NORMAL && has_colors())
+  if (object == MT_COLOR_NORMAL && !option (OPTNOCURSES) && has_colors())
     BKGDSET (MT_COLOR_NORMAL);
 # endif
 #endif

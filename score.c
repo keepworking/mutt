@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,8 +13,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "sort.h"
@@ -100,7 +104,12 @@ int mutt_parse_score (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
       Score = ptr;
     ptr->pat = pat;
     ptr->str = pattern;
-  }
+  } else
+    /* 'buf' arg was cleared and 'pattern' holds the only reference;
+     * as here 'ptr' != NULL -> update the value only in which case
+     * ptr->str already has the string, so pattern should be freed.
+     */
+    FREE (&pattern);
   pc = buf->data;
   if (*pc == '=')
   {
@@ -154,7 +163,7 @@ int mutt_parse_unscore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 	last = tmp;
 	tmp = tmp->next;
 	mutt_pattern_free (&last->pat);
-	safe_free ((void **) &last);
+	FREE (&last);
       }
       Score = NULL;
     }
@@ -169,7 +178,7 @@ int mutt_parse_unscore (BUFFER *buf, BUFFER *s, unsigned long data, BUFFER *err)
 	  else
 	    Score = tmp->next;
 	  mutt_pattern_free (&tmp->pat);
-	  safe_free ((void **) &tmp);
+	  FREE (&tmp);
 	  /* there should only be one score per pattern, so we can stop here */
 	  break;
 	}

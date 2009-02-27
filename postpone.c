@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-2002 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,8 +14,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_menu.h"
@@ -23,10 +27,12 @@
 #include "mime.h"
 #include "mailbox.h"
 #include "mapping.h"
+#include "sort.h"
 #ifdef USE_IMAP
 #include "mx.h"
 #include "imap.h"
 #endif
+#include "mutt_crypt.h"
 
 #include <ctype.h>
 #include <unistd.h>
@@ -41,11 +47,6 @@ static struct mapping_t PostponeHelp[] = {
   { NULL }
 };
 
-
-
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif /* HAVE_PGP */
 
 
 static short PostCount = 0;
@@ -88,7 +89,7 @@ int mutt_num_postponed (int force)
     {
       short newpc;
 
-      newpc = imap_mailbox_check (Postponed, 0);
+      newpc = imap_status (Postponed, 0);
       if (newpc >= 0)
       {
 	PostCount = newpc;
@@ -156,7 +157,8 @@ static HEADER *select_msg (void)
 {
   MUTTMENU *menu;
   int i, done=0, r=-1;
-  char helpstr[SHORT_STRING];
+  char helpstr[LONG_STRING];
+  short orig_sort;
 
   menu = mutt_new_menu ();
   menu->make_entry = post_entry;
@@ -166,6 +168,12 @@ static HEADER *select_msg (void)
   menu->data = PostContext;
   menu->help = mutt_compile_help (helpstr, sizeof (helpstr), MENU_POST, PostponeHelp);
 
+  /* The postponed mailbox is setup to have sorting disabled, but the global
+   * Sort variable may indicate something different.   Sorting has to be
+   * disabled while the postpone menu is being displayed. */
+  orig_sort = Sort;
+  Sort = SORT_ORDER;
+  
   while (!done)
   {
     switch (i = mutt_menuLoop (menu))
@@ -201,6 +209,7 @@ static HEADER *select_msg (void)
     }
   }
 
+  Sort = orig_sort;
   mutt_menuDestroy (&menu);
   return (r > -1 ? PostContext->hdrs[r] : NULL);
 }
@@ -243,7 +252,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
   {
     PostCount = 0;
     mx_close_mailbox (PostContext, NULL);
-    safe_free ((void **) &PostContext);
+    FREE (&PostContext);
     mutt_error _("No postponed messages.");
     return (-1);
   }
@@ -256,14 +265,14 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
   else if ((h = select_msg ()) == NULL)
   {
     mx_close_mailbox (PostContext, NULL);
-    safe_free ((void **) &PostContext);
+    FREE (&PostContext);
     return (-1);
   }
 
   if (mutt_prepare_template (NULL, PostContext, hdr, h, 0) < 0)
   {
     mx_fastclose_mailbox (PostContext);
-    safe_free ((void **) &PostContext);
+    FREE (&PostContext);
     return (-1);
   }
 
@@ -279,7 +288,7 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
   mx_close_mailbox (PostContext, NULL);
   set_quadoption (OPT_DELETE, opt_delete);
 
-  safe_free ((void **) &PostContext);
+  FREE (&PostContext);
 
   for (tmp = hdr->env->userhdrs; tmp; )
   {
@@ -325,16 +334,15 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
       mutt_free_list (&tmp);
       tmp = next;
     }
-
-
-
-#ifdef HAVE_PGP
-    else if (mutt_strncmp ("Pgp:", tmp->data, 4) == 0 /* this is generated
+    else if ((WithCrypto & APPLICATION_PGP)
+             && (mutt_strncmp ("Pgp:", tmp->data, 4) == 0 /* this is generated
 						       * by old mutt versions
 						       */
-	     || mutt_strncmp ("X-Mutt-PGP:", tmp->data, 11) == 0)
+                 || mutt_strncmp ("X-Mutt-PGP:", tmp->data, 11) == 0))
     {
-      hdr->pgp = mutt_parse_pgp_hdr (strchr (tmp->data, ':') + 1, 1);
+      hdr->security = mutt_parse_crypt_hdr (strchr (tmp->data, ':') + 1, 1,
+					    APPLICATION_PGP);
+      hdr->security |= APPLICATION_PGP;
        
       /* remove the pgp field */
       next = tmp->next;
@@ -346,7 +354,23 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
       mutt_free_list (&tmp);
       tmp = next;
     }
-#endif /* HAVE_PGP */
+    else if ((WithCrypto & APPLICATION_SMIME)
+             && mutt_strncmp ("X-Mutt-SMIME:", tmp->data, 13) == 0)
+    {
+      hdr->security = mutt_parse_crypt_hdr (strchr (tmp->data, ':') + 1, 1,
+					    APPLICATION_SMIME);
+      hdr->security |= APPLICATION_SMIME;
+       
+      /* remove the smime field */
+      next = tmp->next;
+      if (last)
+	last->next = tmp->next;
+      else
+	hdr->env->userhdrs = tmp->next;
+      tmp->next = NULL;
+      mutt_free_list (&tmp);
+      tmp = next;
+    }
 
 #ifdef MIXMASTER
     else if (mutt_strncmp ("X-Mutt-Mix:", tmp->data, 11) == 0)
@@ -383,12 +407,14 @@ int mutt_get_postponed (CONTEXT *ctx, HEADER *hdr, HEADER **cur, char *fcc, size
 
 
 
-#ifdef HAVE_PGP
-
-int mutt_parse_pgp_hdr (char *p, int set_signas)
+int mutt_parse_crypt_hdr (char *p, int set_signas, int crypt_app)
 {
-  int pgp = 0;
-  char pgp_sign_as[LONG_STRING] = "\0", *q;
+  char smime_cryptalg[LONG_STRING] = "\0";
+  char sign_as[LONG_STRING] = "\0", *q;
+  int flags = 0;
+
+  if (!WithCrypto)
+    return 0;
    
   SKIPWS (p);
   for (; *p; p++)
@@ -398,24 +424,24 @@ int mutt_parse_pgp_hdr (char *p, int set_signas)
     {
       case 'e':
       case 'E':
-        pgp |= PGPENCRYPT;
+        flags |= ENCRYPT;
         break;
 
       case 's':    
       case 'S':
-        pgp |= PGPSIGN;
-        q = pgp_sign_as;
+        flags |= SIGN;
+        q = sign_as;
       
         if (*(p+1) == '<')
         {
           for (p += 2; 
-	       *p && *p != '>' && q < pgp_sign_as + sizeof (pgp_sign_as) - 1;
+	       *p && *p != '>' && q < sign_as + sizeof (sign_as) - 1;
                *q++ = *p++)
 	    ;
 
           if (*p!='>')
           {
-            mutt_error _("Illegal PGP header");
+            mutt_error _("Illegal crypto header");
             return 0;
           }
         }
@@ -436,33 +462,70 @@ int mutt_parse_pgp_hdr (char *p, int set_signas)
 	    ;
 	  if(*p != '>')
 	  {
-	    mutt_error _("Illegal PGP header");
+	    mutt_error _("Illegal crypto header");
 	    return 0;
 	  }
 	}
 
 	break;
 	  
+	  
+      case 'c':
+      case 'C':
+   	q = smime_cryptalg;
+	
+        if(*(p+1) == '<')
+	{
+	  for(p += 2; *p && *p != '>' && q < smime_cryptalg + sizeof(smime_cryptalg) - 1;
+	      *q++ = *p++)
+	    ;
+	  
+	  if(*p != '>')
+	  {
+	    mutt_error _("Illegal S/MIME header");
+	    return 0;
+	  }
+	}
+
+	*q = '\0';
+	break;
+
+      case 'i':
+      case 'I':
+	flags |= INLINE;
+	break;
+
       default:
-        mutt_error _("Illegal PGP header");
+        mutt_error _("Illegal crypto header");
         return 0;
     }
      
   }
- 
-  if (set_signas || *pgp_sign_as)
-    mutt_str_replace (&PgpSignAs, pgp_sign_as);
 
-  return pgp;
+  /* the cryptalg field must not be empty */
+  if ((WithCrypto & APPLICATION_SMIME) && *smime_cryptalg)
+    mutt_str_replace (&SmimeCryptAlg, smime_cryptalg);
+
+  /* Set {Smime,Pgp}SignAs, if desired. */
+
+  if ((WithCrypto & APPLICATION_PGP) && (crypt_app == APPLICATION_PGP)
+      && (set_signas || *sign_as))
+    mutt_str_replace (&PgpSignAs, sign_as);
+
+  if ((WithCrypto & APPLICATION_SMIME) && (crypt_app == APPLICATION_SMIME)
+      && (set_signas || *sign_as))
+    mutt_str_replace (&SmimeDefaultKey, sign_as);
+
+  return flags;
 }
-#endif /* HAVE_PGP */
+
+
 
 int mutt_prepare_template (FILE *fp, CONTEXT *ctx, HEADER *newhdr, HEADER *hdr,
 			       short weed)
 {
   MESSAGE *msg = NULL;
   char file[_POSIX_PATH_MAX];
-  LIST *p, **q;
   BODY *b;
   FILE *bfp;
   
@@ -480,49 +543,35 @@ int mutt_prepare_template (FILE *fp, CONTEXT *ctx, HEADER *newhdr, HEADER *hdr,
 
   /* parse the message header and MIME structure */
 
-  fseek (fp, hdr->offset, 0);
+  fseeko (fp, hdr->offset, 0);
   newhdr->offset = hdr->offset;
   newhdr->env = mutt_read_rfc822_header (fp, newhdr, 1, weed);
   newhdr->content->length = hdr->content->length;
   mutt_parse_part (fp, newhdr->content);
 
-  /* weed user-agent, x-mailer - we don't want them here */
-  p = newhdr->env->userhdrs; 
-  q = &newhdr->env->userhdrs;
+  FREE (&newhdr->env->message_id);
+  FREE (&newhdr->env->mail_followup_to); /* really? */
 
-  while (p)
-  {
-    if (!ascii_strncasecmp (p->data, "x-mailer:", 9) || !ascii_strncasecmp (p->data, "user-agent:", 11))
-    {
-      *q = p->next;
-      p->next = NULL;
-      mutt_free_list (&p);
-    }
-    else
-      q = &p->next;
-
-    p = *q;
-  }
-
-  safe_free ((void **) &newhdr->env->message_id);
-  safe_free ((void **) &newhdr->env->mail_followup_to); /* really? */
-
-#ifdef HAVE_PGP
   /* decrypt pgp/mime encoded messages */
-  if ((hdr->pgp & PGPENCRYPT) && 
-      mutt_is_multipart_encrypted (newhdr->content))
+
+  if ((WithCrypto & (APPLICATION_PGP|APPLICATION_SMIME) & hdr->security)
+      && mutt_is_multipart_encrypted (newhdr->content))
   {
-    newhdr->pgp |= PGPENCRYPT;
-    if (!pgp_valid_passphrase())
+    int ccap = WithCrypto & (APPLICATION_PGP|APPLICATION_SMIME) & hdr->security;
+    newhdr->security |= ENCRYPT | ccap;
+    if (!crypt_valid_passphrase (ccap))
       goto err;
 
-    mutt_message _("Invoking PGP...");
-    if (pgp_decrypt_mime (fp, &bfp, newhdr->content, &b) == -1)
+    mutt_message _("Decrypting message...");
+    if (((ccap & APPLICATION_PGP) && crypt_pgp_decrypt_mime (fp, &bfp, newhdr->content, &b) == -1) 
+	|| ((ccap & APPLICATION_SMIME) && crypt_smime_decrypt_mime (fp, &bfp, newhdr->content, &b) == -1) 
+	|| b == NULL)
     {
  err:
       mx_close_message (&msg);
       mutt_free_envelope (&newhdr->env);
       mutt_free_body (&newhdr->content);
+      mutt_error _("Decryption failed.");
       return -1;
     }
 
@@ -537,15 +586,20 @@ int mutt_prepare_template (FILE *fp, CONTEXT *ctx, HEADER *newhdr, HEADER *hdr,
    * resending messages 
    */
   
-  if (mutt_is_multipart_signed (newhdr->content))
+  if (WithCrypto && mutt_is_multipart_signed (newhdr->content))
   {
-    newhdr->pgp |= PGPSIGN;
+    newhdr->security |= SIGN;
+    if ((WithCrypto & APPLICATION_PGP)
+        && ascii_strcasecmp (mutt_get_parameter ("protocol", newhdr->content->parameter), "application/pgp-signature") == 0)
+      newhdr->security |= APPLICATION_PGP;
+    else if ((WithCrypto & APPLICATION_SMIME))
+      newhdr->security |= APPLICATION_SMIME;
     
     /* destroy the signature */
     mutt_free_body (&newhdr->content->parts->next);
     newhdr->content = mutt_remove_multipart (newhdr->content);
   }
-#endif
+
 
   /* 
    * We don't need no primary multipart.
@@ -604,7 +658,20 @@ int mutt_prepare_template (FILE *fp, CONTEXT *ctx, HEADER *newhdr, HEADER *hdr,
       goto bail;
 
     
-    mutt_decode_attachment (b, &s);
+    if ((WithCrypto & APPLICATION_PGP) 
+	&& (mutt_is_application_pgp (b) & (ENCRYPT|SIGN)))
+    {
+      
+      mutt_body_handler (b, &s);
+
+      newhdr->security |= mutt_is_application_pgp (newhdr->content);
+
+      b->type = TYPETEXT;
+      mutt_str_replace (&b->subtype, "plain");
+      mutt_delete_parameter ("x-action", &b->parameter);
+    }
+    else
+      mutt_decode_attachment (b, &s);
 
     if (safe_fclose (&s.fpout) != 0)
       goto bail;
@@ -616,6 +683,24 @@ int mutt_prepare_template (FILE *fp, CONTEXT *ctx, HEADER *newhdr, HEADER *hdr,
 
     mutt_free_body (&b->parts);
     if (b->hdr) b->hdr->content = NULL; /* avoid dangling pointer */
+  }
+
+  /* Fix encryption flags. */
+  
+  /* No inline if multipart. */
+  if (WithCrypto && (newhdr->security & INLINE) && newhdr->content->next)
+    newhdr->security &= ~INLINE;
+  
+  /* Do we even support multiple mechanisms? */
+  newhdr->security &= WithCrypto | ~(APPLICATION_PGP|APPLICATION_SMIME);
+  
+  /* Theoretically, both could be set. Take the one the user wants to set by default. */
+  if ((newhdr->security & APPLICATION_PGP) && (newhdr->security & APPLICATION_SMIME))
+  {
+    if (option (OPTSMIMEISDEFAULT))
+      newhdr->security &= ~APPLICATION_PGP;
+    else
+      newhdr->security &= ~APPLICATION_SMIME;
   }
 
   rv = 0;

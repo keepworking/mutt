@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000,2 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
 
 #ifndef KEYMAP_H
@@ -48,6 +48,7 @@ int km_expand_key (char *, size_t, struct keymap_t *);
 struct keymap_t *km_find_func (int, int);
 void km_init (void);
 void km_error_key (int);
+void mutt_what_key (void);
 
 enum
 {
@@ -63,10 +64,14 @@ enum
   MENU_QUERY,
 
   
-#ifdef HAVE_PGP
   MENU_PGP,
-#endif
+  MENU_SMIME,
 
+#ifdef CRYPT_BACKEND_GPGME
+  MENU_KEY_SELECT_PGP,
+  MENU_KEY_SELECT_SMIME,
+#endif
+  
 #ifdef MIXMASTER
   MENU_MIX,
 #endif
@@ -104,9 +109,9 @@ extern struct binding_t OpEditor[];
 extern struct binding_t OpQuery[];
 extern struct binding_t OpAlias[];
 
-#ifdef HAVE_PGP
 extern struct binding_t OpPgp[];
-#endif /* HAVE_PGP */
+
+extern struct binding_t OpSmime[];
 
 #ifdef MIXMASTER
 extern struct binding_t OpMix[];

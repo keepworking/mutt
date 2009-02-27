@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,8 +14,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -24,15 +28,11 @@
 #include "mx.h"
 #include "url.h"
 
-#include "reldate.h"
-
 #ifdef USE_IMAP
 #include "imap.h"
 #endif
 
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
+#include "mutt_crypt.h"
 
 #include <string.h>
 #include <ctype.h>
@@ -134,7 +134,7 @@ int mutt_copy_body (FILE *fp, BODY **tgt, BODY *src)
   b->use_disp = use_disp;
   b->unlink = 1;
 
-  if (mutt_is_text_type (b->type, b->subtype))
+  if (mutt_is_text_part (b))
     b->noconv = 1;
 
   b->xtype = safe_strdup (b->xtype);
@@ -178,13 +178,19 @@ void mutt_free_body (BODY **p)
     if (b->parameter)
       mutt_free_parameter (&b->parameter);
     if (b->unlink && b->filename)
+    {
+      dprint (1, (debugfile, "mutt_free_body: Unlinking %s.\n", b->filename));
       unlink (b->filename);
-    safe_free ((void **) &b->filename);
-    safe_free ((void **) &b->content);
-    safe_free ((void **) &b->xtype);
-    safe_free ((void **) &b->subtype);
-    safe_free ((void **) &b->description);
-    safe_free ((void **) &b->form_name);
+    }
+    else if (b->filename) 
+      dprint (1, (debugfile, "mutt_free_body: Not unlinking %s.\n", b->filename));
+
+    FREE (&b->filename);
+    FREE (&b->content);
+    FREE (&b->xtype);
+    FREE (&b->subtype);
+    FREE (&b->description);
+    FREE (&b->form_name);
 
     if (b->hdr)
     {
@@ -196,7 +202,7 @@ void mutt_free_body (BODY **p)
     if (b->parts)
       mutt_free_body (&b->parts);
 
-    safe_free ((void **) &b);
+    FREE (&b);
   }
 
   *p = 0;
@@ -209,19 +215,26 @@ void mutt_free_parameter (PARAMETER **p)
 
   while (t)
   {
-    safe_free ((void **) &t->attribute);
-    safe_free ((void **) &t->value);
+    FREE (&t->attribute);
+    FREE (&t->value);
     o = t;
     t = t->next;
-    safe_free ((void **) &o);
+    FREE (&o);
   }
   *p = 0;
 }
 
 LIST *mutt_add_list (LIST *head, const char *data)
 {
-  LIST *tmp;
+  size_t len = mutt_strlen (data);
 
+  return mutt_add_list_n (head, data, len ? len + 1 : 0);
+}
+
+LIST *mutt_add_list_n (LIST *head, const void *data, size_t len)
+{
+  LIST *tmp;
+  
   for (tmp = head; tmp && tmp->next; tmp = tmp->next)
     ;
   if (tmp)
@@ -231,8 +244,10 @@ LIST *mutt_add_list (LIST *head, const char *data)
   }
   else
     head = tmp = safe_malloc (sizeof (LIST));
-
-  tmp->data = safe_strdup (data);
+  
+  tmp->data = safe_malloc (len);
+  if (len)
+    memcpy (tmp->data, data, len);
   tmp->next = NULL;
   return head;
 }
@@ -246,8 +261,8 @@ void mutt_free_list (LIST **list)
   {
     p = *list;
     *list = (*list)->next;
-    safe_free ((void **) &p->data);
-    safe_free ((void **) &p);
+    FREE (&p->data);
+    FREE (&p);
   }
 }
 
@@ -265,15 +280,16 @@ void mutt_free_header (HEADER **h)
   if(!h || !*h) return;
   mutt_free_envelope (&(*h)->env);
   mutt_free_body (&(*h)->content);
-  safe_free ((void **) &(*h)->tree);
-  safe_free ((void **) &(*h)->path);
+  FREE (&(*h)->maildir_flags);
+  FREE (&(*h)->tree);
+  FREE (&(*h)->path);
 #ifdef MIXMASTER
   mutt_free_list (&(*h)->chain);
 #endif
 #if defined USE_POP || defined USE_IMAP
-  safe_free ((void**) &(*h)->data);
+  FREE (&(*h)->data);
 #endif
-  safe_free ((void **) h);
+  FREE (h);		/* __FREE_CHECKED__ */
 }
 
 /* returns true if the header contained in "s" is in list "t" */
@@ -381,6 +397,9 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
 	  strfcpy (p, NONULL (Maildir), sizeof (p));
 	else
 #endif
+	if (Maildir[strlen (Maildir) - 1] == '/')
+	  strfcpy (p, NONULL (Maildir), sizeof (p));
+	else
 	  snprintf (p, sizeof (p), "%s/", NONULL (Maildir));
 	
 	tail = s + 1;
@@ -447,6 +466,13 @@ char *_mutt_expand_path (char *s, size_t slen, int rx)
       }
       break;
       
+      case '^':        
+      {
+	strfcpy (p, NONULL(CurrentFolder), sizeof (p));
+	tail = s + 1;
+      }
+      break;
+
       default:
       {
 	*p = '\0';
@@ -516,7 +542,7 @@ char *mutt_gecos_name (char *dest, size_t destlen, struct passwd *pw)
       memmove (&dest[idx + pwnl], &dest[idx + 1],
 	       MAX((ssize_t)(destlen - idx - pwnl - 1), 0));
       memcpy (&dest[idx], pw->pw_name, MIN(destlen - idx - 1, pwnl));
-      dest[idx] = toupper (dest[idx]);
+      dest[idx] = toupper ((unsigned char) dest[idx]);
     }
   }
       
@@ -588,27 +614,29 @@ int mutt_needs_mailcap (BODY *m)
 	return 0;
       break;
 
-
-
-#ifdef HAVE_PGP
     case TYPEAPPLICATION:
-      if(mutt_is_application_pgp(m))
+      if((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp(m))
+	return 0;
+      if((WithCrypto & APPLICATION_SMIME) && mutt_is_application_smime(m))
 	return 0;
       break;
-#endif /* HAVE_PGP */
-
 
     case TYPEMULTIPART:
     case TYPEMESSAGE:
-
       return 0;
   }
 
   return 1;
 }
 
-int mutt_is_text_type (int t, char *s)
+int mutt_is_text_part (BODY *b)
 {
+  int t = b->type;
+  char *s = b->subtype;
+  
+  if ((WithCrypto & APPLICATION_PGP) && mutt_is_application_pgp (b))
+    return 0;
+
   if (t == TYPETEXT)
     return 1;
 
@@ -618,17 +646,11 @@ int mutt_is_text_type (int t, char *s)
       return 1;
   }
 
-
-
-#ifdef HAVE_PGP
-  if (t == TYPEAPPLICATION)
+  if ((WithCrypto & APPLICATION_PGP) && t == TYPEAPPLICATION)
   {
     if (!ascii_strcasecmp ("pgp-keys", s))
       return 1;
   }
-#endif /* HAVE_PGP */
-
-
 
   return 0;
 }
@@ -637,26 +659,82 @@ void mutt_free_envelope (ENVELOPE **p)
 {
   if (!*p) return;
   rfc822_free_address (&(*p)->return_path);
+  rfc822_free_address (&(*p)->from);
   rfc822_free_address (&(*p)->to);
   rfc822_free_address (&(*p)->cc);
   rfc822_free_address (&(*p)->bcc);
   rfc822_free_address (&(*p)->sender);
-  rfc822_free_address (&(*p)->from);
   rfc822_free_address (&(*p)->reply_to);
   rfc822_free_address (&(*p)->mail_followup_to);
-  safe_free ((void **) &(*p)->subject);
-  safe_free ((void **) &(*p)->message_id);
-  safe_free ((void **) &(*p)->supersedes);
-  safe_free ((void **) &(*p)->date);
+
+  FREE (&(*p)->list_post);
+  FREE (&(*p)->subject);
+  /* real_subj is just an offset to subject and shouldn't be freed */
+  FREE (&(*p)->message_id);
+  FREE (&(*p)->supersedes);
+  FREE (&(*p)->date);
+  FREE (&(*p)->x_label);
+
+  mutt_buffer_free (&(*p)->spam);
+
   mutt_free_list (&(*p)->references);
   mutt_free_list (&(*p)->in_reply_to);
   mutt_free_list (&(*p)->userhdrs);
-  safe_free ((void **) p);
+  FREE (p);		/* __FREE_CHECKED__ */
 }
 
-void mutt_mktemp (char *s)
+/* move all the headers from extra not present in base into base */
+void mutt_merge_envelopes(ENVELOPE* base, ENVELOPE** extra)
 {
-  snprintf (s, _POSIX_PATH_MAX, "%s/mutt-%s-%d-%d", NONULL (Tempdir), NONULL(Hostname), (int) getpid (), Counter++);
+  /* copies each existing element if necessary, and sets the element
+  * to NULL in the source so that mutt_free_envelope doesn't leave us
+  * with dangling pointers. */
+#define MOVE_ELEM(h) if (!base->h) { base->h = (*extra)->h; (*extra)->h = NULL; }
+  MOVE_ELEM(return_path);
+  MOVE_ELEM(from);
+  MOVE_ELEM(to);
+  MOVE_ELEM(cc);
+  MOVE_ELEM(bcc);
+  MOVE_ELEM(sender);
+  MOVE_ELEM(reply_to);
+  MOVE_ELEM(mail_followup_to);
+  MOVE_ELEM(list_post);
+  MOVE_ELEM(message_id);
+  MOVE_ELEM(supersedes);
+  MOVE_ELEM(date);
+  MOVE_ELEM(x_label);
+  if (!base->refs_changed)
+  {
+    MOVE_ELEM(references);
+  }
+  if (!base->irt_changed)
+  {
+    MOVE_ELEM(in_reply_to);
+  }
+  
+  /* real_subj is subordinate to subject */
+  if (!base->subject)
+  {
+    base->subject = (*extra)->subject;
+    base->real_subj = (*extra)->real_subj;
+    (*extra)->subject = NULL;
+    (*extra)->real_subj = NULL;
+  }
+  /* spam and user headers should never be hashed, and the new envelope may
+    * have better values. Use new versions regardless. */
+  mutt_buffer_free (&base->spam);
+  mutt_free_list (&base->userhdrs);
+  MOVE_ELEM(spam);
+  MOVE_ELEM(userhdrs);
+#undef MOVE_ELEM
+  
+  mutt_free_envelope(extra);
+}
+
+void _mutt_mktemp (char *s, const char *src, int line)
+{
+  snprintf (s, _POSIX_PATH_MAX, "%s/mutt-%s-%d-%d-%d", NONULL (Tempdir), NONULL(Hostname), (int) getuid(), (int) getpid (), Counter++);
+  dprint (1, (debugfile, "%s:%d: mutt_mktemp returns \"%s\".\n", src, line, s));
   unlink (s);
 }
 
@@ -668,9 +746,9 @@ void mutt_free_alias (ALIAS **p)
   {
     t = *p;
     *p = (*p)->next;
-    safe_free ((void **) &t->name);
+    FREE (&t->name);
     rfc822_free_address (&t->addr);
-    safe_free ((void **) &t);
+    FREE (&t);
   }
 }
 
@@ -764,66 +842,59 @@ void mutt_expand_file_fmt (char *dest, size_t destlen, const char *fmt, const ch
 
 void mutt_expand_fmt (char *dest, size_t destlen, const char *fmt, const char *src)
 {
-  const char *p = fmt;
-  const char *last = p;
-  size_t len;
+  const char *p;
+  char *d;
   size_t slen;
   int found = 0;
 
   slen = mutt_strlen (src);
+  destlen--;
   
-  while ((p = strchr (p, '%')) != NULL)
+  for (p = fmt, d = dest; destlen && *p; p++)
   {
-    if (p[1] == 's')
+    if (*p == '%') 
     {
-      found++;
-
-      len = (size_t) (p - last);
-      if (len)
+      switch (p[1])
       {
-	if (len > destlen - 1)
-	  len = destlen - 1;
-
-	memcpy (dest, last, len);
-	dest += len;
-	destlen -= len;
-
-	if (destlen <= 0)
-	{
-	  *dest = 0;
-	  break; /* no more space */
-	}
+	case '%':
+	  *d++ = *p++;
+	  destlen--;
+	  break;
+	case 's':
+	  found = 1;
+	  strfcpy (d, src, destlen + 1);
+	  d       += destlen > slen ? slen : destlen;
+	  destlen -= destlen > slen ? slen : destlen;
+	  p++;
+	  break;
+	default:
+	  *d++ = *p; 
+	  destlen--;
+	  break;
       }
-
-      strfcpy (dest, src, destlen);
-      if (slen > destlen)
-      {
-	/* no more room */
-	break;
-      }
-      dest += slen;
-      destlen -= slen;
-
-      p += 2;
-      last = p;
     }
-    else if (p[1] == '%')
-      p++;
-
-    p++;
+    else
+    {
+      *d++ = *p;
+      destlen--;
+    }
   }
-
-  if (found)
-    strfcpy (dest, last, destlen);
-  else
-    snprintf (dest, destlen, "%s %s", fmt, src);
+  
+  *d = '\0';
+  
+  if (!found && destlen > 0)
+  {
+    safe_strcat (dest, destlen, " ");
+    safe_strcat (dest, destlen, src);
+  }
   
 }
 
-/* return 0 on success, -1 on error */
+/* return 0 on success, -1 on abort, 1 on error */
 int mutt_check_overwrite (const char *attname, const char *path,
-				char *fname, size_t flen, int *append) 
+				char *fname, size_t flen, int *append, char **directory) 
 {
+  int rc = 0;
   char tmp[_POSIX_PATH_MAX];
   struct stat st;
 
@@ -834,18 +905,38 @@ int mutt_check_overwrite (const char *attname, const char *path,
     return -1;
   if (S_ISDIR (st.st_mode))
   {
-    if (mutt_yesorno (_("File is a directory, save under it?"), 1) != M_YES) 
-      return (-1);
+    if (directory)
+    {
+      switch (mutt_multi_choice
+	      (_("File is a directory, save under it? [(y)es, (n)o, (a)ll]"), _("yna")))
+      {
+	case 3:		/* all */
+	  mutt_str_replace (directory, fname);
+	  break;
+	case 1:		/* yes */
+	  FREE (directory);		/* __FREE_CHECKED__ */
+	  break;
+	case -1:	/* abort */
+	  FREE (directory); 		/* __FREE_CHECKED__ */
+	  return -1;
+	case  2:	/* no */
+	  FREE (directory);		/* __FREE_CHECKED__ */
+	  return 1;
+      }
+    }
+    else if ((rc = mutt_yesorno (_("File is a directory, save under it?"), M_YES)) != M_YES)
+      return (rc == M_NO) ? 1 : -1;
+
     if (!attname || !attname[0])
     {
       tmp[0] = 0;
       if (mutt_get_field (_("File under directory: "), tmp, sizeof (tmp),
 				      M_FILE | M_CLEAR) != 0 || !tmp[0])
 	return (-1);
-      snprintf (fname, flen, "%s/%s", path, tmp);
+      mutt_concat_path (fname, path, tmp, flen);
     }
     else
-      snprintf (fname, flen, "%s/%s", path, attname);
+      mutt_concat_path (fname, path, mutt_basename (attname), flen);
   }
   
   if (*append == 0 && access (fname, F_OK) == 0)
@@ -854,8 +945,9 @@ int mutt_check_overwrite (const char *attname, const char *path,
 	    (_("File exists, (o)verwrite, (a)ppend, or (c)ancel?"), _("oac")))
     {
       case -1: /* abort */
+        return -1;
       case 3:  /* cancel */
-	return -1;
+	return 1;
 
       case 2: /* append */
         *append = M_SAVE_APPEND;
@@ -899,6 +991,7 @@ void mutt_safe_path (char *s, size_t l, ADDRESS *a)
 
 void mutt_FormatString (char *dest,		/* output buffer */
 			size_t destlen,		/* output buffer len */
+			size_t col,		/* starting column (nonzero when called recursively) */
 			const char *src,	/* template string */
 			format_t *callback,	/* callback for processing */
 			unsigned long data,	/* callback data */
@@ -906,12 +999,128 @@ void mutt_FormatString (char *dest,		/* output buffer */
 {
   char prefix[SHORT_STRING], buf[LONG_STRING], *cp, *wptr = dest, ch;
   char ifstring[SHORT_STRING], elsestring[SHORT_STRING];
-  size_t wlen, count, len;
+  size_t wlen, count, len, wid;
+  pid_t pid;
+  FILE *filter;
+  int n;
+  char *recycler;
 
   prefix[0] = '\0';
   destlen--; /* save room for the terminal \0 */
   wlen = (flags & M_FORMAT_ARROWCURSOR && option (OPTARROWCURSOR)) ? 3 : 0;
-    
+  col += wlen;
+
+  if ((flags & M_FORMAT_NOFILTER) == 0)
+  {
+    int off = -1;
+
+    /* Do not consider filters if no pipe at end */
+    n = mutt_strlen(src);
+    if (n > 0 && src[n-1] == '|')
+    {
+      /* Scan backwards for backslashes */
+      off = n;
+      while (off > 0 && src[off-2] == '\\')
+        off--;
+    }
+
+    /* If number of backslashes is even, the pipe is real. */
+    /* n-off is the number of backslashes. */
+    if (off > 0 && ((n-off) % 2) == 0)
+    {
+      BUFFER *srcbuf, *word, *command;
+      char    srccopy[LONG_STRING];
+#ifdef DEBUG
+      int     i = 0;
+#endif
+
+      dprint(3, (debugfile, "fmtpipe = %s\n", src));
+
+      strncpy(srccopy, src, n);
+      srccopy[n-1] = '\0';
+
+      /* prepare BUFFERs */
+      srcbuf = mutt_buffer_from(NULL, srccopy);
+      srcbuf->dptr = srcbuf->data;
+      word = mutt_buffer_init(NULL);
+      command = mutt_buffer_init(NULL);
+
+      /* Iterate expansions across successive arguments */
+      do {
+        char *p;
+
+        /* Extract the command name and copy to command line */
+        dprint(3, (debugfile, "fmtpipe +++: %s\n", srcbuf->dptr));
+        if (word->data)
+          *word->data = '\0';
+        mutt_extract_token(word, srcbuf, 0);
+        dprint(3, (debugfile, "fmtpipe %2d: %s\n", i++, word->data));
+        mutt_buffer_addch(command, '\'');
+        mutt_FormatString(buf, sizeof(buf), 0, word->data, callback, data,
+                          flags | M_FORMAT_NOFILTER);
+        for (p = buf; p && *p; p++)
+        {
+          if (*p == '\'')
+            /* shell quoting doesn't permit escaping a single quote within
+             * single-quoted material.  double-quoting instead will lead
+             * shell variable expansions, so break out of the single-quoted
+             * span, insert a double-quoted single quote, and resume. */
+            mutt_buffer_addstr(command, "'\"'\"'");
+          else
+            mutt_buffer_addch(command, *p);
+        }
+        mutt_buffer_addch(command, '\'');
+        mutt_buffer_addch(command, ' ');
+      } while (MoreArgs(srcbuf));
+
+      dprint(3, (debugfile, "fmtpipe > %s\n", command->data));
+
+      col -= wlen;	/* reset to passed in value */
+      wptr = dest;      /* reset write ptr */
+      wlen = (flags & M_FORMAT_ARROWCURSOR && option (OPTARROWCURSOR)) ? 3 : 0;
+      if ((pid = mutt_create_filter(command->data, NULL, &filter, NULL)))
+      {
+        n = fread(dest, 1, destlen /* already decremented */, filter);
+        fclose(filter);
+        dest[n] = '\0';
+        while (dest[n-1] == '\n' || dest[n-1] == '\r')
+          dest[--n] = '\0';
+        dprint(3, (debugfile, "fmtpipe < %s\n", dest));
+
+        if (pid != -1)
+          mutt_wait_filter(pid);
+  
+        /* If the result ends with '%', this indicates that the filter
+         * generated %-tokens that mutt can expand.  Eliminate the '%'
+         * marker and recycle the string through mutt_FormatString().
+         * To literally end with "%", use "%%". */
+        if (dest[--n] == '%')
+        {
+          dest[n] = '\0';               /* remove '%' */
+          if (dest[--n] != '%')
+          {
+            recycler = safe_strdup(dest);
+            if (recycler)
+            {
+              mutt_FormatString(dest, destlen++, col, recycler, callback, data, flags);
+              FREE(&recycler);
+            }
+          }
+        }
+      }
+      else
+      {
+        /* Filter failed; erase write buffer */
+        *wptr = '\0';
+      }
+
+      mutt_buffer_free(&command);
+      mutt_buffer_free(&srcbuf);
+      mutt_buffer_free(&word);
+      return;
+    }
+  }
+
   while (*src && wlen < destlen)
   {
     if (*src == '%')
@@ -920,6 +1129,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
       {
 	*wptr++ = '%';
 	wlen++;
+	col++;
 	src++;
 	continue;
       }
@@ -992,23 +1202,26 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	/* calculate space left on line.  if we've already written more data
 	   than will fit on the line, ignore the rest of the line */
 	count = (COLS < destlen ? COLS : destlen);
-	if (count > wlen)
+	if (count > col)
 	{
-	  count -= wlen; /* how many chars left on this line */
-	  mutt_FormatString (buf, sizeof (buf), src, callback, data, flags);
+	  count -= col; /* how many columns left on this line */
+	  mutt_FormatString (buf, sizeof (buf), 0, src, callback, data, flags);
 	  len = mutt_strlen (buf);
-	  if (count > len)
+	  wid = mutt_strwidth (buf);
+	  if (count > wid)
 	  {
-	    count -= len; /* how many chars to pad */
+	    count -= wid; /* how many chars to pad */
 	    memset (wptr, ch, count);
 	    wptr += count;
 	    wlen += count;
+	    col += count;
 	  }
 	  if (len + wlen > destlen)
 	    len = destlen - wlen;
 	  memcpy (wptr, buf, len);
 	  wptr += len;
 	  wlen += len;
+	  col += mutt_strwidth (buf);
 	}
 	break; /* skip rest of input */
       }
@@ -1029,18 +1242,30 @@ void mutt_FormatString (char *dest,		/* output buffer */
       else
       {
 	short tolower =  0;
+	short nodots  = 0;
 	
-	if (ch == '_')
+	while (ch == '_' || ch == ':') 
 	{
+	  if (ch == '_')
+	    tolower = 1;
+	  else if (ch == ':') 
+	    nodots = 1;
+	  
 	  ch = *src++;
-	  tolower = 1;
 	}
 	
 	/* use callback function to handle this case */
-	src = callback (buf, sizeof (buf), ch, src, prefix, ifstring, elsestring, data, flags);
+	src = callback (buf, sizeof (buf), col, ch, src, prefix, ifstring, elsestring, data, flags);
 
 	if (tolower)
 	  mutt_strlower (buf);
+	if (nodots) 
+	{
+	  char *p = buf;
+	  for (; *p; p++)
+	    if (*p == '.')
+		*p = '_';
+	}
 	
 	if ((len = mutt_strlen (buf)) + wlen > destlen)
 	  len = (destlen - wlen > 0) ? (destlen - wlen) : 0;
@@ -1048,6 +1273,7 @@ void mutt_FormatString (char *dest,		/* output buffer */
 	memcpy (wptr, buf, len);
 	wptr += len;
 	wlen += len;
+	col += mutt_strwidth (buf);
       }
     }
     else if (*src == '\\')
@@ -1078,11 +1304,13 @@ void mutt_FormatString (char *dest,		/* output buffer */
       src++;
       wptr++;
       wlen++;
+      col++;
     }
     else
     {
       *wptr++ = *src++;
       wlen++;
+      col++;
     }
   }
   *wptr = 0;
@@ -1106,6 +1334,8 @@ void mutt_FormatString (char *dest,		/* output buffer */
 FILE *mutt_open_read (const char *path, pid_t *thepid)
 {
   FILE *f;
+  struct stat s;
+
   int len = mutt_strlen (path);
 
   if (path[len - 1] == '|')
@@ -1117,21 +1347,29 @@ FILE *mutt_open_read (const char *path, pid_t *thepid)
     s[len - 1] = 0;
     mutt_endwin (NULL);
     *thepid = mutt_create_filter (s, NULL, &f, NULL);
-    safe_free ((void **) &s);
+    FREE (&s);
   }
   else
   {
+    if (stat (path, &s) < 0)
+      return (NULL);
+    if (S_ISDIR (s.st_mode))
+    {
+      errno = EINVAL;
+      return (NULL);
+    }
     f = fopen (path, "r");
     *thepid = -1;
   }
   return (f);
 }
 
-/* returns 1 if OK to proceed, 0 to abort */
+/* returns 0 if OK to proceed, -1 to abort, 1 to retry */
 int mutt_save_confirm (const char *s, struct stat *st)
 {
   char tmp[_POSIX_PATH_MAX];
-  int ret = 1;
+  int ret = 0;
+  int rc;
   int magic = 0;
 
   magic = mx_get_magic (s);
@@ -1140,48 +1378,53 @@ int mutt_save_confirm (const char *s, struct stat *st)
   if (magic == M_POP)
   {
     mutt_error _("Can't save message to POP mailbox.");
-    return 0;
+    return 1;
   }
 #endif
+
+  if (magic > 0 && !mx_access (s, W_OK))
+  {
+    if (option (OPTCONFIRMAPPEND))
+    {
+      snprintf (tmp, sizeof (tmp), _("Append messages to %s?"), s);
+      if ((rc = mutt_yesorno (tmp, M_YES)) == M_NO)
+	ret = 1;
+      else if (rc == -1)
+	ret = -1;
+    }
+  }
 
   if (stat (s, st) != -1)
   {
     if (magic == -1)
     {
       mutt_error (_("%s is not a mailbox!"), s);
-      return 0;
-    }
-
-    if (option (OPTCONFIRMAPPEND))
-    {
-      snprintf (tmp, sizeof (tmp), _("Append messages to %s?"), s);
-      if (mutt_yesorno (tmp, 1) < 1)
-	ret = 0;
+      return 1;
     }
   }
   else
-  {
 #ifdef USE_IMAP
-    if (magic != M_IMAP)
+  if (magic != M_IMAP)
 #endif /* execute the block unconditionally if we don't use imap */
-    {
-      st->st_mtime = 0;
-      st->st_atime = 0;
+  {
+    st->st_mtime = 0;
+    st->st_atime = 0;
 
-      if (errno == ENOENT)
+    if (errno == ENOENT)
+    {
+      if (option (OPTCONFIRMCREATE))
       {
-	if (option (OPTCONFIRMCREATE))
-	{
-	  snprintf (tmp, sizeof (tmp), _("Create %s?"), s);
-	  if (mutt_yesorno (tmp, 1) < 1)
-	    ret = 0;
-	}
+	snprintf (tmp, sizeof (tmp), _("Create %s?"), s);
+	if ((rc = mutt_yesorno (tmp, M_YES)) == M_NO)
+	  ret = 1;
+	else if (rc == -1)
+	  ret = -1;
       }
-      else
-      {
-	mutt_perror (s);
-	return 0;
-      }
+    }
+    else
+    {
+      mutt_perror (s);
+      return 1;
     }
   }
 
@@ -1189,29 +1432,29 @@ int mutt_save_confirm (const char *s, struct stat *st)
   return (ret);
 }
 
-void state_prefix_putc(char c, STATE *s)
+void state_prefix_putc (char c, STATE *s)
 {
   if (s->flags & M_PENDINGPREFIX)
   {
-    state_reset_prefix(s);
+    state_reset_prefix (s);
     if (s->prefix)
-      state_puts(s->prefix, s);
+      state_puts (s->prefix, s);
   }
 
-  state_putc(c, s);
+  state_putc (c, s);
 
-  if(c == '\n')
-    state_set_prefix(s);
+  if (c == '\n')
+    state_set_prefix (s);
 }
 
-int state_printf(STATE *s, const char *fmt, ...)
+int state_printf (STATE *s, const char *fmt, ...)
 {
   int rv;
   va_list ap;
 
   va_start (ap, fmt);
-  rv = vfprintf(s->fpout, fmt, ap);
-  va_end(ap);
+  rv = vfprintf (s->fpout, fmt, ap);
+  va_end (ap);
   
   return rv;
 }
@@ -1224,12 +1467,12 @@ void state_mark_attach (STATE *s)
 
 void state_attach_puts (const char *t, STATE *s)
 {
-  state_mark_attach (s);
+  if (*t != '\n') state_mark_attach (s);
   while (*t)
   {
     state_putc (*t, s);
     if (*t++ == '\n' && *t)
-      state_mark_attach (s);
+      if (*t != '\n') state_mark_attach (s);
   }
 }
 
@@ -1250,6 +1493,86 @@ void mutt_sleep (short s)
     sleep (s);
 }
 
+/*
+ * Creates and initializes a BUFFER*. If passed an existing BUFFER*,
+ * just initializes. Frees anything already in the buffer.
+ *
+ * Disregards the 'destroy' flag, which seems reserved for caller.
+ * This is bad, but there's no apparent protocol for it.
+ */
+BUFFER * mutt_buffer_init(BUFFER *b)
+{
+  if (!b)
+  {
+    b = safe_malloc(sizeof(BUFFER));
+    if (!b)
+      return NULL;
+  }
+  else
+  {
+    FREE(&b->data);
+  }
+  memset(b, 0, sizeof(BUFFER));
+  return b;
+}
+
+/*
+ * Creates and initializes a BUFFER*. If passed an existing BUFFER*,
+ * just initializes. Frees anything already in the buffer. Copies in
+ * the seed string.
+ *
+ * Disregards the 'destroy' flag, which seems reserved for caller.
+ * This is bad, but there's no apparent protocol for it.
+ */
+BUFFER * mutt_buffer_from(BUFFER *b, char *seed)
+{
+  if (!seed)
+    return NULL;
+
+  b = mutt_buffer_init(b);
+  b->data = safe_strdup (seed);
+  b->dsize = mutt_strlen (seed);
+  b->dptr = (char *) b->data + b->dsize;
+  return b;
+}
+
+int mutt_buffer_printf (BUFFER* buf, const char* fmt, ...)
+{
+  va_list ap, ap_retry;
+  int len, blen, doff;
+  
+  va_start (ap, fmt);
+  va_copy (ap_retry, ap);
+
+  doff = buf->dptr - buf->data;
+  blen = buf->dsize - doff;
+  /* solaris 9 vsnprintf barfs when blen is 0 */
+  if (!blen)
+  {
+    blen = 128;
+    buf->dsize += blen;
+    safe_realloc (&buf->data, buf->dsize);
+    buf->dptr = buf->data + doff;
+  }
+  if ((len = vsnprintf (buf->dptr, blen, fmt, ap)) >= blen)
+  {
+    blen = ++len - blen;
+    if (blen < 128)
+      blen = 128;
+    buf->dsize += blen;
+    safe_realloc (&buf->data, buf->dsize);
+    buf->dptr = buf->data + doff;
+    len = vsnprintf (buf->dptr, len, fmt, ap_retry);
+    va_end (ap_retry);
+  }
+  if (len > 0)
+    buf->dptr += len;
+
+  va_end (ap);
+  
+  return len;
+}
+
 void mutt_buffer_addstr (BUFFER* buf, const char* s)
 {
   mutt_buffer_add (buf, s, mutt_strlen (s));
@@ -1258,6 +1581,16 @@ void mutt_buffer_addstr (BUFFER* buf, const char* s)
 void mutt_buffer_addch (BUFFER* buf, char c)
 {
   mutt_buffer_add (buf, &c, 1);
+}
+
+void mutt_buffer_free (BUFFER **p)
+{
+  if (!p || !*p) 
+    return;
+
+   FREE(&(*p)->data);
+   /* dptr is just an offset to data and shouldn't be freed */
+   FREE(p);		/* __FREE_CHECKED__ */
 }
 
 /* dynamically grows a BUFFER to accomodate s, in increments of 128 bytes.
@@ -1271,7 +1604,8 @@ void mutt_buffer_add (BUFFER* buf, const char* s, size_t len)
   {
     offset = buf->dptr - buf->data;
     buf->dsize += len < 128 ? 128 : len + 1;
-    safe_realloc ((void**) &buf->data, buf->dsize);
+    /* suppress compiler aliasing warning */
+    safe_realloc ((void**) (void*) &buf->data, buf->dsize);
     buf->dptr = buf->data + offset;
   }
   memcpy (buf->dptr, s, len);
@@ -1305,11 +1639,140 @@ time_t mutt_decrease_mtime (const char *f, struct stat *st)
   return mtime;
 }
 
+/* sets mtime of 'to' to mtime of 'from' */
+void mutt_set_mtime (const char* from, const char* to)
+{
+  struct utimbuf utim;
+  struct stat st;
+
+  if (stat (from, &st) != -1)
+  {
+    utim.actime = st.st_mtime;
+    utim.modtime = st.st_mtime;
+    utime (to, &utim);
+  }
+}
+
 const char *mutt_make_version (void)
 {
   static char vstring[STRING];
   snprintf (vstring, sizeof (vstring), "Mutt %s (%s)",
 	    MUTT_VERSION, ReleaseDate);
   return vstring;
+}
+
+REGEXP *mutt_compile_regexp (const char *s, int flags)
+{
+  REGEXP *pp = safe_calloc (sizeof (REGEXP), 1);
+  pp->pattern = safe_strdup (s);
+  pp->rx = safe_calloc (sizeof (regex_t), 1);
+  if (REGCOMP (pp->rx, NONULL(s), flags) != 0)
+    mutt_free_regexp (&pp);
+
+  return pp;
+}
+
+void mutt_free_regexp (REGEXP **pp)
+{
+  FREE (&(*pp)->pattern);
+  regfree ((*pp)->rx);
+  FREE (&(*pp)->rx);
+  FREE (pp);		/* __FREE_CHECKED__ */
+}
+
+void mutt_free_rx_list (RX_LIST **list)
+{
+  RX_LIST *p;
+  
+  if (!list) return;
+  while (*list)
+  {
+    p = *list;
+    *list = (*list)->next;
+    mutt_free_regexp (&p->rx);
+    FREE (&p);
+  }
+}
+
+void mutt_free_spam_list (SPAM_LIST **list)
+{
+  SPAM_LIST *p;
+  
+  if (!list) return;
+  while (*list)
+  {
+    p = *list;
+    *list = (*list)->next;
+    mutt_free_regexp (&p->rx);
+    FREE (&p->template);
+    FREE (&p);
+  }
+}
+
+int mutt_match_rx_list (const char *s, RX_LIST *l)
+{
+  if (!s)  return 0;
+  
+  for (; l; l = l->next)
+  {
+    if (regexec (l->rx->rx, s, (size_t) 0, (regmatch_t *) 0, (int) 0) == 0)
+    {
+      dprint (5, (debugfile, "mutt_match_rx_list: %s matches %s\n", s, l->rx->pattern));
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+int mutt_match_spam_list (const char *s, SPAM_LIST *l, char *text, int x)
+{
+  static regmatch_t *pmatch = NULL;
+  static int nmatch = 0;
+  int i, n, tlen;
+  char *p;
+
+  if (!s)  return 0;
+
+  tlen = 0;
+
+  for (; l; l = l->next)
+  {
+    /* If this pattern needs more matches, expand pmatch. */
+    if (l->nmatch > nmatch)
+    {
+      safe_realloc (&pmatch, l->nmatch * sizeof(regmatch_t));
+      nmatch = l->nmatch;
+    }
+
+    /* Does this pattern match? */
+    if (regexec (l->rx->rx, s, (size_t) l->nmatch, (regmatch_t *) pmatch, (int) 0) == 0)
+    {
+      dprint (5, (debugfile, "mutt_match_spam_list: %s matches %s\n", s, l->rx->pattern));
+      dprint (5, (debugfile, "mutt_match_spam_list: %d subs\n", (int)l->rx->rx->re_nsub));
+
+      /* Copy template into text, with substitutions. */
+      for (p = l->template; *p;)
+      {
+	if (*p == '%')
+	{
+	  n = atoi(++p);			/* find pmatch index */
+	  while (isdigit((unsigned char)*p))
+	    ++p;				/* skip subst token */
+	  for (i = pmatch[n].rm_so; (i < pmatch[n].rm_eo) && (tlen < x); i++)
+	    text[tlen++] = s[i];
+	}
+	else
+	{
+	  text[tlen++] = *p++;
+	}
+      }
+      text[tlen] = '\0';
+      dprint (5, (debugfile, "mutt_match_spam_list: \"%s\"\n", text));
+      return 1;
+    }
+  }
+
+  return 0;
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -13,11 +13,16 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "sort.h"
+#include "mutt_idna.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -85,7 +90,7 @@ int compare_subject (const void *a, const void *b)
   return (SORTCODE (rc));
 }
 
-char *mutt_get_name (ADDRESS *a)
+const char *mutt_get_name (ADDRESS *a)
 {
   ADDRESS *ali;
 
@@ -96,7 +101,7 @@ char *mutt_get_name (ADDRESS *a)
     else if (a->personal)
       return a->personal;
     else if (a->mailbox)
-      return (a->mailbox);
+      return (mutt_addr_for_display (a));
   }
   /* don't return NULL to avoid segfault when printing/comparing */
   return ("");
@@ -106,7 +111,7 @@ int compare_to (const void *a, const void *b)
 {
   HEADER **ppa = (HEADER **) a;
   HEADER **ppb = (HEADER **) b;
-  char *fa, *fb;
+  const char *fa, *fb;
   int result;
 
   fa = mutt_get_name ((*ppa)->env->to);
@@ -120,7 +125,7 @@ int compare_from (const void *a, const void *b)
 {
   HEADER **ppa = (HEADER **) a;
   HEADER **ppb = (HEADER **) b;
-  char *fa, *fb;
+  const char *fa, *fb;
   int result;
 
   fa = mutt_get_name ((*ppa)->env->from);
@@ -148,6 +153,61 @@ int compare_order (const void *a, const void *b)
   return (SORTCODE ((*ha)->index - (*hb)->index));
 }
 
+int compare_spam (const void *a, const void *b)
+{
+  HEADER **ppa = (HEADER **) a;
+  HEADER **ppb = (HEADER **) b;
+  char   *aptr, *bptr;
+  int     ahas, bhas;
+  int     result = 0;
+  double  difference;
+
+  /* Firstly, require spam attributes for both msgs */
+  /* to compare. Determine which msgs have one.     */
+  ahas = (*ppa)->env && (*ppa)->env->spam;
+  bhas = (*ppb)->env && (*ppb)->env->spam;
+
+  /* If one msg has spam attr but other does not, sort the one with first. */
+  if (ahas && !bhas)
+    return (SORTCODE(1));
+  if (!ahas && bhas)
+    return (SORTCODE(-1));
+
+  /* Else, if neither has a spam attr, presume equality. Fall back on aux. */
+  if (!ahas && !bhas)
+  {
+    AUXSORT(result, a, b);
+    return (SORTCODE(result));
+  }
+
+
+  /* Both have spam attrs. */
+
+  /* preliminary numeric examination */
+  difference = (strtod((*ppa)->env->spam->data, &aptr) -
+                strtod((*ppb)->env->spam->data, &bptr));
+
+  /* map double into comparison (-1, 0, or 1) */
+  result = (difference < 0.0 ? -1 : difference > 0.0 ? 1 : 0);
+
+  /* If either aptr or bptr is equal to data, there is no numeric    */
+  /* value for that spam attribute. In this case, compare lexically. */
+  if ((aptr == (*ppa)->env->spam->data) || (bptr == (*ppb)->env->spam->data))
+    return (SORTCODE(strcmp(aptr, bptr)));
+
+  /* Otherwise, we have numeric value for both attrs. If these values */
+  /* are equal, then we first fall back upon string comparison, then  */
+  /* upon auxiliary sort.                                             */
+  if (result == 0)
+  {
+    result = strcmp(aptr, bptr);
+    if (result == 0)
+      AUXSORT(result, a, b);
+  }
+
+  return (SORTCODE(result));
+}
+
 sort_t *mutt_get_sort_func (int method)
 {
   switch (method & SORT_MASK)
@@ -168,6 +228,8 @@ sort_t *mutt_get_sort_func (int method)
       return (compare_to);
     case SORT_SCORE:
       return (compare_score);
+    case SORT_SPAM:
+      return (compare_spam);
     default:
       return (NULL);
   }
@@ -181,7 +243,6 @@ void mutt_sort_headers (CONTEXT *ctx, int init)
   THREAD *thread, *top;
   sort_t *sortfunc;
   
-  init = 1; /* XXX temporary bug workaround (hopefully!) */
   unset_option (OPTNEEDRESORT);
 
   if (!ctx)
@@ -194,7 +255,7 @@ void mutt_sort_headers (CONTEXT *ctx, int init)
      * in that routine, so we must make sure to zero the vcount member.
      */
     ctx->vcount = 0;
-    ctx->tree = 0;
+    mutt_clear_threads (ctx);
     return; /* nothing to do! */
   }
 

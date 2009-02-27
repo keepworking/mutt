@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 1996-2000 Michael R. Elkins <me@cs.hmc.edu>
- * Copyright (C) 1999-2000 Thomas Roessler <roessler@guug.de>
+ * Copyright (C) 1996-2000 Michael R. Elkins <me@mutt.org>
+ * Copyright (C) 1999-2000 Thomas Roessler <roessler@does-not-exist.org>
  * 
  *     This program is free software; you can redistribute it and/or modify
  *     it under the terms of the GNU General Public License as published by
@@ -14,8 +14,12 @@
  * 
  *     You should have received a copy of the GNU General Public License
  *     along with this program; if not, write to the Free Software
- *     Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */ 
+
+#if HAVE_CONFIG_H
+# include "config.h"
+#endif
 
 #include "mutt.h"
 #include "mutt_curses.h"
@@ -27,14 +31,7 @@
 #include "mapping.h"
 #include "mx.h"
 #include "copy.h"
-
-
-
-#ifdef HAVE_PGP
-#include "pgp.h"
-#endif
-
-
+#include "mutt_crypt.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -117,16 +114,14 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
   {
     if (*idxlen == *idxmax)
     {
-      safe_realloc ((void **) &idx, sizeof (ATTACHPTR *) * ((*idxmax) += 5));
+      safe_realloc (&idx, sizeof (ATTACHPTR *) * ((*idxmax) += 5));
       for (i = *idxlen; i < *idxmax; i++)
 	idx[i] = NULL;
     }
 
     if (m->type == TYPEMULTIPART && m->parts
 	&& (compose || (parent_type == -1 && ascii_strcasecmp ("alternative", m->subtype)))
-#ifdef HAVE_PGP
-	&& !mutt_is_multipart_encrypted(m)
-#endif
+        && (!(WithCrypto & APPLICATION_PGP) || !mutt_is_multipart_encrypted(m))
 	)
     {
       idx = mutt_gen_attach_list (m->parts, m->type, idx, idxlen, idxmax, level, compose);
@@ -138,15 +133,15 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
 
       new = idx[(*idxlen)++];
       new->content = m;
+      m->aptr = new;
       new->parent_type = parent_type;
       new->level = level;
 
       /* We don't support multipart messages in the compose menu yet */
       if (!compose && !m->collapsed && 
 	  ((m->type == TYPEMULTIPART
-#ifdef HAVE_PGP
-	    && !mutt_is_multipart_encrypted (m)
-#endif
+            && (!(WithCrypto & APPLICATION_PGP)
+                || !mutt_is_multipart_encrypted (m))
 	    )
 	   || mutt_is_message_type(m->type, m->subtype)))
       {
@@ -169,6 +164,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
  * %f = filename
  * %I = content-disposition, either I (inline) or A (attachment)
  * %t = tagged flag
+ * %T = tree chars
  * %m = major MIME type
  * %M = MIME subtype
  * %n = attachment number
@@ -177,6 +173,7 @@ ATTACHPTR **mutt_gen_attach_list (BODY *m,
  */
 const char *mutt_attach_fmt (char *dest,
     size_t destlen,
+    size_t col,
     char op,
     const char *src,
     const char *prefix,
@@ -197,13 +194,13 @@ const char *mutt_attach_fmt (char *dest,
     case 'C':
       if (!optional)
       {
-	if (mutt_is_text_type (aptr->content->type, aptr->content->subtype) &&
+	if (mutt_is_text_part (aptr->content) &&
 	    mutt_get_body_charset (charset, sizeof (charset), aptr->content))
 	  mutt_format_s (dest, destlen, prefix, charset);
 	else
 	  mutt_format_s (dest, destlen, prefix, "");
       }
-      else if (!mutt_is_text_type (aptr->content->type, aptr->content->subtype) ||
+      else if (!mutt_is_text_part (aptr->content) ||
 	       !mutt_get_body_charset (charset, sizeof (charset), aptr->content))
         optional = 0;
       break;
@@ -301,6 +298,14 @@ const char *mutt_attach_fmt (char *dest,
 	snprintf (dest, destlen, fmt, aptr->num + 1);
       }
       break;
+    case 'Q':
+      if (optional)
+        optional = aptr->content->attach_qualifies;
+      else {
+	    snprintf (fmt, sizeof (fmt), "%%%sc", prefix);
+        mutt_format_s (dest, destlen, fmt, "Q");
+      }
+      break;
     case 's':
       if (flags & M_FORMAT_STAT_FILE)
       {
@@ -338,20 +343,29 @@ const char *mutt_attach_fmt (char *dest,
       else if (!aptr->content->unlink)
         optional = 0;
       break;
+    case 'X':
+      if (optional)
+        optional = (aptr->content->attach_count + aptr->content->attach_qualifies) != 0;
+      else
+      {
+        snprintf (fmt, sizeof (fmt), "%%%sd", prefix);
+        snprintf (dest, destlen, fmt, aptr->content->attach_count + aptr->content->attach_qualifies);
+      }
+      break;
     default:
       *dest = 0;
   }
   
   if (optional)
-    mutt_FormatString (dest, destlen, ifstring, mutt_attach_fmt, data, 0);
+    mutt_FormatString (dest, destlen, col, ifstring, mutt_attach_fmt, data, 0);
   else if (flags & M_FORMAT_OPTIONAL)
-    mutt_FormatString (dest, destlen, elsestring, mutt_attach_fmt, data, 0);
+    mutt_FormatString (dest, destlen, col, elsestring, mutt_attach_fmt, data, 0);
   return (src);
 }
 
 void attach_entry (char *b, size_t blen, MUTTMENU *menu, int num)
 {
-  mutt_FormatString (b, blen, NONULL (AttachFormat), mutt_attach_fmt, (unsigned long) (((ATTACHPTR **)menu->data)[num]), M_FORMAT_ARROWCURSOR);
+  mutt_FormatString (b, blen, 0, NONULL (AttachFormat), mutt_attach_fmt, (unsigned long) (((ATTACHPTR **)menu->data)[num]), M_FORMAT_ARROWCURSOR);
 }
 
 int mutt_tag_attach (MUTTMENU *menu, int n, int m)
@@ -372,14 +386,21 @@ int mutt_is_message_type (int type, const char *subtype)
   return (ascii_strcasecmp (subtype, "rfc822") == 0 || ascii_strcasecmp (subtype, "news") == 0);
 }
 
-static int mutt_query_save_attachment (FILE *fp, BODY *body, HEADER *hdr)
+static int mutt_query_save_attachment (FILE *fp, BODY *body, HEADER *hdr, char **directory)
 {
+  char *prompt;
   char buf[_POSIX_PATH_MAX], tfile[_POSIX_PATH_MAX];
   int is_message;
   int append = 0;
-
-  if (body->filename)
-    strfcpy (buf, body->filename, sizeof (buf));
+  int rc;
+  
+  if (body->filename) 
+  {
+    if (directory && *directory)
+      mutt_concat_path (buf, *directory, mutt_basename (body->filename), sizeof (buf));
+    else
+      strfcpy (buf, body->filename, sizeof (buf));
+  }
   else if(body->hdr &&
 	  body->encoding != ENCBASE64 &&
 	  body->encoding != ENCQUOTEDPRINTABLE &&
@@ -388,45 +409,68 @@ static int mutt_query_save_attachment (FILE *fp, BODY *body, HEADER *hdr)
   else
     buf[0] = 0;
 
-  if (mutt_get_field (_("Save to file: "), buf, sizeof (buf), M_FILE | M_CLEAR) != 0
-      || !buf[0])
-    return -1;
-
-  mutt_expand_path (buf, sizeof (buf));
-
-  is_message = (fp && 
-      body->hdr && 
-      body->encoding != ENCBASE64 && 
-      body->encoding != ENCQUOTEDPRINTABLE && 
-      mutt_is_message_type (body->type, body->subtype));
-  
-  if (is_message)
+  prompt = _("Save to file: ");
+  while (prompt)
   {
-    struct stat st;
+    if (mutt_get_field (prompt, buf, sizeof (buf), M_FILE | M_CLEAR) != 0
+	|| !buf[0])
+      return -1;
     
-    /* check to make sure that this file is really the one the user wants */
-    if (!mutt_save_confirm (buf, &st))
-      return -1;
-    strfcpy(tfile, buf, sizeof(tfile));
+    prompt = NULL;
+    mutt_expand_path (buf, sizeof (buf));
+    
+    is_message = (fp && 
+		  body->hdr && 
+		  body->encoding != ENCBASE64 && 
+		  body->encoding != ENCQUOTEDPRINTABLE && 
+		  mutt_is_message_type (body->type, body->subtype));
+    
+    if (is_message)
+    {
+      struct stat st;
+      
+      /* check to make sure that this file is really the one the user wants */
+      if ((rc = mutt_save_confirm (buf, &st)) == 1)
+      {
+	prompt = _("Save to file: ");
+	continue;
+      } 
+      else if (rc == -1)
+	return -1;
+      strfcpy(tfile, buf, sizeof(tfile));
+    }
+    else
+    {
+      if ((rc = mutt_check_overwrite (body->filename, buf, tfile, sizeof (tfile), &append, directory)) == -1)
+	return -1;
+      else if (rc == 1)
+      {
+	prompt = _("Save to file: ");
+	continue;
+      }
+    }
+    
+    mutt_message _("Saving...");
+    if (mutt_save_attachment (fp, body, tfile, append, (hdr || !is_message) ? hdr : body->hdr) == 0)
+    {
+      mutt_message _("Attachment saved.");
+      return 0;
+    }
+    else
+    {
+      prompt = _("Save to file: ");
+      continue;
+    }
   }
-  else
-    if (mutt_check_overwrite (body->filename, buf, tfile, sizeof (tfile), &append))
-      return -1;
-
-  mutt_message _("Saving...");
-  if (mutt_save_attachment (fp, body, tfile, append, (hdr || !is_message) ? hdr : body->hdr) == 0)
-  {
-    mutt_message _("Attachment saved.");
-    return 0;
-  }
-  else
-    return -1;
+  return 0;
 }
-
-void mutt_save_attachment_list (FILE *fp, int tag, BODY *top, HEADER *hdr)
+    
+void mutt_save_attachment_list (FILE *fp, int tag, BODY *top, HEADER *hdr, MUTTMENU *menu)
 {
   char buf[_POSIX_PATH_MAX], tfile[_POSIX_PATH_MAX];
+  char *directory = NULL;
   int rc = 1;
+  int last = menu ? menu->current : -1;
   FILE *fpout;
 
   buf[0] = 0;
@@ -441,13 +485,14 @@ void mutt_save_attachment_list (FILE *fp, int tag, BODY *top, HEADER *hdr)
 	{
 	  int append = 0;
 
-	  strfcpy (buf, NONULL (top->filename), sizeof (buf));
+	  strfcpy (buf, mutt_basename (NONULL (top->filename)), sizeof (buf));
+
 	  if (mutt_get_field (_("Save to file: "), buf, sizeof (buf),
 				    M_FILE | M_CLEAR) != 0 || !buf[0])
 	    return;
 	  mutt_expand_path (buf, sizeof (buf));
 	  if (mutt_check_overwrite (top->filename, buf, tfile,
-				    sizeof (tfile), &append))
+				    sizeof (tfile), &append, NULL))
 	    return;
 	  rc = mutt_save_attachment (fp, top, tfile, append, hdr);
 	  if (rc == 0 && AttachSep && (fpout = fopen (tfile,"a")) != NULL)
@@ -466,15 +511,37 @@ void mutt_save_attachment_list (FILE *fp, int tag, BODY *top, HEADER *hdr)
 	  }
 	}
       }
-      else
-	mutt_query_save_attachment (fp, top, hdr);
+      else 
+      {
+	if (tag && menu && top->aptr)
+	{
+	  menu->oldcurrent = menu->current;
+	  menu->current = top->aptr->num;
+	  menu_check_recenter (menu);
+	  menu->redraw |= REDRAW_MOTION;
+
+	  menu_redraw (menu);
+	}
+	if (mutt_query_save_attachment (fp, top, hdr, &directory) == -1)
+	  break;
+      }
     }
     else if (top->parts)
-      mutt_save_attachment_list (fp, 1, top->parts, hdr);
+      mutt_save_attachment_list (fp, 1, top->parts, hdr, menu);
     if (!tag)
-      return;
+      break;
   }
 
+  FREE (&directory);
+
+  if (tag && menu)
+  {
+    menu->oldcurrent = menu->current;
+    menu->current = last;
+    menu_check_recenter (menu);
+    menu->redraw |= REDRAW_MOTION;
+  }
+  
   if (!option (OPTATTACHSPLIT) && (rc == 0))
     mutt_message _("Attachment saved.");
 }
@@ -771,10 +838,14 @@ mutt_attach_display_loop (MUTTMENU *menu, int op, FILE *fp, HEADER *hdr,
         op = OP_VIEW_ATTACH;
 	break;
       /* functions which are passed through from the pager */
-      case OP_ATTACH_COLLAPSE:
-#ifdef HAVE_PGP
       case OP_CHECK_TRADITIONAL:
-#endif
+        if (!(WithCrypto & APPLICATION_PGP) || (hdr && hdr->security & PGP_TRADITIONAL_CHECKED))
+        {
+          op = OP_NULL;
+          break;
+        }
+        /* fall through */
+      case OP_ATTACH_COLLAPSE:
         if (recv)
           return op;
       default:
@@ -832,18 +903,12 @@ static const char *Function_not_permitted = N_("Function not permitted in attach
 
 void mutt_view_attachments (HEADER *hdr)
 {
+  int secured = 0;
+  int need_secured = 0;
 
-
-
-#ifdef HAVE_PGP
-  int pgp = 0;
-#endif
-
-
-
-  char helpstr[SHORT_STRING];
+  char helpstr[LONG_STRING];
   MUTTMENU *menu;
-  BODY *cur;
+  BODY *cur = NULL;
   MESSAGE *msg;
   FILE *fp;
   ATTACHPTR **idx = NULL;
@@ -861,25 +926,59 @@ void mutt_view_attachments (HEADER *hdr)
     return;
 
 
+  if (WithCrypto && ((hdr->security & ENCRYPT) ||
+                     (mutt_is_application_smime(hdr->content) & SMIMEOPAQUE)))
+  {
+    need_secured  = 1;
 
-#ifdef HAVE_PGP
-  if((hdr->pgp & PGPENCRYPT) && !pgp_valid_passphrase())
-  {
-    mx_close_message (&msg);
-    return;
-  }
-  
-  if ((hdr->pgp & PGPENCRYPT) && mutt_is_multipart_encrypted(hdr->content))
-  {
-    if (pgp_decrypt_mime (msg->fp, &fp, hdr->content, &cur))
+    if ((hdr->security & ENCRYPT) && !crypt_valid_passphrase(hdr->security))
     {
       mx_close_message (&msg);
       return;
     }
-    pgp = 1;
+    if ((WithCrypto & APPLICATION_SMIME) && (hdr->security & APPLICATION_SMIME))
+    {
+      if (hdr->env)
+	  crypt_smime_getkeys (hdr->env);
+
+      if (mutt_is_application_smime(hdr->content))
+      {
+	secured = ! crypt_smime_decrypt_mime (msg->fp, &fp,
+                                              hdr->content, &cur);
+	
+	/* S/MIME nesting */
+	if ((mutt_is_application_smime (cur) & SMIMEOPAQUE))
+	{
+	  BODY *_cur = cur;
+	  FILE *_fp = fp;
+	  
+	  fp = NULL; cur = NULL;
+	  secured = !crypt_smime_decrypt_mime (_fp, &fp, _cur, &cur);
+	  
+	  mutt_free_body (&_cur);
+	  safe_fclose (&_fp);
+	}
+      }
+      else
+	need_secured = 0;
+    }
+    if ((WithCrypto & APPLICATION_PGP) && (hdr->security & APPLICATION_PGP))
+    {
+      if (mutt_is_multipart_encrypted(hdr->content))
+	secured = !crypt_pgp_decrypt_mime (msg->fp, &fp, hdr->content, &cur);
+      else
+	need_secured = 0;
+    }
+
+    if (need_secured && !secured)
+    {
+      mx_close_message (&msg);
+      mutt_error _("Can't decrypt encrypted message!");
+      return;
+    }
   }
-  else
-#endif /* HAVE_PGP */
+  
+  if (!WithCrypto || !need_secured)
   {
     fp = msg->fp;
     cur = hdr->content;
@@ -933,29 +1032,29 @@ void mutt_view_attachments (HEADER *hdr)
         mutt_update_attach_index (cur, &idx, &idxlen, &idxmax, menu);
         break;
       
-
-#ifdef HAVE_PGP
       case OP_FORGET_PASSPHRASE:
-        mutt_forget_passphrase ();
+        crypt_forget_passphrase ();
         break;
-      
+
       case OP_EXTRACT_KEYS:
-        pgp_extract_keys_from_attachment_list (fp, menu->tagprefix, 
-		  menu->tagprefix ? cur : idx[menu->current]->content);
-        menu->redraw = REDRAW_FULL;
+        if ((WithCrypto & APPLICATION_PGP))
+        {
+          crypt_pgp_extract_keys_from_attachment_list (fp, menu->tagprefix, 
+		    menu->tagprefix ? cur : idx[menu->current]->content);
+          menu->redraw = REDRAW_FULL;
+        }
         break;
       
       case OP_CHECK_TRADITIONAL:
-        if (pgp_check_traditional (fp, menu->tagprefix ? cur : idx[menu->current]->content,
-				   menu->tagprefix))
+        if ((WithCrypto & APPLICATION_PGP)
+            && crypt_pgp_check_traditional (fp, menu->tagprefix ? cur
+                                              : idx[menu->current]->content,
+                                      menu->tagprefix))
         {
-	  hdr->pgp = pgp_query (cur);
+	  hdr->security = crypt_query (cur);
 	  menu->redraw = REDRAW_FULL;
 	}
         break;
-#endif
-      
-
 
       case OP_PRINT:
 	mutt_print_attachment_list (fp, menu->tagprefix, 
@@ -969,9 +1068,9 @@ void mutt_view_attachments (HEADER *hdr)
 
       case OP_SAVE:
 	mutt_save_attachment_list (fp, menu->tagprefix, 
-		  menu->tagprefix ?  cur : idx[menu->current]->content, hdr);
+		  menu->tagprefix ?  cur : idx[menu->current]->content, hdr, menu);
 
-        if (option (OPTRESOLVE) && menu->current < menu->max - 1)
+        if (!menu->tagprefix && option (OPTRESOLVE) && menu->current < menu->max - 1)
 	  menu->current++;
       
         menu->redraw = REDRAW_MOTION_RESYNCH | REDRAW_FULL;
@@ -989,16 +1088,12 @@ void mutt_view_attachments (HEADER *hdr)
 	}
 #endif
 
-
-
-#ifdef HAVE_PGP
-        if (hdr->pgp)
+        if (WithCrypto && hdr->security & ~PGP_TRADITIONAL_CHECKED)
         {
 	  mutt_message _(
-	    "Deletion of attachments from PGP messages is unsupported.");
+	    "Deletion of attachments from encrypted messages is unsupported.");
 	}
         else
-#endif
         {
 	  if (!menu->tagprefix)
 	  {
@@ -1116,25 +1211,21 @@ void mutt_view_attachments (HEADER *hdr)
 	    continue;
 	  if (idx[idxmax]->content && idx[idxmax]->content->deleted)
 	    hdr->attach_del = 1;
-	  safe_free ((void **) &idx[idxmax]->tree);
-	  safe_free ((void **) &idx[idxmax]);
+	  if (idx[idxmax]->content)
+	    idx[idxmax]->content->aptr = NULL;
+	  FREE (&idx[idxmax]->tree);
+	  FREE (&idx[idxmax]);
 	}
 	if (hdr->attach_del)
 	  hdr->changed = 1;
-	safe_free ((void **) &idx);
+	FREE (&idx);
 	idxmax = 0;
 
-
-
-#ifdef HAVE_PGP
-	if (pgp)
+        if (WithCrypto && need_secured && secured)
 	{
 	  fclose (fp);
 	  mutt_free_body (&cur);
 	}
-#endif /* HAVE_PGP */
-
-
 
 	mutt_menuDestroy  (&menu);
 	return;
