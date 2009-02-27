@@ -77,13 +77,11 @@ enum output_formats_t
 #define D_DD            (1 << 8)
 #define D_PA            (1 << 9)
 #define D_IL		(1 << 10)
-#define D_TT            (1 << 11)
 
 enum
 {
   SP_START_EM,
   SP_START_BF,
-  SP_START_TT,
   SP_END_FT,
   SP_NEWLINE,
   SP_NEWPAR,
@@ -629,17 +627,12 @@ static int sgml_id_fputs (const char *s, FILE* out)
 {
   char id;
 
-  if (*s == '<')
-    s++;
-
   for (; *s; s++)
   {
     if (*s == '_')
       id = '-';
     else
       id = *s;
-    if (*s == '>' && !*(s+1))
-      break;
 
     if (fputc ((unsigned int) id, out) == EOF)
       return EOF;
@@ -779,7 +772,7 @@ static int flush_doc (int docstat, FILE *out)
   if (docstat & (D_DL))
     docstat = print_it (SP_END_DL, NULL, out, docstat);
 
-  if (docstat & (D_EM | D_BF | D_TT))
+  if (docstat & (D_EM | D_BF))
     docstat = print_it (SP_END_FT, NULL, out, docstat);
 
   docstat = print_it (SP_END_SECT, NULL, out, docstat);
@@ -807,10 +800,9 @@ static int print_it (int special, char *str, FILE *out, int docstat)
       {
 	static int Continuation = 0;
 
-	case SP_END_FT: docstat &= ~(D_EM|D_BF|D_TT); break;
+	case SP_END_FT: docstat &= ~(D_EM|D_BF); break;
 	case SP_START_BF: docstat |= D_BF; break;
 	case SP_START_EM: docstat |= D_EM; break;
-        case SP_START_TT: docstat |= D_TT; break;
 	case SP_NEWLINE: 
 	{
 	  if (onl)
@@ -917,30 +909,23 @@ static int print_it (int special, char *str, FILE *out, int docstat)
 	case SP_END_FT: 
 	{
 	  fputs ("\\fP", out);
-	  docstat &= ~(D_EM|D_BF|D_TT);
+	  docstat &= ~(D_EM|D_BF);
 	  break;
 	}
 	case SP_START_BF: 
 	{
 	  fputs ("\\fB", out);
 	  docstat |= D_BF;
-	  docstat &= ~(D_EM|D_TT);
+	  docstat &= ~D_EM;
 	  break;
 	}
 	case SP_START_EM:
 	{
 	  fputs ("\\fI", out);
 	  docstat |= D_EM;
-	  docstat &= ~(D_BF|D_TT);
+	  docstat &= ~D_BF;
 	  break;
 	}
-        case SP_START_TT:
-	{
-	  fputs ("\\fC", out);
-	  docstat |= D_TT;
-	  docstat &= ~(D_BF|D_EM);
-	  break;
-        }
 	case SP_NEWLINE:
 	{
 	  if (onl)
@@ -1056,31 +1041,23 @@ static int print_it (int special, char *str, FILE *out, int docstat)
 	{
 	  if (docstat & D_EM) fputs ("</emphasis>", out);
 	  if (docstat & D_BF) fputs ("</emphasis>", out);
-          if (docstat & D_TT) fputs ("</literal>", out);
-	  docstat &= ~(D_EM|D_BF|D_TT);
+	  docstat &= ~(D_EM|D_BF);
 	  break;
 	}
 	case SP_START_BF: 
 	{
 	  fputs ("<emphasis role=\"bold\">", out);
 	  docstat |= D_BF;
-	  docstat &= ~(D_EM|D_TT);
+	  docstat &= ~D_EM;
 	  break;
 	}
 	case SP_START_EM:
 	{
 	  fputs ("<emphasis>", out);
 	  docstat |= D_EM;
-	  docstat &= ~(D_BF|D_TT);
+	  docstat &= ~D_BF;
 	  break;
 	}
-        case SP_START_TT:
-	{
-	  fputs ("<literal>", out);
-	  docstat |= D_TT;
-	  docstat &= ~(D_BF|D_EM);
-	  break;
-        }
 	case SP_NEWLINE:
 	{
 	  if (onl)
@@ -1287,12 +1264,6 @@ static int handle_docline (char *l, FILE *out, int docstat)
       docstat = print_it (SP_START_BF, NULL, out, docstat);
       s += 2;
     }
-    else if (!strncmp (s, "\\fC", 3))
-    {
-      docstat = commit_buff (buff, &d, out, docstat);
-      docstat = print_it (SP_START_TT, NULL, out, docstat);
-      s += 2;
-    }
     else if (!strncmp (s, "\\fP", 3))
     {
       docstat = commit_buff (buff, &d, out, docstat);
@@ -1340,7 +1311,7 @@ static int handle_docline (char *l, FILE *out, int docstat)
       else
       {
 	ref = s;
-	while (isalnum ((unsigned char) *s) || (*s && strchr("-_<>", *s)))
+	while (isalnum ((unsigned char) *s) || *s == '-' || *s == '_')
 	  ++s;
 
 	docstat = commit_buff (buff, &d, out, docstat);
