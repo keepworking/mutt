@@ -40,7 +40,9 @@
 #include "imap.h"
 #endif
 
+#ifdef BUFFY_SIZE
 #include "buffy.h"
+#endif
 
 #include <errno.h>
 #include <unistd.h>
@@ -701,8 +703,11 @@ int mutt_save_message (HEADER *h, int delete,
   char prompt[SHORT_STRING], buf[_POSIX_PATH_MAX];
   CONTEXT ctx;
   struct stat st;
+#ifdef BUFFY_SIZE
   BUFFY *tmp = NULL;
+#else
   struct utimbuf ut;
+#endif
 
   *redraw = 0;
 
@@ -837,24 +842,21 @@ int mutt_save_message (HEADER *h, int delete,
 
     if (need_buffy_cleanup)
     {
-      if (option(OPTCHECKMBOXSIZE))
+#ifdef BUFFY_SIZE
+      tmp = mutt_find_mailbox (buf);
+      if (tmp && !tmp->new)
+	mutt_update_mailbox (tmp);
+#else
+      /* fix up the times so buffy won't get confused */
+      if (st.st_mtime > st.st_atime)
       {
-	tmp = mutt_find_mailbox (buf);
-	if (tmp && !tmp->new)
-	  mutt_update_mailbox (tmp);
+	ut.actime = st.st_atime;
+	ut.modtime = time (NULL);
+	utime (buf, &ut); 
       }
       else
-      {
-	/* fix up the times so buffy won't get confused */
-	if (st.st_mtime > st.st_atime)
-	{
-	  ut.actime = st.st_atime;
-	  ut.modtime = time (NULL);
-	  utime (buf, &ut); 
-	}
-	else
-	  utime (buf, NULL);
-      }
+	utime (buf, NULL);
+#endif
     }
 
     mutt_clear_error ();

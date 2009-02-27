@@ -49,14 +49,13 @@ mutt_copy_hdr (FILE *in, FILE *out, LOFF_T off_start, LOFF_T off_end, int flags,
   int from = 0;
   int this_is_from;
   int ignore = 0;
-  char buf[LONG_STRING]; /* should be long enough to get most fields in one pass */
+  char buf[STRING]; /* should be long enough to get most fields in one pass */
   char *nl;
   LIST *t;
   char **headers;
   int hdr_count;
   int x;
   char *this_one = NULL;
-  size_t this_one_len;
   int error;
 
   if (ftello (in) != off_start)
@@ -157,17 +156,15 @@ mutt_copy_hdr (FILE *in, FILE *out, LOFF_T off_start, LOFF_T off_end, int flags,
 	{
 	  if (!address_header_decode (&this_one))
 	    rfc2047_decode (&this_one);
-	  this_one_len = mutt_strlen (this_one);
 	}
-
+	
 	if (!headers[x])
 	  headers[x] = this_one;
 	else 
 	{
-	  int hlen = mutt_strlen (headers[x]);
-
-	  safe_realloc (&headers[x], hlen + this_one_len + sizeof (char));
-	  strcat (headers[x] + hlen, this_one); /* __STRCAT_CHECKED__ */
+	  safe_realloc (&headers[x], mutt_strlen (headers[x]) + 
+			mutt_strlen (this_one) + sizeof (char));
+	  strcat (headers[x], this_one); /* __STRCAT_CHECKED__ */
 	  FREE (&this_one);
 	}
 
@@ -234,15 +231,13 @@ mutt_copy_hdr (FILE *in, FILE *out, LOFF_T off_start, LOFF_T off_end, int flags,
     if (!ignore)
     {
       dprint (2, (debugfile, "Reorder: x = %d; hdr_count = %d\n", x, hdr_count));
-      if (!this_one) {
+      if (!this_one)
 	this_one = safe_strdup (buf);
-	this_one_len = mutt_strlen (this_one);
-      } else {
-	int blen = mutt_strlen (buf);
-
-	safe_realloc (&this_one, this_one_len + blen + sizeof (char));
-	strcat (this_one + this_one_len, buf); /* __STRCAT_CHECKED__ */
-	this_one_len += blen;
+      else
+      {
+	safe_realloc (&this_one,
+		      mutt_strlen (this_one) + mutt_strlen (buf) + sizeof (char));
+	strcat (this_one, buf); /* __STRCAT_CHECKED__ */
       }
     }
   } /* while (ftello (in) < off_end) */
@@ -260,10 +255,9 @@ mutt_copy_hdr (FILE *in, FILE *out, LOFF_T off_start, LOFF_T off_end, int flags,
       headers[x] = this_one;
     else 
     {
-      int hlen = mutt_strlen (headers[x]);
-
-      safe_realloc (&headers[x], hlen + this_one_len + sizeof (char));
-      strcat (headers[x] + hlen, this_one); /* __STRCAT_CHECKED__ */
+      safe_realloc (&headers[x], mutt_strlen (headers[x]) + 
+		    mutt_strlen (this_one) + sizeof (char));
+      strcat (headers[x], this_one); /* __STRCAT_CHECKED__ */
       FREE (&this_one);
     }
 
@@ -851,22 +845,22 @@ static void format_address_header (char **h, ADDRESS *a)
   char buf[HUGE_STRING];
   char cbuf[STRING];
   char c2buf[STRING];
-  char *p;
-  int l, linelen, buflen, count, cbuflen, c2buflen, plen;
-
+  
+  int l, linelen, buflen, count;
   linelen = mutt_strlen (*h);
-  plen = linelen;
   buflen  = linelen + 3;
-
+  
+  
   safe_realloc (h, buflen);
   for (count = 0; a; a = a->next, count++)
   {
     ADDRESS *tmp = a->next;
     a->next = NULL;
     *buf = *cbuf = *c2buf = '\0';
-    l = rfc822_write_address (buf, sizeof (buf), a, 0);
+    rfc822_write_address (buf, sizeof (buf), a, 0);
     a->next = tmp;
     
+    l = mutt_strlen (buf);
     if (count && linelen + l > 74) 
     {
       strcpy (cbuf, "\n\t");  	/* __STRCPY_CHECKED__ */
@@ -887,22 +881,16 @@ static void format_address_header (char **h, ADDRESS *a)
       buflen++;
       strcpy (c2buf, ",");	/* __STRCPY_CHECKED__ */
     }
-
-    cbuflen = mutt_strlen (cbuf);
-    c2buflen = mutt_strlen (c2buf);
-    buflen += l + cbuflen + c2buflen;
+    
+    buflen += l + mutt_strlen (cbuf) + mutt_strlen (c2buf);
     safe_realloc (h, buflen);
-    p = *h;
-    strcat (p + plen, cbuf);		/* __STRCAT_CHECKED__ */
-    plen += cbuflen;
-    strcat (p + plen, buf);		/* __STRCAT_CHECKED__ */
-    plen += l;
-    strcat (p + plen, c2buf);		/* __STRCAT_CHECKED__ */
-    plen += c2buflen;
+    strcat (*h, cbuf);		/* __STRCAT_CHECKED__ */
+    strcat (*h, buf);		/* __STRCAT_CHECKED__ */
+    strcat (*h, c2buf);		/* __STRCAT_CHECKED__ */
   }
   
   /* Space for this was allocated in the beginning of this function. */
-  strcat (p + plen, "\n");		/* __STRCAT_CHECKED__ */
+  strcat (*h, "\n");		/* __STRCAT_CHECKED__ */
 }
 
 static int address_header_decode (char **h)

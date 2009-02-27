@@ -167,8 +167,8 @@ int main (int argc, char *argv[])
   
   if (f != stdin)
     fclose (f);
-
-  return 0;
+  
+  exit (1);
 }
 
 

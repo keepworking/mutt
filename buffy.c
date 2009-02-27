@@ -45,6 +45,8 @@ time_t BuffyDoneTime = 0;	/* last time we knew for sure how much mail there was.
 static short BuffyCount = 0;	/* how many boxes with new mail */
 static short BuffyNotify = 0;	/* # of unnotified new boxes */
 
+#ifdef BUFFY_SIZE
+
 /* Find the last message in the file. 
  * upon success return 0. If no message found - return -1 */
 
@@ -165,12 +167,15 @@ void mutt_update_mailbox (BUFFY * b)
     b->size = 0;
   return;
 }
+#endif
 
 int mutt_parse_mailboxes (BUFFER *path, BUFFER *s, unsigned long data, BUFFER *err)
 {
   BUFFY **tmp,*tmp1;
   char buf[_POSIX_PATH_MAX];
+#ifdef BUFFY_SIZE
   struct stat sb;
+#endif /* BUFFY_SIZE */
 
   while (MoreArgs (s))
   {
@@ -227,28 +232,31 @@ int mutt_parse_mailboxes (BUFFER *path, BUFFER *s, unsigned long data, BUFFER *e
     (*tmp)->notified = 1;
     (*tmp)->newly_created = 0;
 
-    /* for check_mbox_size, it is important that if the folder is new (tested by
+#ifdef BUFFY_SIZE
+    /* for buffy_size, it is important that if the folder is new (tested by
      * reading it), the size is set to 0 so that later when we check we see
-     * that it increased .  without check_mbox_size we probably don't care.
+     * that it increased .  without buffy_size we probably don't care.
      */
-    if (option(OPTCHECKMBOXSIZE) &&
-	stat ((*tmp)->path, &sb) == 0 && !test_new_folder ((*tmp)->path))
+    if (stat ((*tmp)->path, &sb) == 0 && !test_new_folder ((*tmp)->path))
     {
       /* some systems out there don't have an off_t type */
       (*tmp)->size = (long) sb.st_size;
     }
     else
       (*tmp)->size = 0;
+#endif /* BUFFY_SIZE */
   }
   return 0;
 }
 
-/* people use check_mbox_size on systems where modified time attributes are 
- * BADLY broken. Ignore them.
+#ifdef BUFFY_SIZE
+/* people use buffy_size on systems where modified time attributes are BADLY
+ * broken. Ignore them.
  */
-#define STAT_CHECK_SIZE (sb.st_size > tmp->size)
-#define STAT_CHECK_TIME (sb.st_mtime > sb.st_atime || (tmp->newly_created && sb.st_ctime == sb.st_mtime && sb.st_ctime == sb.st_atime))
-#define STAT_CHECK (option(OPTCHECKMBOXSIZE) ? STAT_CHECK_SIZE : STAT_CHECK_TIME)
+#define STAT_CHECK (sb.st_size > tmp->size)
+#else
+#define STAT_CHECK (sb.st_mtime > sb.st_atime || (tmp->newly_created && sb.st_ctime == sb.st_mtime && sb.st_ctime == sb.st_atime))
+#endif /* BUFFY_SIZE */
 
 int mutt_buffy_check (int force)
 {
@@ -315,7 +323,9 @@ int mutt_buffy_check (int force)
        * be ready for when it does. */
       tmp->newly_created = 1;
       tmp->magic = 0;
+#ifdef BUFFY_SIZE
       tmp->size = 0;
+#endif
       continue;
     }
 #ifdef USE_IMAP
@@ -355,11 +365,13 @@ int mutt_buffy_check (int force)
 	  BuffyCount++;
 	  tmp->new = 1;
 	}
-	else if (option(OPTCHECKMBOXSIZE))
+#ifdef BUFFY_SIZE
+	else
 	{
 	  /* some other program has deleted mail from the folder */
 	  tmp->size = (long) sb.st_size;
 	}
+#endif
 	if (tmp->newly_created &&
 	    (sb.st_ctime != sb.st_mtime || sb.st_ctime != sb.st_atime))
 	  tmp->newly_created = 0;
@@ -395,8 +407,10 @@ int mutt_buffy_check (int force)
 	break;
       }
     }
-    else if (option(OPTCHECKMBOXSIZE) && Context && Context->path)
+#ifdef BUFFY_SIZE
+    else if (Context && Context->path)
       tmp->size = (long) sb.st_size;	/* update the size */
+#endif
 
     if (!tmp->new)
       tmp->notified = 0;

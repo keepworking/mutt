@@ -905,7 +905,7 @@ void mutt_view_attachments (HEADER *hdr)
   int secured = 0;
   int need_secured = 0;
 
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   MUTTMENU *menu;
   BODY *cur = NULL;
   MESSAGE *msg;

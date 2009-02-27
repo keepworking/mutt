@@ -38,7 +38,9 @@
 #include "pop.h"
 #endif
 
+#ifdef BUFFY_SIZE
 #include "buffy.h"
+#endif
 
 #ifdef USE_DOTLOCK
 #include "dotlock.h"
@@ -55,7 +57,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#ifndef BUFFY_SIZE
 #include <utime.h>
+#endif
 
 
 #define mutt_is_spool(s)  (mutt_strcmp (Spoolfile, s) == 0)
@@ -422,7 +426,9 @@ int mx_get_magic (const char *path)
   }
   else if ((f = fopen (path, "r")) != NULL)
   {
+#ifndef BUFFY_SIZE
     struct utimbuf times;
+#endif
 
     fgets (tmp, sizeof (tmp), f);
     if (mutt_strncmp ("From ", tmp, 5) == 0)
@@ -430,17 +436,15 @@ int mx_get_magic (const char *path)
     else if (mutt_strcmp (MMDF_SEP, tmp) == 0)
       magic = M_MMDF;
     safe_fclose (&f);
-
-    if (!option(OPTCHECKMBOXSIZE))
-    {
-      /* need to restore the times here, the file was not really accessed,
-       * only the type was accessed.  This is important, because detection
-       * of "new mail" depends on those times set correctly.
-       */
-      times.actime = st.st_atime;
-      times.modtime = st.st_mtime;
-      utime (path, &times);
-    }
+#ifndef BUFFY_SIZE
+    /* need to restore the times here, the file was not really accessed,
+     * only the type was accessed.  This is important, because detection
+     * of "new mail" depends on those times set correctly.
+     */
+    times.actime = st.st_atime;
+    times.modtime = st.st_mtime;
+    utime (path, &times);
+#endif
   }
   else
   {
@@ -488,7 +492,6 @@ int mx_access (const char* path, int flags)
 static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
 {
   struct stat sb;
-  mode_t omask;
 
   ctx->append = 1;
 
@@ -499,8 +502,6 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
 
 #endif
   
-  omask = umask(Umask);
-
   if(stat(ctx->path, &sb) == 0)
   {
     ctx->magic = mx_get_magic (ctx->path);
@@ -522,33 +523,33 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
     {
       char tmp[_POSIX_PATH_MAX];
 
-      if (mkdir (ctx->path, S_IRWXU|S_IRWXG|S_IRWXO))
+      if (mkdir (ctx->path, S_IRWXU))
       {
 	mutt_perror (ctx->path);
-	goto err_umask;
+	return (-1);
       }
 
       if (ctx->magic == M_MAILDIR)
       {
 	snprintf (tmp, sizeof (tmp), "%s/cur", ctx->path);
-	if (mkdir (tmp, S_IRWXU|S_IRWXG|S_IRWXO))
+	if (mkdir (tmp, S_IRWXU))
 	{
 	  mutt_perror (tmp);
 	  rmdir (ctx->path);
-	  goto err_umask;
+	  return (-1);
 	}
 
 	snprintf (tmp, sizeof (tmp), "%s/new", ctx->path);
-	if (mkdir (tmp, S_IRWXU|S_IRWXG|S_IRWXO))
+	if (mkdir (tmp, S_IRWXU))
 	{
 	  mutt_perror (tmp);
 	  snprintf (tmp, sizeof (tmp), "%s/cur", ctx->path);
 	  rmdir (tmp);
 	  rmdir (ctx->path);
-	  goto err_umask;
+	  return (-1);
 	}
 	snprintf (tmp, sizeof (tmp), "%s/tmp", ctx->path);
-	if (mkdir (tmp, S_IRWXU|S_IRWXG|S_IRWXO))
+	if (mkdir (tmp, S_IRWXU))
 	{
 	  mutt_perror (tmp);
 	  snprintf (tmp, sizeof (tmp), "%s/cur", ctx->path);
@@ -556,7 +557,7 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
 	  snprintf (tmp, sizeof (tmp), "%s/new", ctx->path);
 	  rmdir (tmp);
 	  rmdir (ctx->path);
-	  goto err_umask;
+	  return (-1);
 	}
       }
       else
@@ -564,11 +565,11 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
 	int i;
 
 	snprintf (tmp, sizeof (tmp), "%s/.mh_sequences", ctx->path);
-	if ((i = creat (tmp, S_IRWXU|S_IRWXG|S_IRWXO)) == -1)
+	if ((i = creat (tmp, S_IRWXU)) == -1)
 	{
 	  mutt_perror (tmp);
 	  rmdir (ctx->path);
-	  goto err_umask;
+	  return (-1);
 	}
 	close (i);
       }
@@ -577,7 +578,7 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
   else
   {
     mutt_perror (ctx->path);
-    goto err_umask;
+    return (-1);
   }
 
   switch (ctx->magic)
@@ -594,7 +595,7 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
 	  mutt_error (_("Couldn't lock %s\n"), ctx->path);
 	  safe_fclose (&ctx->fp);
 	}
-	goto err_umask;
+	return (-1);
       }
       fseek (ctx->fp, 0, 2);
       break;
@@ -605,15 +606,10 @@ static int mx_open_mailbox_append (CONTEXT *ctx, int flags)
       break;
 
     default:
-      goto err_umask;
+      return (-1);
   }
 
-  umask(omask);
   return 0;
-
- err_umask:
-  umask(omask);
-  return -1;
 }
 
 /*
@@ -777,7 +773,9 @@ void mx_fastclose_mailbox (CONTEXT *ctx)
 /* save changes to disk */
 static int sync_mailbox (CONTEXT *ctx, int *index_hint)
 {
+#ifdef BUFFY_SIZE
   BUFFY *tmp = NULL;
+#endif
   int rc = -1;
 
   if (!ctx->quiet)
@@ -788,8 +786,9 @@ static int sync_mailbox (CONTEXT *ctx, int *index_hint)
     case M_MBOX:
     case M_MMDF:
       rc = mbox_sync_mailbox (ctx, index_hint);
-      if (option(OPTCHECKMBOXSIZE))
-	tmp = mutt_find_mailbox (ctx->path);
+#ifdef BUFFY_SIZE
+      tmp = mutt_find_mailbox (ctx->path);
+#endif
       break;
       
     case M_MH:
@@ -816,8 +815,10 @@ static int sync_mailbox (CONTEXT *ctx, int *index_hint)
     mutt_error ( _("Could not synchronize mailbox %s!"), ctx->path);
 #endif
   
+#ifdef BUFFY_SIZE
   if (tmp && tmp->new == 0)
     mutt_update_mailbox (tmp);
+#endif
   return rc;
 }
 
@@ -1257,7 +1258,6 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
   MESSAGE *msg;
   int (*func) (MESSAGE *, CONTEXT *, HEADER *);
   ADDRESS *p = NULL;
-  mode_t omask;
 
   switch (dest->magic)
   {
@@ -1296,8 +1296,6 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
 
   if(msg->received == 0)
     time(&msg->received);
-
-  omask = umask(Umask);
   
   if (func (msg, dest, hdr) == 0)
   {
@@ -1322,8 +1320,6 @@ MESSAGE *mx_open_new_message (CONTEXT *dest, HEADER *hdr, int flags)
   }
   else
     FREE (&msg);
-
-  umask(omask);
 
   return msg;
 }

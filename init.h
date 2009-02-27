@@ -19,7 +19,6 @@
 
 #ifdef _MAKEDOC
 # include "config.h"
-# include "makedoc-defs.h"
 #else
 # include "sort.h"
 #endif
@@ -79,6 +78,59 @@ struct option_t
 
 #ifndef ISPELL
 #define ISPELL "ispell"
+#endif
+
+/* build complete documentation */
+
+#ifdef _MAKEDOC
+# ifndef USE_IMAP
+#  define USE_IMAP
+# endif
+# ifndef MIXMASTER
+#  define MIXMASTER "mixmaster"
+# endif
+# ifndef USE_POP
+#  define USE_POP
+# endif
+# ifndef USE_SMTP
+#  define USE_SMTP
+# endif
+# ifndef USE_SSL_OPENSSL
+#  define USE_SSL_OPENSSL
+# endif
+# ifndef USE_SSL_GNUTLS
+#  define USE_SSL_GNUTLS
+# endif
+# ifndef USE_SSL
+#  define USE_SSL
+# endif
+# ifndef USE_SOCKET
+#  define USE_SOCKET
+# endif
+# ifndef USE_DOTLOCK
+#  define USE_DOTLOCK
+# endif
+# ifndef DL_STANDALONE
+#  define DL_STANDALONE
+# endif
+# ifndef USE_HCACHE
+#  define USE_HCACHE
+# endif
+# ifndef HAVE_DB4
+#  define HAVE_DB4
+# endif
+# ifndef HAVE_GDBM
+#  define HAVE_GDBM
+# endif
+# ifndef HAVE_QDBM
+#  define HAVE_QDBM
+# endif
+# ifndef HAVE_LIBIDN
+#  define HAVE_LIBIDN
+# endif
+# ifndef HAVE_GETADDRINFO
+#  define HAVE_GETADDRINFO
+# endif
 #endif
 
 struct option_t MuttVars[] = {
@@ -299,12 +351,6 @@ struct option_t MuttVars[] = {
   ** follow these menus.  The option is disabled by default because many 
   ** visual terminals don't permit making the cursor invisible.
   */
-  { "check_mbox_size",	DT_BOOL, R_NONE, OPTCHECKMBOXSIZE, 0 },
-  /*
-  ** .pp
-  ** When this variable is set, mutt will use file size attribute instead of
-  ** access time when checking for new mail.
-  */
   { "charset",		DT_STR,	 R_NONE, UL &Charset, UL 0 },
   /*
   ** .pp
@@ -440,8 +486,8 @@ struct option_t MuttVars[] = {
   { "default_hook",	DT_STR,	 R_NONE, UL &DefaultHook, UL "~f %s !~P | (~P ~C %s)" },
   /*
   ** .pp
-  ** This variable controls how message-hooks, reply-hooks, send-hooks,
-  ** send2-hooks, save-hooks, and fcc-hooks will
+  ** This variable controls how send-hooks, message-hooks, save-hooks,
+  ** and fcc-hooks will
   ** be interpreted if they are specified with only a simple regexp,
   ** instead of a matching pattern.  The hooks are expanded when they are
   ** declared, so a hook will be interpreted according to the value of this
@@ -1978,7 +2024,7 @@ struct option_t MuttVars[] = {
   ** .pp
   ** Example: set certificate_file=~/.mutt/certificates
   */
-# ifdef USE_SSL_OPENSSL
+# if defined _MAKEDOC || !defined(USE_SSL_GNUTLS)
   { "ssl_usesystemcerts", DT_BOOL, R_NONE, OPTSSLSYSTEMCERTS, 1 },
   /*
   ** .pp
@@ -1998,7 +2044,7 @@ struct option_t MuttVars[] = {
   ** This variables specifies whether to attempt to use SSLv2 in the
   ** SSL authentication process.
   */
-# endif /* defined USE_SSL_OPENSSL */
+# endif /* defined _MAKEDOC || !defined(USE_SSL_GNUTLS) */
   { "ssl_use_sslv3", DT_BOOL, R_NONE, OPTSSLV3, 1 },
   /*
   ** .pp
@@ -2574,7 +2620,7 @@ struct option_t MuttVars[] = {
    ** This is a colon-delimited list of authentication methods mutt may
    ** attempt to use to log in to an SMTP server, in the order mutt should
    ** try them.  Authentication methods are any SASL mechanism, eg
-   ** ``digest-md5'', ``gssapi'' or ``cram-md5''.
+   ** 'digest-md5', 'gssapi' or 'cram-md5'.
    ** This parameter is case-insensitive. If this parameter is unset
    ** (the default) mutt will try all available methods, in order from
    ** most-secure to least-secure.
@@ -2863,12 +2909,6 @@ struct option_t MuttVars[] = {
   ** machine without having to enter a password.
   */
 #endif
-  { "umask", DT_NUM, R_NONE, UL &Umask, 0077 },
-  /*
-  ** .pp
-  ** Sets the umask to use when creating mailboxes or saving attachments.
-  */
-  
   { "use_8bitmime",	DT_BOOL, R_NONE, OPTUSE8BITMIME, 0 },
   /*
   ** .pp

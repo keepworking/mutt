@@ -504,7 +504,7 @@ void mix_make_chain (LIST **chainp, int *redraw)
   struct coord *coords = NULL;
   
   MUTTMENU *menu;
-  char helpstr[LONG_STRING];
+  char helpstr[SHORT_STRING];
   short loop = 1;
   int op;
   
