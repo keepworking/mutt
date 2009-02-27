@@ -9,6 +9,7 @@
 ^muttbug\.sh$
 ^stamp-h1$
 ^doc/instdoc\.sh$
+^m4/Makefile\.am$
 ^po/POTFILES$
 
 # built objects
@@ -24,7 +25,7 @@
 ^smime_keys$
 ^stamp-doc-rc$
 ^doc/instdoc$
-^doc/manual\.(txt|xml)$
+^doc/manual\.(txt|sgml)$
 ^doc/mutt\.1$
 ^doc/muttrc\.man$
 ^doc/.*\.html$
